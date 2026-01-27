@@ -95,10 +95,13 @@ pipeline {
                     echo "CHANGES_DETECTED = ${env.CHANGES_DETECTED}"
                     echo "FORCE_SYNC = ${params.FORCE_SYNC}"
                     
-                    // Always run commit-push for new packages, not just modified ones
-                    withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
+                    // Use GitHub token for authentication
+                    withCredentials([string(credentialsId: 'github-token-nooblk98', variable: 'GITHUB_TOKEN')]) {
                         def pushResult = sh(
-                            script: 'bash ${SCRIPTS_DIR}/commit-push.sh',
+                            script: '''
+                                git remote set-url origin https://${GITHUB_TOKEN}@github.com/nooblk-98/noobwrt-custom-feeds.git
+                                bash ${SCRIPTS_DIR}/commit-push.sh
+                            ''',
                             returnStatus: true
                         )
                         echo "Push script exit code: ${pushResult}"

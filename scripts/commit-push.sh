@@ -6,8 +6,8 @@ echo "Preparing to commit and push changes..."
 echo ""
 
 # Add git config
-git config user.name "${GIT_AUTHOR_NAME}"
-git config user.email "${GIT_AUTHOR_EMAIL}"
+git config user.name "Jenkins CI Bot"
+git config user.email "jenkins@noreply.github.com"
 git config core.safecrlf false
 git config core.autocrlf false
 
@@ -43,10 +43,6 @@ echo "Total staged files: ${STAGED_FILES}"
 if [ "${STAGED_FILES}" -eq 0 ]; then
     echo ""
     echo "⚠️  No changes detected in packages folder"
-    echo "This could mean:"
-    echo "  1. Packages are already committed"
-    echo "  2. No new packages were synced"
-    echo "  3. Files exist but haven't changed"
     exit 0
 fi
 
@@ -77,7 +73,6 @@ fi
 
 # Get commit details
 COMMIT_HASH=$(git rev-parse --short HEAD)
-COMMIT_FULL=$(git rev-parse HEAD)
 echo "✓ Committed: ${COMMIT_HASH}"
 
 # Verify commit
@@ -85,18 +80,15 @@ echo ""
 echo "Verifying commit..."
 git log --oneline -1
 
-# Push changes with verbose output
+# Push changes
 echo ""
 echo "Pushing changes to origin/main..."
-echo "Remote URL: $(git config --get remote.origin.url)"
+echo "Remote URL: $(git config --get remote.origin.url | sed 's/https:\/\/.*@/https:\/\/[TOKEN]@/')"
 
-if ! git push -u origin main -v 2>&1; then
+if ! git push origin main 2>&1; then
     echo ""
     echo "❌ Push failed. Checking status..."
     git status
-    echo ""
-    echo "Checking remote:"
-    git remote -v
     exit 1
 fi
 

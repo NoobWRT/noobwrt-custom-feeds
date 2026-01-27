@@ -3,8 +3,8 @@
 set -e
 
 export SYNC_REPO_URL="https://github.com/sirpdboy/luci-app-adguardhome.git"
-export SYNC_REMOTE_PATH="/luci-app-adguardhome"
-export SYNC_DEST_DIR="packages/luci-app-adguardhome"
+export SYNC_REMOTE_PATH="."
+export SYNC_DEST_DIR="feeds/adguardhome"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=true
 

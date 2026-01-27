@@ -5,7 +5,7 @@
 set -euo pipefail
 
 # Scan for all potential package directories
-SCAN_DIRS=("packages" "feeds")
+SCAN_DIRS=("packages" "feeds" "modules")
 
 echo "Checking for changes in all directories..."
 echo ""

@@ -60,7 +60,7 @@ echo ""
 echo "Total changes: ${TOTAL_CHANGES}"
 
 if [ "${TOTAL_CHANGES}" -gt 0 ]; then
-    echo "Changes detected under ${PACKAGES_DIR}"
+    echo "Changes detected"
     echo "true" > .changes-detected
     # Show first 20 new/modified files per package
     for pkg in "${PACKAGE_DIRS[@]}"; do
@@ -77,7 +77,7 @@ if [ "${TOTAL_CHANGES}" -gt 0 ]; then
         fi
     done
 else
-    echo "No changes detected under ${PACKAGES_DIR}"
+    echo "No changes detected"
     echo "false" > .changes-detected
 fi
 

@@ -17,6 +17,12 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Configure Git
+        run: |
+          git config --global core.safecrlf false
+          git config --global core.autocrlf false
+          echo "Git configured to handle line endings"
+
       - name: Clone upstream repository
         run: |
           mkdir -p packages
@@ -52,6 +58,10 @@ jobs:
           # Remove .git folder from cloned repo to avoid nested git
           rm -rf packages/QModem/.git
           echo "Removed .git folder from QModem clone"
+          
+          # Normalize line endings to LF
+          find packages/QModem -type f -name "*.c" -o -name "*.h" -o -name "*.mk" -o -name "*.py" -o -name "*.sh" -o -name "*.txt" | xargs dos2unix 2>/dev/null || true
+          
           echo "QModem folder contents:"
           ls -la packages/QModem/ | head -20
 
@@ -72,6 +82,8 @@ jobs:
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git config core.safecrlf false
+          git config core.autocrlf false
           
           # Force add all files in packages folder
           git add -A packages/
@@ -80,9 +92,13 @@ jobs:
           echo "Git status:"
           git status
           
+          # Count staged files
+          staged_files=$(git diff --cached --name-only | wc -l)
+          echo "Staged files: $staged_files"
+          
           # Commit and push if there are changes
-          if ! git diff --cached --quiet; then
-            echo "Changes detected, committing..."
+          if [ $staged_files -gt 0 ]; then
+            echo "Committing $staged_files files..."
             git commit -m "chore: sync QModem repository from upstream"
             git push
             echo "Changes pushed successfully"

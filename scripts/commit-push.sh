@@ -1,6 +1,11 @@
 #!/bin/bash
 # Script: commit-push.sh
-# Purpose: Commit and push changes to the repository
+# Purpose: Commit and push changes to the repository (generic)
+
+set -euo pipefail
+
+# Default PACKAGES_DIR to ./packages if not provided
+PACKAGES_DIR="${PACKAGES_DIR:-packages}"
 
 echo "Preparing to commit and push changes..."
 echo ""
@@ -12,7 +17,7 @@ git config core.safecrlf false
 git config core.autocrlf false
 
 echo "Current git state:"
-git log --oneline -1
+git log --oneline -1 || true
 echo ""
 
 # Check if in detached HEAD state
@@ -25,11 +30,11 @@ if ! git symbolic-ref -q HEAD; then
 fi
 
 echo "Current branch:"
-git branch -vv
+git branch -vv || true
 
 echo ""
 echo "Git remote:"
-git remote -v
+git remote -v || true
 
 echo ""
 echo "Current working directory:"
@@ -37,12 +42,12 @@ pwd
 
 echo ""
 echo "Packages folder contents:"
-ls -la packages/ | head -20
+ls -la "${PACKAGES_DIR}/" | head -20 || true
 
 echo ""
 echo "Staging ALL packages folder..."
 # Force add all files in packages, including new ones
-git add packages/
+git add "${PACKAGES_DIR}/"
 
 echo ""
 echo "Git Status:"
@@ -54,8 +59,7 @@ STAGED_FILES=$(git diff --cached --name-only 2>/dev/null | wc -l)
 echo "Total staged files: ${STAGED_FILES}"
 
 if [ "${STAGED_FILES}" -eq 0 ]; then
-    echo ""
-    echo "⚠️  No changes detected in packages folder"
+    echo "No changes detected in ${PACKAGES_DIR}"
     exit 0
 fi
 
@@ -71,14 +75,18 @@ if [ "${TOTAL}" -gt 30 ]; then
     echo "Total files being committed: ${TOTAL}"
 fi
 
+# Determine changed package names (top-level under packages)
+CHANGED_PACKAGES=$(git diff --cached --name-only | awk -F'/' '$1=="packages" {print $2}' | sort -u | tr '\n' ', ' | sed 's/, $//')
+
 # Commit changes
 echo ""
 echo "Committing ${TOTAL} files..."
-if ! git commit -m "chore: sync QModem packages from upstream repository
+COMMIT_MSG="chore: sync packages from upstream repositories
 
-- Synced packages from QModem luci folder
+- Packages: ${CHANGED_PACKAGES:-none}
 - Total files: ${TOTAL}
-- Timestamp: $(date)"; then
+- Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+if ! git commit -m "${COMMIT_MSG}"; then
     echo "ERROR: Failed to create commit"
     git status
     exit 1
@@ -91,7 +99,7 @@ echo "Committed: ${COMMIT_HASH}"
 # Verify commit
 echo ""
 echo "Verifying commit..."
-git log --oneline -1
+git log --oneline -1 || true
 
 # Ensure we're on main branch before pushing
 CURRENT_BRANCH=$(git branch --show-current)
@@ -99,7 +107,7 @@ echo ""
 echo "Current branch: ${CURRENT_BRANCH}"
 
 if [ "${CURRENT_BRANCH}" != "main" ]; then
-    echo "⚠️  Not on main branch, switching..."
+    echo "Not on main branch, switching..."
     git checkout main || {
         echo "ERROR: Failed to checkout main"
         exit 1
@@ -113,7 +121,7 @@ echo "Remote URL: $(git config --get remote.origin.url | sed 's/https:\/\/.*@/ht
 
 if ! git push origin main 2>&1; then
     echo ""
-    echo "❌ Push failed. Debugging..."
+    echo "Push failed. Debugging..."
     echo "Git status:"
     git status
     echo ""

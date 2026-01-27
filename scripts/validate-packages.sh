@@ -1,52 +1,53 @@
 #!/bin/bash
 # Script: validate-packages.sh
-# Purpose: Validate that packages were synced correctly
+# Purpose: Validate that packages were synced correctly (generic, no hardcoding)
 
-echo "Validating packages in packages/QModem and packages/internet_detector..."
+set -euo pipefail
 
-MISSING=0
-if [ ! -d "${PACKAGES_DIR}/QModem" ]; then
-    echo "WARNING: packages/QModem directory not found"
-    MISSING=$((MISSING+1))
-else
-  if [ -z "$(ls -A "${PACKAGES_DIR}/QModem")" ]; then
-      echo "WARNING: packages/QModem directory is empty"
-  else
-      echo "packages/QModem directory exists and contains files"
-  fi
+# Default PACKAGES_DIR to ./packages if not provided
+PACKAGES_DIR="${PACKAGES_DIR:-packages}"
+
+echo "Validating packages under ${PACKAGES_DIR}..."
+
+if [ ! -d "${PACKAGES_DIR}" ]; then
+    echo "WARNING: ${PACKAGES_DIR} directory not found"
+    echo "No packages to validate."
+    exit 0
 fi
 
-if [ ! -d "${PACKAGES_DIR}/internet_detector" ]; then
-    echo "WARNING: packages/internet_detector directory not found"
-else
-  if [ -z "$(ls -A "${PACKAGES_DIR}/internet_detector")" ]; then
-      echo "WARNING: packages/internet_detector directory is empty"
-  else
-      echo "packages/internet_detector directory exists and contains files"
-  fi
-fi
+PACKAGE_COUNT=0
+TOTAL_FILES=0
+TOTAL_DIRS=0
+
 echo ""
 echo "Package summary:"
 echo "=================="
 
-PACKAGE_COUNT=0
-for item in "${PACKAGES_DIR}/QModem"/*; do
-    if [ -d "$item" ]; then
-        PACKAGE_NAME=$(basename "$item")
-        FILE_COUNT=$(find "$item" -type f 2>/dev/null | wc -l)
-        DIR_COUNT=$(find "$item" -type d 2>/dev/null | wc -l)
-        echo "Package ${PACKAGE_NAME}: ${FILE_COUNT} files, ${DIR_COUNT} directories"
-        ((PACKAGE_COUNT++))
-    elif [ -f "$item" ]; then
-        PACKAGE_NAME=$(basename "$item")
-        echo "File ${PACKAGE_NAME}"
-        ((PACKAGE_COUNT++))
+# Iterate all top-level directories inside PACKAGES_DIR
+while IFS= read -r -d '' pkg; do
+    pkg_name=$(basename "${pkg}")
+    # Count files and directories within the package
+    file_count=$(find "${pkg}" -type f 2>/dev/null | wc -l | tr -d ' ')
+    dir_count=$(find "${pkg}" -type d 2>/dev/null | wc -l | tr -d ' ')
+
+    if [ "${file_count}" -eq 0 ]; then
+        echo "${pkg_name}: WARNING - empty package"
+    else
+        echo "${pkg_name}: ${file_count} files, ${dir_count} directories"
     fi
-done
+
+    PACKAGE_COUNT=$((PACKAGE_COUNT + 1))
+    TOTAL_FILES=$((TOTAL_FILES + file_count))
+    TOTAL_DIRS=$((TOTAL_DIRS + dir_count))
+done < <(find "${PACKAGES_DIR}" -mindepth 1 -maxdepth 1 -type d -print0)
 
 echo "=================="
 echo "Total packages: ${PACKAGE_COUNT}"
+echo "Total files: ${TOTAL_FILES}"
+echo "Total directories: ${TOTAL_DIRS}"
 
 if [ "${PACKAGE_COUNT}" -eq 0 ]; then
-    echo "WARNING: No packages found in packages/QModem or internet_detector"
+    echo "WARNING: No packages found under ${PACKAGES_DIR}"
 fi
+
+exit 0

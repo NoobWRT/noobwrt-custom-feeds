@@ -30,43 +30,58 @@ jobs:
         run: |
           mkdir -p packages
           
-          if [ -d "packages/QModem" ]; then
-            echo "QModem folder already exists, updating..."
-            cd packages/QModem
-            git pull origin main || git pull origin master || true
-            cd ../..
+          echo "Cloning QModem repository..."
+          git clone https://github.com/FUjr/QModem.git temp_qmodem
+          
+          # Check if luci folder exists in the cloned repo
+          if [ -d "temp_qmodem/luci" ]; then
+            echo "QModem luci folder found, syncing contents..."
+            
+            # Copy all subdirectories from luci folder to packages
+            for dir in temp_qmodem/luci/*/; do
+              if [ -d "$dir" ]; then
+                dir_name=$(basename "$dir")
+                echo "Syncing: $dir_name"
+                mkdir -p "packages/$dir_name"
+                cp -r "$dir"* "packages/$dir_name/" || cp -r "$dir" "packages/" || true
+              fi
+            done
+            
+            # Also copy any files directly in luci folder
+            cp -r temp_qmodem/luci/*.* packages/ 2>/dev/null || true
+            
+            echo "Luci folder sync completed"
           else
-            echo "QModem folder not found, cloning..."
-            git clone https://github.com/FUjr/QModem.git packages/QModem
+            echo "ERROR: luci folder not found in QModem repository"
+            ls -la temp_qmodem/
+            exit 1
           fi
           
-          echo "Repository sync completed"
-          echo "Contents of QModem folder:"
-          ls -la packages/QModem/
+          # Clean up temporary folder
+          rm -rf temp_qmodem
+          
+          echo "Final packages folder contents:"
+          ls -la packages/
 
       - name: Check for changes
         id: check_changes
         run: |
-          if [ -d "packages/QModem" ]; then
-            echo "QModem repository synced successfully"
-            echo "Contents of QModem:"
-            ls -la packages/QModem/
+          if [ -d "packages" ] && [ "$(ls -A packages/)" ]; then
+            echo "Luci packages synced successfully"
+            echo "Packages folder contents:"
+            ls -la packages/
           else
-            echo "Failed to sync QModem repository"
+            echo "Failed to sync luci packages"
             exit 1
           fi
 
       - name: Clean up temporary files
         run: |
-          # Remove .git folder from cloned repo to avoid nested git
-          rm -rf packages/QModem/.git
-          echo "Removed .git folder from QModem clone"
-          
-          # Normalize line endings to LF
-          find packages/QModem -type f -name "*.c" -o -name "*.h" -o -name "*.mk" -o -name "*.py" -o -name "*.sh" -o -name "*.txt" | xargs dos2unix 2>/dev/null || true
-          
-          echo "QModem folder contents:"
-          ls -la packages/QModem/ | head -20
+          # Remove any remaining temp folders
+          rm -rf temp_qmodem
+          echo "Cleanup completed"
+          echo "Final packages contents:"
+          ls -la packages/ | head -20
 
       - name: Check for differences
         id: diff

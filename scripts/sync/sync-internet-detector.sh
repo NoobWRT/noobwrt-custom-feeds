@@ -5,8 +5,8 @@ set -e
 
 
 export SYNC_REPO_URL="https://github.com/gSpotx2f/luci-app-internet-detector.git"
-export SYNC_REMOTE_PATH="/luci-app-internet-detector"
-export SYNC_DEST_DIR="packges/luci-app-internet-detector"
+export SYNC_REMOTE_PATH="."
+export SYNC_DEST_DIR="feeds/internet-detector"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=true
 

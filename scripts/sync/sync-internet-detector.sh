@@ -6,7 +6,7 @@ set -e
 
 export SYNC_REPO_URL="https://github.com/gSpotx2f/luci-app-internet-detector.git"
 export SYNC_REMOTE_PATH="/luci-app-internet-detector"
-export SYNC_DEST_DIR="packages/luci-app-internet-detector"
+export SYNC_DEST_DIR="feeds/luci-app-internet-detector"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=true
 
@@ -17,7 +17,7 @@ bash "${SCRIPT_DIR}/sync-repo.sh"
 
 export SYNC_REPO_URL="https://github.com/gSpotx2f/luci-app-internet-detector.git"
 export SYNC_REMOTE_PATH="/internet-detector"
-export SYNC_DEST_DIR="packages/dependencies/internet-detector"
+export SYNC_DEST_DIR="feeds/dependencies/internet-detector"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=false
 

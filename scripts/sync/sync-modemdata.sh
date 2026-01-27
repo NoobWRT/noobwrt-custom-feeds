@@ -15,7 +15,7 @@ bash "${SCRIPT_DIR}/sync-repo.sh"
 
 export SYNC_REPO_URL="https://github.com/obsy/modemdata.git"
 export SYNC_REMOTE_PATH="/modemdata"
-export SYNC_DEST_DIR="collected/dependencies/modemdata"
+export SYNC_DEST_DIR="modules/dependencies/modemdata"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=false
 

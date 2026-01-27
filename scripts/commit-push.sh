@@ -108,7 +108,8 @@ fi
 # Show what will be committed
 echo ""
 echo "Files to be committed (showing first 30):"
-git diff --cached --name-only | head -30
+# Avoid SIGPIPE (141) under pipefail when head exits early
+git diff --cached --name-only | head -30 || true
 
 TOTAL=$(git diff --cached --name-only | wc -l | tr -d ' ')
 if [ "${TOTAL}" -gt 30 ]; then

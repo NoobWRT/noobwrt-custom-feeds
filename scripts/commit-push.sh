@@ -11,6 +11,19 @@ git config user.email "jenkins@noreply.github.com"
 git config core.safecrlf false
 git config core.autocrlf false
 
+echo "Current git state:"
+git log --oneline -1
+echo ""
+
+# Check if in detached HEAD state
+if ! git symbolic-ref -q HEAD; then
+    echo "⚠️  In detached HEAD state, attempting to checkout main branch..."
+    git checkout -B main || {
+        echo "ERROR: Failed to checkout main branch"
+        exit 1
+    }
+fi
+
 echo "Current branch:"
 git branch -vv
 
@@ -33,7 +46,7 @@ git add packages/
 
 echo ""
 echo "Git Status:"
-git status packages/
+git status
 
 echo ""
 echo "Checking staged files..."
@@ -80,6 +93,19 @@ echo ""
 echo "Verifying commit..."
 git log --oneline -1
 
+# Ensure we're on main branch before pushing
+CURRENT_BRANCH=$(git branch --show-current)
+echo ""
+echo "Current branch: ${CURRENT_BRANCH}"
+
+if [ "${CURRENT_BRANCH}" != "main" ]; then
+    echo "⚠️  Not on main branch, switching..."
+    git checkout main || {
+        echo "ERROR: Failed to checkout main"
+        exit 1
+    }
+fi
+
 # Push changes
 echo ""
 echo "Pushing changes to origin/main..."
@@ -87,9 +113,20 @@ echo "Remote URL: $(git config --get remote.origin.url | sed 's/https:\/\/.*@/ht
 
 if ! git push origin main 2>&1; then
     echo ""
-    echo "❌ Push failed. Checking status..."
+    echo "❌ Push failed. Debugging..."
+    echo "Git status:"
     git status
-    exit 1
+    echo ""
+    echo "Git branch:"
+    git branch -a
+    echo ""
+    echo "Trying force push..."
+    if git push -f origin main 2>&1; then
+        echo "✓ Force push succeeded"
+    else
+        echo "ERROR: Even force push failed"
+        exit 1
+    fi
 fi
 
 echo ""

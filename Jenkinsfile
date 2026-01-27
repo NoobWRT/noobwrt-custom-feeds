@@ -31,6 +31,21 @@ pipeline {
                 script {
                     echo '🔍 Checking out repository...'
                     checkout scm
+                    
+                    // Ensure we're on the main branch
+                    sh '''
+                        echo "Current branch info:"
+                        git branch -a
+                        git log --oneline -1
+                        
+                        # Check if we're in detached HEAD state
+                        if git symbolic-ref -q HEAD; then
+                            echo "✓ On a branch: $(git branch --show-current)"
+                        else
+                            echo "⚠️  In detached HEAD state, checking out main..."
+                            git checkout -B main origin/main || git checkout -B main
+                        fi
+                    '''
                 }
             }
         }

@@ -6,7 +6,7 @@ set -e
 # Environment parameters for luci-app-wrtbwmon
 export SYNC_REPO_URL="https://github.com/brvphoenix/luci-app-wrtbwmon.git"
 export SYNC_REMOTE_PATH="."
-export SYNC_DEST_DIR="feeds"
+export SYNC_DEST_DIR="feeds/wrtbwmon"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=true
 

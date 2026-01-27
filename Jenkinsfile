@@ -89,16 +89,19 @@ pipeline {
         }
         
         stage('Commit & Push') {
-            when {
-                expression { 
-                    return env.CHANGES_DETECTED == 'true' || params.FORCE_SYNC == true
-                }
-            }
             steps {
                 script {
                     echo '📤 Committing and pushing changes...'
+                    echo "CHANGES_DETECTED = ${env.CHANGES_DETECTED}"
+                    echo "FORCE_SYNC = ${params.FORCE_SYNC}"
+                    
+                    // Always run commit-push for new packages, not just modified ones
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
-                        sh 'bash ${SCRIPTS_DIR}/commit-push.sh'
+                        def pushResult = sh(
+                            script: 'bash ${SCRIPTS_DIR}/commit-push.sh',
+                            returnStatus: true
+                        )
+                        echo "Push script exit code: ${pushResult}"
                     }
                 }
             }

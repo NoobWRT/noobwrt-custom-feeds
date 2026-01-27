@@ -3,6 +3,7 @@
 # Purpose: Check if there are any changes in the packages folder
 
 echo "Checking for changes in packages folder..."
+echo ""
 
 # Always ensure the file exists
 echo "false" > .changes-detected
@@ -13,21 +14,48 @@ if [ ! -d "packages" ]; then
     exit 0
 fi
 
-# Check for git changes
+echo "Packages folder contents:"
+find packages -type f | wc -l
+echo "files in packages folder"
+echo ""
+
+# Check for untracked files
+echo "Checking for untracked files..."
+UNTRACKED=$(git ls-files --others --exclude-standard packages/ | wc -l)
+echo "Untracked files: ${UNTRACKED}"
+
+# Check for git changes (modified files)
+echo "Checking for modified files..."
 if git diff --quiet packages/ 2>/dev/null; then
-    echo "No changes detected in packages"
-    echo "false" > .changes-detected
-    exit 0
+    MODIFIED=0
 else
+    MODIFIED=$(git diff --name-only packages/ 2>/dev/null | wc -l)
+fi
+echo "Modified files: ${MODIFIED}"
+
+TOTAL_CHANGES=$((UNTRACKED + MODIFIED))
+echo ""
+echo "Total changes: ${TOTAL_CHANGES}"
+
+# If there are any changes (new or modified), mark as detected
+if [ "${TOTAL_CHANGES}" -gt 0 ]; then
     echo "✓ Changes detected in packages"
     echo "true" > .changes-detected
     
-    echo ""
-    echo "Changed files:"
-    git diff --name-status packages/ 2>/dev/null | head -20 || true
+    if [ "${UNTRACKED}" -gt 0 ]; then
+        echo ""
+        echo "New files (first 20):"
+        git ls-files --others --exclude-standard packages/ | head -20
+    fi
     
-    TOTAL_CHANGES=$(git diff --name-only packages/ 2>/dev/null | wc -l)
-    echo ""
-    echo "Total changed files: ${TOTAL_CHANGES}"
-    exit 0
+    if [ "${MODIFIED}" -gt 0 ]; then
+        echo ""
+        echo "Modified files (first 20):"
+        git diff --name-only packages/ 2>/dev/null | head -20 || true
+    fi
+else
+    echo "No changes detected in packages"
+    echo "false" > .changes-detected
 fi
+
+exit 0

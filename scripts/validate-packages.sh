@@ -2,8 +2,6 @@
 # Script: validate-packages.sh
 # Purpose: Validate that packages were synced correctly
 
-set -e
-
 echo "Validating packages..."
 
 if [ ! -d "${PACKAGES_DIR}" ]; then
@@ -25,8 +23,8 @@ PACKAGE_COUNT=0
 for item in "${PACKAGES_DIR}"/*; do
     if [ -d "$item" ]; then
         PACKAGE_NAME=$(basename "$item")
-        FILE_COUNT=$(find "$item" -type f | wc -l)
-        DIR_COUNT=$(find "$item" -type d | wc -l)
+        FILE_COUNT=$(find "$item" -type f 2>/dev/null | wc -l)
+        DIR_COUNT=$(find "$item" -type d 2>/dev/null | wc -l)
         echo "  📦 ${PACKAGE_NAME}: ${FILE_COUNT} files, ${DIR_COUNT} directories"
         ((PACKAGE_COUNT++))
     elif [ -f "$item" ]; then
@@ -38,3 +36,8 @@ done
 
 echo "=================="
 echo "✓ Total packages: ${PACKAGE_COUNT}"
+
+if [ "${PACKAGE_COUNT}" -eq 0 ]; then
+    echo "ERROR: No packages found in packages directory"
+    exit 1
+fi

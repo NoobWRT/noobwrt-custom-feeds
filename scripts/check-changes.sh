@@ -2,8 +2,6 @@
 # Script: check-changes.sh
 # Purpose: Check if there are any changes in the packages folder
 
-set -e
-
 echo "Checking for changes in packages folder..."
 
 if git diff --quiet "${PACKAGES_DIR}"; then

@@ -2,8 +2,6 @@
 # Script: cleanup.sh
 # Purpose: Clean up temporary files and folders
 
-set -e
-
 echo "Cleaning up temporary files..."
 
 # Remove temporary QModem clone
@@ -27,7 +25,7 @@ echo "✓ Cleanup completed successfully"
 echo ""
 echo "Remaining workspace state:"
 echo "=============================="
-du -sh . 2>/dev/null | head -1
+du -sh . 2>/dev/null | head -1 || echo "  (unable to calculate workspace size)"
 echo ""
 echo "Packages folder size:"
 du -sh "${PACKAGES_DIR}" 2>/dev/null || echo "  (packages folder not found)"

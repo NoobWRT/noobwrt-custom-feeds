@@ -2,8 +2,6 @@
 # Script: commit-push.sh
 # Purpose: Commit and push changes to the repository
 
-set -e
-
 echo "Preparing to commit and push changes..."
 
 # Stage all changes in packages folder
@@ -36,7 +34,10 @@ fi
 # Commit changes
 echo ""
 echo "Committing changes..."
-git commit -m "chore: sync QModem packages from upstream repository"
+if ! git commit -m "chore: sync QModem packages from upstream repository"; then
+    echo "ERROR: Failed to commit changes"
+    exit 1
+fi
 
 # Get commit details
 COMMIT_HASH=$(git rev-parse --short HEAD)
@@ -47,6 +48,9 @@ echo "  Message: ${COMMIT_MSG}"
 # Push changes
 echo ""
 echo "Pushing changes to repository..."
-git push origin HEAD:main
+if ! git push origin HEAD:main; then
+    echo "ERROR: Failed to push changes"
+    exit 1
+fi
 
 echo "✓ Changes pushed successfully"

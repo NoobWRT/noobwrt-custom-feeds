@@ -17,7 +17,7 @@ echo ""
 
 # Check if in detached HEAD state
 if ! git symbolic-ref -q HEAD; then
-    echo "⚠️  In detached HEAD state, attempting to checkout main branch..."
+    echo "In detached HEAD state, attempting to checkout main branch..."
     git checkout -B main || {
         echo "ERROR: Failed to checkout main branch"
         exit 1
@@ -36,13 +36,13 @@ echo "Current working directory:"
 pwd
 
 echo ""
-echo "Packages/QModem folder contents:"
-ls -la packages/QModem/ | head -20
+echo "Packages folder contents:"
+ls -la packages/ | head -20
 
 echo ""
-echo "Staging ALL packages/QModem folder..."
-# Force add all files in packages/QModem, including new ones
-git add packages/QModem/
+echo "Staging ALL packages folder..."
+# Force add all files in packages, including new ones
+git add packages/
 
 echo ""
 echo "Git Status:"
@@ -86,7 +86,7 @@ fi
 
 # Get commit details
 COMMIT_HASH=$(git rev-parse --short HEAD)
-echo "✓ Committed: ${COMMIT_HASH}"
+echo "Committed: ${COMMIT_HASH}"
 
 # Verify commit
 echo ""
@@ -122,7 +122,7 @@ if ! git push origin main 2>&1; then
     echo ""
     echo "Trying force push..."
     if git push -f origin main 2>&1; then
-        echo "✓ Force push succeeded"
+        echo "Force push succeeded"
     else
         echo "ERROR: Even force push failed"
         exit 1
@@ -130,6 +130,6 @@ if ! git push origin main 2>&1; then
 fi
 
 echo ""
-echo "✓ Changes pushed successfully!"
+echo "Changes pushed successfully!"
 echo "Commit: ${COMMIT_HASH}"
 echo "Branch: main"

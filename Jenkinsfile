@@ -61,12 +61,18 @@ pipeline {
             }
         }
         
-        stage('Clone & Sync') {
+        stage('Sync QModem') {
             steps {
                 script {
-                    echo '📥 Cloning and syncing QModem repository...'
+                    echo 'Syncing QModem packages using generic script...'
                     def syncResult = sh(
-                        script: 'bash ${SCRIPTS_DIR}/clone-sync-packages.sh',
+                        script: '''
+                          SYNC_REPO_URL="https://github.com/FUjr/QModem.git" \
+                          SYNC_REMOTE_PATH="luci" \
+                          SYNC_DEST_DIR="packages/QModem" \
+                          SYNC_COPY_SUBDIRS=true \
+                          bash ${SCRIPTS_DIR}/sync/sync-repo.sh
+                        ''',
                         returnStatus: true
                     )
                     if (syncResult != 0) {
@@ -75,11 +81,33 @@ pipeline {
                 }
             }
         }
+
+        stage('Sync Internet Detector') {
+            steps {
+                script {
+                    echo 'Syncing Internet Detector using generic script...'
+                    def syncInternet = sh(
+                        script: '''
+                          SYNC_REPO_URL="https://github.com/gSpotx2f/luci-app-internet-detector.git" \
+                          SYNC_REMOTE_PATH="." \
+                          SYNC_DEST_DIR="packages/internet_detector" \
+                          SYNC_COPY_SUBDIRS=false \
+                          SYNC_CLEAN_DEST=true \
+                          bash ${SCRIPTS_DIR}/sync/sync-repo.sh
+                        ''',
+                        returnStatus: true
+                    )
+                    if (syncInternet != 0) {
+                        error("Internet detector sync failed with exit code ${syncInternet}")
+                    }
+                }
+            }
+        }
         
         stage('Validate Packages') {
             steps {
                 script {
-                    echo '✅ Validating packages...'
+                    echo 'Validating packages...'
                     def validateResult = sh(
                         script: 'bash ${SCRIPTS_DIR}/validate-packages.sh',
                         returnStatus: true
@@ -94,7 +122,7 @@ pipeline {
         stage('Check Changes') {
             steps {
                 script {
-                    echo '🔔 Checking for changes...'
+                    echo 'Checking for changes...'
                     sh 'bash ${SCRIPTS_DIR}/check-changes.sh'
                     
                     env.CHANGES_DETECTED = readFile(file: '.changes-detected').trim()
@@ -106,7 +134,7 @@ pipeline {
         stage('Commit & Push') {
             steps {
                 script {
-                    echo '📤 Committing and pushing changes...'
+                    echo 'Committing and pushing changes...'
                     echo "CHANGES_DETECTED = ${env.CHANGES_DETECTED}"
                     echo "FORCE_SYNC = ${params.FORCE_SYNC}"
                     
@@ -128,7 +156,7 @@ pipeline {
         stage('Cleanup') {
             steps {
                 script {
-                    echo '🧹 Cleaning up temporary files...'
+                    echo 'Cleaning up temporary files...'
                     sh '''
                         bash ${SCRIPTS_DIR}/cleanup.sh
                     '''
@@ -139,13 +167,13 @@ pipeline {
     
     post {
         always {
-            echo '📊 Build finished'
+            echo 'Build finished'
         }
         success {
-            echo '✅ Sync completed successfully'
+            echo 'Sync completed successfully'
         }
         failure {
-            echo '❌ Sync failed - check logs for details'
+            echo 'Sync failed - check logs for details'
         }
     }
 }

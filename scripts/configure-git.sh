@@ -9,5 +9,5 @@ git config --global core.autocrlf false
 git config user.name "${GIT_AUTHOR_NAME}"
 git config user.email "${GIT_AUTHOR_EMAIL}"
 
-echo "✓ Git configured successfully"
+echo "Git configured successfully"
 git config --global --list | grep -E "core\.(safe)?crlf|autocrlf|user" || true

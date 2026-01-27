@@ -28,6 +28,12 @@ SYNC_COPY_SUBDIRS="${SYNC_COPY_SUBDIRS:-false}"
 SYNC_CLEAN_DEST="${SYNC_CLEAN_DEST:-false}"
 SYNC_TEMP_DIR="${SYNC_TEMP_DIR:-./temp_sync}"
 
+# Normalize paths:
+# - Allow SYNC_REMOTE_PATH values like "/luci-app-foo" by stripping the leading slash
+# - Ensure destination parent directories exist even if they are new
+SYNC_REMOTE_PATH="${SYNC_REMOTE_PATH#/}"
+DEST_PARENT_DIR="$(dirname "${SYNC_DEST_DIR}")"
+
 echo "Syncing from: ${SYNC_REPO_URL}"
 echo "Remote path: ${SYNC_REMOTE_PATH}"
 echo "Destination: ${SYNC_DEST_DIR}"
@@ -63,13 +69,17 @@ if [ ! -d "${SOURCE_PATH}" ]; then
     exit 1
 fi
 
-# Create destination directory if it doesn't exist
+# Create destination directory (and its parents) if it doesn't exist
+mkdir -p "${DEST_PARENT_DIR}"
 mkdir -p "${SYNC_DEST_DIR}"
 
 # Clean destination if requested
 if [ "${SYNC_CLEAN_DEST}" = "true" ]; then
     echo "Cleaning destination: ${SYNC_DEST_DIR}"
-    rm -rf "${SYNC_DEST_DIR:?}"/*
+    # Use nullglob so an empty directory does not pass a literal '*' to rm
+    shopt -s nullglob dotglob
+    rm -rf "${SYNC_DEST_DIR:?}"/* || true
+    shopt -u nullglob dotglob
 fi
 
 # Copy files based on SYNC_COPY_SUBDIRS
@@ -95,7 +105,9 @@ if [ "${SYNC_COPY_SUBDIRS}" = "true" ]; then
     done
 else
     echo "Copying entire path from ${SOURCE_PATH}..."
+    shopt -s nullglob dotglob
     cp -r "${SOURCE_PATH}"/* "${SYNC_DEST_DIR}/" 2>/dev/null || true
+    shopt -u nullglob dotglob
 fi
 
 # Remove .git directories to avoid nested repos

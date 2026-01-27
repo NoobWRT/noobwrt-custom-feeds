@@ -6,7 +6,7 @@ set -e
 # Environment parameters for luci-app-internet-detector
 export SYNC_REPO_URL="https://github.com/Openwrt-Passwall/openwrt-passwall.git"
 export SYNC_REMOTE_PATH="luci-app-passwall"
-export SYNC_DEST_DIR="packges/luci-app-passwall"
+export SYNC_DEST_DIR="packages/luci-app-passwall"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=true
 
@@ -24,4 +24,3 @@ export SYNC_CLEAN_DEST=false
 # Call the generic sync script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 bash "${SCRIPT_DIR}/sync-repo.sh"
-

@@ -36,21 +36,31 @@ jobs:
 
       - name: Sync packages from upstream
         run: |
-          # Remove old packages directory content (optional - keeps only new)
-          # rm -rf packages/*
+          # Create packages directory if it doesn't exist
+          mkdir -p packages
           
-          # Copy new packages from upstream
+          # Copy all packages from upstream to packages
           if [ -d "upstream_repo" ]; then
-            # Copy all subdirectories from upstream to packages
+            # Sync all subdirectories from upstream to packages
+            # This will update existing folders and clone new ones
             for dir in upstream_repo/*/; do
               if [ -d "$dir" ]; then
                 dir_name=$(basename "$dir")
                 echo "Syncing directory: $dir_name"
-                mkdir -p "packages/$dir_name"
-                cp -r "$dir"* "packages/$dir_name/" || true
+                
+                # If folder doesn't exist, clone it; otherwise update it
+                if [ ! -d "packages/$dir_name" ]; then
+                  echo "  → New folder detected, cloning..."
+                  cp -r "$dir" "packages/$dir_name"
+                else
+                  echo "  → Folder exists, updating..."
+                  cp -r "$dir"/* "packages/$dir_name/" || true
+                fi
               fi
             done
-            echo "Sync completed"
+            echo "Sync completed successfully"
+            echo "Total packages in sync:"
+            ls -la packages/
           fi
 
       - name: Clean up

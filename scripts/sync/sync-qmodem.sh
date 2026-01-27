@@ -9,7 +9,7 @@ export SYNC_REMOTE_PATH="luci"
 export SYNC_DEST_DIR="packages/QModem"
 export SYNC_COPY_SUBDIRS=true
 # Uncomment to clean destination before copy
-# export SYNC_CLEAN_DEST=true
+export SYNC_CLEAN_DEST=true
 
 # Call the generic sync script
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"

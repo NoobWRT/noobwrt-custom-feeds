@@ -1,27 +1,29 @@
 #!/bin/bash
 # Script: check-changes.sh
-# Purpose: Check if there are any changes in the packages folder (generic)
+# Purpose: Check if there are any changes in packages/feeds folders (scans all)
 
 set -euo pipefail
 
-# Default PACKAGES_DIR to ./packages if not provided
-PACKAGES_DIR="${PACKAGES_DIR:-packages}"
+# Scan for all potential package directories
+SCAN_DIRS=("packages" "feeds")
 
-echo "Checking for changes under ${PACKAGES_DIR}..."
+echo "Checking for changes in all directories..."
 echo ""
 
 # Always ensure the file exists
 echo "false" > .changes-detected
 
-if [ ! -d "${PACKAGES_DIR}" ]; then
-    echo "No packages directory found at ${PACKAGES_DIR}, nothing to check"
-    exit 0
-fi
+PACKAGE_DIRS=()
+for scan_dir in "${SCAN_DIRS[@]}"; do
+    if [ -d "${scan_dir}" ]; then
+        while IFS= read -r -d '' pkg; do
+            PACKAGE_DIRS+=("${pkg}")
+        done < <(find "${scan_dir}" -mindepth 1 -maxdepth 1 -type d -print0 2>/dev/null)
+    fi
+done
 
-# Discover package directories
-mapfile -d '' PACKAGE_DIRS < <(find "${PACKAGES_DIR}" -mindepth 1 -maxdepth 1 -type d -print0)
 if [ ${#PACKAGE_DIRS[@]} -eq 0 ]; then
-    echo "No package subdirectories found, nothing to check"
+    echo "No package subdirectories found in: ${SCAN_DIRS[*]}"
     exit 0
 fi
 

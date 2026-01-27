@@ -1,11 +1,11 @@
 #!/bin/bash
 # Script: commit-push.sh
-# Purpose: Commit and push changes to the repository (generic)
+# Purpose: Commit and push changes to the repository (scans packages/, feeds/, etc.)
 
 set -euo pipefail
 
-# Default PACKAGES_DIR to ./packages if not provided
-PACKAGES_DIR="${PACKAGES_DIR:-packages}"
+# Scan for all potential package directories
+SCAN_DIRS=("packages" "feeds")
 
 echo "Preparing to commit and push changes..."
 echo ""
@@ -41,13 +41,14 @@ echo "Current working directory:"
 pwd
 
 echo ""
-echo "Packages folder contents:"
-ls -la "${PACKAGES_DIR}/" | head -20 || true
-
-echo ""
-echo "Staging ALL packages folder..."
-# Force add all files in packages, including new ones
-git add "${PACKAGES_DIR}/"
+echo "Staging all package directories..."
+# Force add all files in discovered directories
+for dir in "${SCAN_DIRS[@]}"; do
+    if [ -d "${dir}" ]; then
+        echo "Staging ${dir}/..."
+        git add "${dir}/" 2>/dev/null || true
+    fi
+done
 
 echo ""
 echo "Git Status:"
@@ -75,8 +76,8 @@ if [ "${TOTAL}" -gt 30 ]; then
     echo "Total files being committed: ${TOTAL}"
 fi
 
-# Determine changed package names (top-level under packages)
-CHANGED_PACKAGES=$(git diff --cached --name-only | awk -F'/' '$1=="packages" {print $2}' | sort -u | tr '\n' ', ' | sed 's/, $//')
+# Determine changed package names from all scanned directories
+CHANGED_PACKAGES=$(git diff --cached --name-only | awk -F'/' '{if ($1=="packages" || $1=="feeds") print $1"/"$2}' | sort -u | tr '\n' ', ' | sed 's/, $//')
 
 # Commit changes
 echo ""

@@ -8,7 +8,6 @@ pipeline {
     environment {
         REPO_URL = 'https://github.com/FUjr/QModem.git'
         SCRIPTS_DIR = './scripts'
-        PACKAGES_DIR = './packages'
         TEMP_DIR = './temp_qmodem'
         GIT_AUTHOR_NAME = 'Jenkins CI'
         GIT_AUTHOR_EMAIL = 'jenkins@example.com'

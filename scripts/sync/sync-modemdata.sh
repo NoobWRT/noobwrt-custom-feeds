@@ -4,7 +4,7 @@
 set -e
 
 export SYNC_REPO_URL="https://github.com/4IceG/luci-app-modemdata.git"
-export SYNC_REMOTE_PATH="."
+export SYNC_REMOTE_PATH="/luci-app-modemdata"
 export SYNC_DEST_DIR="packages/luci-app-modemdata"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=false

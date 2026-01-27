@@ -53,7 +53,7 @@ pipeline {
         stage('Configure Git') {
             steps {
                 script {
-                    echo '⚙️ Configuring Git...'
+                    echo 'Configuring Git...'
                     sh '''
                         bash ${SCRIPTS_DIR}/configure-git.sh
                     '''
@@ -61,44 +61,42 @@ pipeline {
             }
         }
         
-        stage('Sync QModem') {
+        stage('Auto-Discover and Sync All Packages') {
             steps {
                 script {
-                    echo 'Syncing QModem packages using generic script...'
-                    def syncResult = sh(
+                    echo 'Discovering all sync scripts in scripts/sync/...'
+                    def syncScripts = sh(
                         script: '''
-                          SYNC_REPO_URL="https://github.com/FUjr/QModem.git" \
-                          SYNC_REMOTE_PATH="luci" \
-                          SYNC_DEST_DIR="packages/QModem" \
-                          SYNC_COPY_SUBDIRS=true \
-                          bash ${SCRIPTS_DIR}/sync/sync-repo.sh
+                            find ${SCRIPTS_DIR}/sync -name "sync-*.sh" -type f ! -name "sync-repo.sh" | sort
                         ''',
-                        returnStatus: true
-                    )
-                    if (syncResult != 0) {
-                        error("Package sync failed with exit code ${syncResult}")
+                        returnStdout: true
+                    ).trim().split('\n').findAll { it.length() > 0 }
+                    
+                    if (syncScripts.size() == 0) {
+                        echo 'WARNING: No sync-*.sh scripts found in scripts/sync/'
+                    } else {
+                        echo "Found ${syncScripts.size()} sync script(s):"
+                        syncScripts.each { script -> echo "  - ${script}" }
                     }
-                }
-            }
-        }
-
-        stage('Sync Internet Detector') {
-            steps {
-                script {
-                    echo 'Syncing Internet Detector using generic script...'
-                    def syncInternet = sh(
-                        script: '''
-                          SYNC_REPO_URL="https://github.com/gSpotx2f/luci-app-internet-detector.git" \
-                          SYNC_REMOTE_PATH="." \
-                          SYNC_DEST_DIR="packages/internet_detector" \
-                          SYNC_COPY_SUBDIRS=false \
-                          SYNC_CLEAN_DEST=true \
-                          bash ${SCRIPTS_DIR}/sync/sync-repo.sh
-                        ''',
-                        returnStatus: true
-                    )
-                    if (syncInternet != 0) {
-                        error("Internet detector sync failed with exit code ${syncInternet}")
+                    
+                    // Execute each sync script
+                    syncScripts.each { syncScript ->
+                        def scriptName = syncScript.tokenize('/')[-1]
+                        echo ""
+                        echo "Executing: ${scriptName}"
+                        def syncResult = sh(
+                            script: "bash ${syncScript}",
+                            returnStatus: true
+                        )
+                        if (syncResult != 0) {
+                            error("${scriptName} failed with exit code ${syncResult}")
+                        }
+                        echo "${scriptName} completed successfully"
+                    }
+                    
+                    if (syncScripts.size() > 0) {
+                        echo ""
+                        echo "All sync scripts executed successfully"
                     }
                 }
             }

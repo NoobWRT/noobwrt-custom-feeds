@@ -1,11 +1,26 @@
 #!/bin/bash
 # Script: commit-push.sh
-# Purpose: Commit and push changes to the repository (scans packages/, feeds/, etc.)
+# Purpose: Commit and push changes to the repository (auto-discovers destinations from sync scripts)
 
 set -euo pipefail
 
-# Scan for all potential package directories
-SCAN_DIRS=("packages" "feeds" "modules")
+SYNC_DIR="scripts/sync"
+
+# Discover SYNC_DEST_DIR values from all sync wrapper scripts
+discover_dest_dirs() {
+    local scripts
+    scripts=$(find "${SYNC_DIR}" -name "sync-*.sh" -type f ! -name "sync-repo.sh" 2>/dev/null || true)
+
+    if [ -z "${scripts}" ]; then
+        return 0
+    fi
+
+    # Extract SYNC_DEST_DIR assignments (quoted or unquoted)
+    # shellcheck disable=SC2016
+    printf '%s\n' "${scripts}" | while IFS= read -r script; do
+        sed -n -E "s/^[[:space:]]*export[[:space:]]+SYNC_DEST_DIR[[:space:]]*=[[:space:]]*['\"]?([^'\"[:space:]]+)['\"]?.*/\1/p" "${script}" || true
+    done
+}
 
 echo "Preparing to commit and push changes..."
 echo ""
@@ -41,12 +56,38 @@ echo "Current working directory:"
 pwd
 
 echo ""
-echo "Staging all package directories..."
-# Force add all files in discovered directories
-for dir in "${SCAN_DIRS[@]}"; do
-    if [ -d "${dir}" ]; then
-        echo "Staging ${dir}/..."
-        git add "${dir}/" 2>/dev/null || true
+echo "Discovering destination directories from ${SYNC_DIR}/..."
+mapfile -t RAW_DEST_DIRS < <(discover_dest_dirs | sed '/^$/d' || true)
+
+# De-duplicate while preserving order
+declare -A SEEN_DESTS=()
+DEST_DIRS=()
+for dest in "${RAW_DEST_DIRS[@]:-}"; do
+    if [ -n "${dest}" ] && [ -z "${SEEN_DESTS[${dest}]:-}" ]; then
+        SEEN_DESTS["${dest}"]=1
+        DEST_DIRS+=("${dest}")
+    fi
+done
+
+if [ ${#DEST_DIRS[@]} -eq 0 ]; then
+    echo "No SYNC_DEST_DIR values discovered under ${SYNC_DIR}/"
+    echo "Nothing to stage."
+    exit 0
+fi
+
+echo "Discovered destinations:"
+printf '  - %s\n' "${DEST_DIRS[@]}"
+
+echo ""
+echo "Staging all discovered destination directories..."
+STAGED_ANY=false
+for dest in "${DEST_DIRS[@]}"; do
+    if [ -d "${dest}" ]; then
+        echo "Staging ${dest}/..."
+        git add "${dest}/" 2>/dev/null || true
+        STAGED_ANY=true
+    else
+        echo "Skipping missing directory: ${dest}"
     fi
 done
 
@@ -56,11 +97,11 @@ git status
 
 echo ""
 echo "Checking staged files..."
-STAGED_FILES=$(git diff --cached --name-only 2>/dev/null | wc -l)
+STAGED_FILES=$(git diff --cached --name-only 2>/dev/null | wc -l | tr -d ' ')
 echo "Total staged files: ${STAGED_FILES}"
 
 if [ "${STAGED_FILES}" -eq 0 ]; then
-    echo "No changes detected in ${PACKAGES_DIR}"
+    echo "No changes detected in discovered destinations"
     exit 0
 fi
 
@@ -69,22 +110,33 @@ echo ""
 echo "Files to be committed (showing first 30):"
 git diff --cached --name-only | head -30
 
-TOTAL=$(git diff --cached --name-only | wc -l)
+TOTAL=$(git diff --cached --name-only | wc -l | tr -d ' ')
 if [ "${TOTAL}" -gt 30 ]; then
     echo "... and $((TOTAL - 30)) more files"
     echo ""
     echo "Total files being committed: ${TOTAL}"
 fi
 
-# Determine changed package names from all scanned directories
-CHANGED_PACKAGES=$(git diff --cached --name-only | awk -F'/' '{if ($1=="packages" || $1=="feeds") print $1"/"$2}' | sort -u | tr '\n' ', ' | sed 's/, $//')
+# Determine which discovered destinations have staged changes
+CHANGED_DESTS=()
+for dest in "${DEST_DIRS[@]}"; do
+    if git diff --cached --name-only -- "${dest}" 2>/dev/null | grep -q .; then
+        CHANGED_DESTS+=("${dest}")
+    fi
+done
+
+if [ ${#CHANGED_DESTS[@]} -gt 0 ]; then
+    CHANGED_DESTS_STR=$(printf '%s, ' "${CHANGED_DESTS[@]}" | sed 's/, $//')
+else
+    CHANGED_DESTS_STR="none"
+fi
 
 # Commit changes
 echo ""
 echo "Committing ${TOTAL} files..."
 COMMIT_MSG="chore: sync packages from upstream repositories
 
-- Packages: ${CHANGED_PACKAGES:-none}
+- Destinations: ${CHANGED_DESTS_STR}
 - Total files: ${TOTAL}
 - Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
 if ! git commit -m "${COMMIT_MSG}"; then

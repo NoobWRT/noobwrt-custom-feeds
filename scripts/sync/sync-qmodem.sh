@@ -17,7 +17,7 @@ bash "${SCRIPT_DIR}/sync-repo.sh"
 # Sync QModem dependencies
 export SYNC_REPO_URL="https://github.com/FUjr/QModem.git"
 export SYNC_REMOTE_PATH="/application"
-export SYNC_DEST_DIR="modules/dependencies"
+export SYNC_DEST_DIR="modules"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=false
 

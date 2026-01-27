@@ -49,9 +49,11 @@ jobs:
 
       - name: Clean up temporary files
         run: |
-          # Remove git metadata if you want only files without .git
-          # rm -rf packages/QModem/.git
-          echo "Cleanup completed"
+          # Remove .git folder from cloned repo to avoid nested git
+          rm -rf packages/QModem/.git
+          echo "Removed .git folder from QModem clone"
+          echo "QModem folder contents:"
+          ls -la packages/QModem/ | head -20
 
       - name: Check for differences
         id: diff
@@ -67,10 +69,23 @@ jobs:
           fi
 
       - name: Commit and push changes
-        if: steps.diff.outputs.changes == 'true'
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add packages/
-          git commit -m "chore: sync packages from upstream QModem repository"
-          git push
+          
+          # Force add all files in packages folder
+          git add -A packages/
+          
+          # Check git status
+          echo "Git status:"
+          git status
+          
+          # Commit and push if there are changes
+          if ! git diff --cached --quiet; then
+            echo "Changes detected, committing..."
+            git commit -m "chore: sync QModem repository from upstream"
+            git push
+            echo "Changes pushed successfully"
+          else
+            echo "No changes to commit"
+          fi

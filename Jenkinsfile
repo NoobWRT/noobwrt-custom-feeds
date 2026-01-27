@@ -50,9 +50,13 @@ pipeline {
             steps {
                 script {
                     echo '📥 Cloning and syncing QModem repository...'
-                    sh '''
-                        bash ${SCRIPTS_DIR}/clone-sync-packages.sh
-                    '''
+                    def syncResult = sh(
+                        script: 'bash ${SCRIPTS_DIR}/clone-sync-packages.sh',
+                        returnStatus: true
+                    )
+                    if (syncResult != 0) {
+                        error("Package sync failed with exit code ${syncResult}")
+                    }
                 }
             }
         }
@@ -61,9 +65,13 @@ pipeline {
             steps {
                 script {
                     echo '✅ Validating packages...'
-                    sh '''
-                        bash ${SCRIPTS_DIR}/validate-packages.sh
-                    '''
+                    def validateResult = sh(
+                        script: 'bash ${SCRIPTS_DIR}/validate-packages.sh',
+                        returnStatus: true
+                    )
+                    if (validateResult != 0) {
+                        error("Package validation failed with exit code ${validateResult}")
+                    }
                 }
             }
         }
@@ -72,9 +80,14 @@ pipeline {
             steps {
                 script {
                     echo '🔔 Checking for changes...'
-                    sh '''
-                        bash ${SCRIPTS_DIR}/check-changes.sh
-                    '''
+                    def checkResult = sh(
+                        script: 'bash ${SCRIPTS_DIR}/check-changes.sh',
+                        returnStatus: true
+                    )
+                    if (checkResult != 0) {
+                        error("Change detection failed with exit code ${checkResult}")
+                    }
+                    
                     script {
                         env.CHANGES_DETECTED = readFile(file: '.changes-detected').trim()
                     }

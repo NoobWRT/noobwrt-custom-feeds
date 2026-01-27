@@ -19,63 +19,51 @@ jobs:
 
       - name: Clone upstream repository
         run: |
-          git clone --depth 1 https://github.com/FUjr/QModem.git upstream_repo
+          mkdir -p packages
+          
+          if [ -d "packages/QModem" ]; then
+            echo "QModem folder already exists, updating..."
+            cd packages/QModem
+            git pull origin main || git pull origin master || true
+            cd ../..
+          else
+            echo "QModem folder not found, cloning..."
+            git clone https://github.com/FUjr/QModem.git packages/QModem
+          fi
+          
+          echo "Repository sync completed"
+          echo "Contents of QModem folder:"
+          ls -la packages/QModem/
 
-      - name: Check for changes in packages
+      - name: Check for changes
         id: check_changes
         run: |
-          if [ -d "upstream_repo" ]; then
-            echo "Upstream repository cloned successfully"
-            # List directories in upstream repo
-            echo "Contents of upstream repository:"
-            ls -la upstream_repo/
+          if [ -d "packages/QModem" ]; then
+            echo "QModem repository synced successfully"
+            echo "Contents of QModem:"
+            ls -la packages/QModem/
           else
-            echo "Failed to clone upstream repository"
+            echo "Failed to sync QModem repository"
             exit 1
           fi
 
-      - name: Sync packages from upstream
+      - name: Clean up temporary files
         run: |
-          # Create packages directory if it doesn't exist
-          mkdir -p packages
-          
-          # Copy all packages from upstream to packages
-          if [ -d "upstream_repo" ]; then
-            # Sync all subdirectories from upstream to packages
-            # This will update existing folders and clone new ones
-            for dir in upstream_repo/*/; do
-              if [ -d "$dir" ]; then
-                dir_name=$(basename "$dir")
-                echo "Syncing directory: $dir_name"
-                
-                # If folder doesn't exist, clone it; otherwise update it
-                if [ ! -d "packages/$dir_name" ]; then
-                  echo "  → New folder detected, cloning..."
-                  cp -r "$dir" "packages/$dir_name"
-                else
-                  echo "  → Folder exists, updating..."
-                  cp -r "$dir"/* "packages/$dir_name/" || true
-                fi
-              fi
-            done
-            echo "Sync completed successfully"
-            echo "Total packages in sync:"
-            ls -la packages/
-          fi
-
-      - name: Clean up
-        run: rm -rf upstream_repo
+          # Remove git metadata if you want only files without .git
+          # rm -rf packages/QModem/.git
+          echo "Cleanup completed"
 
       - name: Check for differences
         id: diff
         run: |
-          if git diff --quiet; then
+          # Check if there are any changes in packages folder
+          if git diff --quiet packages/; then
             echo "changes=false" >> $GITHUB_OUTPUT
-            echo "No changes detected"
+            echo "No changes detected in packages/QModem"
           else
             echo "changes=true" >> $GITHUB_OUTPUT
-            echo "Changes detected in packages"
-            git diff --stat
+            echo "Changes detected in packages/QModem"
+            git diff --stat packages/ || true
           fi
 
       - name: Commit and push changes

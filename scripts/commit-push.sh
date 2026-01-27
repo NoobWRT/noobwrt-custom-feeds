@@ -3,10 +3,15 @@
 # Purpose: Commit and push changes to the repository
 
 echo "Preparing to commit and push changes..."
+echo ""
+
+# Add git config
+git config user.name "${GIT_AUTHOR_NAME}"
+git config user.email "${GIT_AUTHOR_EMAIL}"
 
 # Stage all changes in packages folder
 echo "Staging packages folder..."
-git add -A "${PACKAGES_DIR}"
+git add -A packages/
 
 echo ""
 echo "Git Status:"
@@ -14,11 +19,11 @@ git status
 
 echo ""
 echo "Checking staged files..."
-STAGED_FILES=$(git diff --cached --name-only | wc -l)
+STAGED_FILES=$(git diff --cached --name-only 2>/dev/null | wc -l)
 echo "Staged files: ${STAGED_FILES}"
 
 if [ "${STAGED_FILES}" -eq 0 ]; then
-    echo "No files staged for commit"
+    echo "No changes to commit"
     exit 0
 fi
 
@@ -27,8 +32,9 @@ echo ""
 echo "Files to be committed:"
 git diff --cached --name-only | head -20
 
-if [ "$(git diff --cached --name-only | wc -l)" -gt 20 ]; then
-    echo "... and more (showing first 20)"
+TOTAL=$(git diff --cached --name-only | wc -l)
+if [ "${TOTAL}" -gt 20 ]; then
+    echo "... and $((TOTAL - 20)) more files"
 fi
 
 # Commit changes
@@ -48,9 +54,9 @@ echo "  Message: ${COMMIT_MSG}"
 # Push changes
 echo ""
 echo "Pushing changes to repository..."
-if ! git push origin HEAD:main; then
+if ! git push origin HEAD:main 2>&1; then
     echo "ERROR: Failed to push changes"
     exit 1
 fi
 
-echo "✓ Changes pushed successfully"
+echo "✓ Changes pushed successfully to origin/main"

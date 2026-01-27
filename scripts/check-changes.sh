@@ -4,7 +4,17 @@
 
 echo "Checking for changes in packages folder..."
 
-if git diff --quiet "${PACKAGES_DIR}"; then
+# Always ensure the file exists
+echo "false" > .changes-detected
+
+# Check if packages directory exists
+if [ ! -d "packages" ]; then
+    echo "Packages directory not found, nothing to check"
+    exit 0
+fi
+
+# Check for git changes
+if git diff --quiet packages/ 2>/dev/null; then
     echo "No changes detected in packages"
     echo "false" > .changes-detected
     exit 0
@@ -14,9 +24,9 @@ else
     
     echo ""
     echo "Changed files:"
-    git diff --name-status "${PACKAGES_DIR}" | head -20
+    git diff --name-status packages/ 2>/dev/null | head -20 || true
     
-    TOTAL_CHANGES=$(git diff --name-only "${PACKAGES_DIR}" | wc -l)
+    TOTAL_CHANGES=$(git diff --name-only packages/ 2>/dev/null | wc -l)
     echo ""
     echo "Total changed files: ${TOTAL_CHANGES}"
     exit 0

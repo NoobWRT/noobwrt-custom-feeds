@@ -80,17 +80,10 @@ pipeline {
             steps {
                 script {
                     echo '🔔 Checking for changes...'
-                    def checkResult = sh(
-                        script: 'bash ${SCRIPTS_DIR}/check-changes.sh',
-                        returnStatus: true
-                    )
-                    if (checkResult != 0) {
-                        error("Change detection failed with exit code ${checkResult}")
-                    }
+                    sh 'bash ${SCRIPTS_DIR}/check-changes.sh'
                     
-                    script {
-                        env.CHANGES_DETECTED = readFile(file: '.changes-detected').trim()
-                    }
+                    env.CHANGES_DETECTED = readFile(file: '.changes-detected').trim()
+                    echo "Changes detected: ${env.CHANGES_DETECTED}"
                 }
             }
         }
@@ -105,9 +98,7 @@ pipeline {
                 script {
                     echo '📤 Committing and pushing changes...'
                     withCredentials([usernamePassword(credentialsId: 'github-credentials', usernameVariable: 'GIT_USER', passwordVariable: 'GIT_PASS')]) {
-                        sh '''
-                            bash ${SCRIPTS_DIR}/commit-push.sh
-                        '''
+                        sh 'bash ${SCRIPTS_DIR}/commit-push.sh'
                     }
                 }
             }

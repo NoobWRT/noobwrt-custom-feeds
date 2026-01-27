@@ -1,0 +1,78 @@
+name: Sync Upstream QModem Repository
+
+on:
+  schedule:
+    # Run daily at 2 AM UTC
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+    # Allow manual trigger from GitHub UI
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout current repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Clone upstream repository
+        run: |
+          git clone --depth 1 https://github.com/FUjr/QModem.git upstream_repo
+
+      - name: Check for changes in packages
+        id: check_changes
+        run: |
+          if [ -d "upstream_repo" ]; then
+            echo "Upstream repository cloned successfully"
+            # List directories in upstream repo
+            echo "Contents of upstream repository:"
+            ls -la upstream_repo/
+          else
+            echo "Failed to clone upstream repository"
+            exit 1
+          fi
+
+      - name: Sync packages from upstream
+        run: |
+          # Remove old packages directory content (optional - keeps only new)
+          # rm -rf packages/*
+          
+          # Copy new packages from upstream
+          if [ -d "upstream_repo" ]; then
+            # Copy all subdirectories from upstream to packages
+            for dir in upstream_repo/*/; do
+              if [ -d "$dir" ]; then
+                dir_name=$(basename "$dir")
+                echo "Syncing directory: $dir_name"
+                mkdir -p "packages/$dir_name"
+                cp -r "$dir"* "packages/$dir_name/" || true
+              fi
+            done
+            echo "Sync completed"
+          fi
+
+      - name: Clean up
+        run: rm -rf upstream_repo
+
+      - name: Check for differences
+        id: diff
+        run: |
+          if git diff --quiet; then
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected"
+          else
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected in packages"
+            git diff --stat
+          fi
+
+      - name: Commit and push changes
+        if: steps.diff.outputs.changes == 'true'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add packages/
+          git commit -m "chore: sync packages from upstream QModem repository"
+          git push

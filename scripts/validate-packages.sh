@@ -2,25 +2,25 @@
 # Script: validate-packages.sh
 # Purpose: Validate that packages were synced correctly
 
-echo "Validating packages..."
+echo "Validating packages in packages/QModem..."
 
-if [ ! -d "${PACKAGES_DIR}" ]; then
-    echo "ERROR: Packages directory not found"
+if [ ! -d "${PACKAGES_DIR}/QModem" ]; then
+    echo "ERROR: packages/QModem directory not found"
     exit 1
 fi
 
-if [ -z "$(ls -A "${PACKAGES_DIR}")" ]; then
-    echo "ERROR: Packages directory is empty"
+if [ -z "$(ls -A "${PACKAGES_DIR}/QModem")" ]; then
+    echo "ERROR: packages/QModem directory is empty"
     exit 1
 fi
 
-echo "✓ Packages directory exists and contains files"
+echo "✓ packages/QModem directory exists and contains files"
 echo ""
 echo "Package summary:"
 echo "=================="
 
 PACKAGE_COUNT=0
-for item in "${PACKAGES_DIR}"/*; do
+for item in "${PACKAGES_DIR}/QModem"/*; do
     if [ -d "$item" ]; then
         PACKAGE_NAME=$(basename "$item")
         FILE_COUNT=$(find "$item" -type f 2>/dev/null | wc -l)
@@ -38,6 +38,6 @@ echo "=================="
 echo "✓ Total packages: ${PACKAGE_COUNT}"
 
 if [ "${PACKAGE_COUNT}" -eq 0 ]; then
-    echo "ERROR: No packages found in packages directory"
+    echo "ERROR: No packages found in packages/QModem directory"
     exit 1
 fi

@@ -36,13 +36,13 @@ echo "Current working directory:"
 pwd
 
 echo ""
-echo "Packages folder contents:"
-ls -la packages/ | head -20
+echo "Packages/QModem folder contents:"
+ls -la packages/QModem/ | head -20
 
 echo ""
-echo "Staging ALL packages folder..."
-# Force add all files in packages, including new ones
-git add packages/
+echo "Staging ALL packages/QModem folder..."
+# Force add all files in packages/QModem, including new ones
+git add packages/QModem/
 
 echo ""
 echo "Git Status:"

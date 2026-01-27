@@ -41,6 +41,17 @@ echo "Copy subdirs: ${SYNC_COPY_SUBDIRS}"
 echo "Clean dest: ${SYNC_CLEAN_DEST}"
 echo ""
 
+# Safety: never clean top-level roots like "packages" or "modules"
+# This keeps your exact paths but prevents mass deletions.
+case "${SYNC_DEST_DIR}" in
+    packages|modules|feeds|.)
+        if [ "${SYNC_CLEAN_DEST}" = "true" ]; then
+            echo "WARNING: SYNC_CLEAN_DEST=true on root '${SYNC_DEST_DIR}' is unsafe; skipping clean."
+            SYNC_CLEAN_DEST="false"
+        fi
+        ;;
+esac
+
 # Create temp directory
 if [ -d "${SYNC_TEMP_DIR}" ]; then
     echo "Removing existing temp directory: ${SYNC_TEMP_DIR}"

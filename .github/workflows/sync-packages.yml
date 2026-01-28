@@ -31,36 +31,7 @@ jobs:
         run: bash ${SCRIPTS_DIR}/configure-git.sh
 
       - name: Auto-discover and sync all packages
-        run: |
-          set -euo pipefail
-          echo 'Discovering all sync scripts in scripts/sync/...'
-          sync_scripts=$(find ${SCRIPTS_DIR}/sync -name "sync-*.sh" -type f ! -name "sync-repo.sh" | sort || true)
-          if [ -z "${sync_scripts}" ]; then
-            echo 'WARNING: No sync-*.sh scripts found in scripts/sync/'
-          else
-            script_count=$(printf '%s\n' "${sync_scripts}" | sed '/^$/d' | wc -l | tr -d ' ')
-            echo "Found ${script_count} sync script(s):"
-            while IFS= read -r script; do
-              [ -n "${script}" ] || continue
-              echo "  - ${script}"
-            done <<< "${sync_scripts}"
-          fi
-
-          if [ -n "${sync_scripts}" ]; then
-            while IFS= read -r sync_script; do
-              [ -n "${sync_script}" ] || continue
-              script_name=$(basename "${sync_script}")
-              echo ""
-              echo "Executing: ${script_name}"
-              bash "${sync_script}"
-              echo "${script_name} completed successfully"
-            done <<< "${sync_scripts}"
-          fi
-
-          if [ -n "${sync_scripts}" ]; then
-            echo ""
-            echo "All sync scripts executed successfully"
-          fi
+        run: bash ${SCRIPTS_DIR}/run-sync-all.sh
 
       - name: Validate packages
         run: bash ${SCRIPTS_DIR}/validate-packages.sh

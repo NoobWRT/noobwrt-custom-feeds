@@ -31,7 +31,8 @@ jobs:
         cd sdk
         echo "src-link custom $GITHUB_WORKSPACE" >> feeds.conf.default
         ./scripts/feeds update custom
-        ./scripts/feeds install -a -p custom
+        packages=$(grep -v '^#' $GITHUB_WORKSPACE/build-packages.conf | grep -v '^$' | tr '\n' ' ')
+        ./scripts/feeds install $packages -p custom
         make defconfig
 
     - name: Build packages

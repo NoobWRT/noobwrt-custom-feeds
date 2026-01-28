@@ -12,7 +12,7 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: lahiru98s/openwrt-build:debian
-      options: --user builder
+      options: --user root
     steps:
     - name: Checkout code
       uses: actions/checkout@v4

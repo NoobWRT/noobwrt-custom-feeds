@@ -125,6 +125,9 @@ jobs:
           lfs: true
           submodules: true
 
+      - name: Add custom feed
+        run: echo "src-git noobwrt_packages https://github.com/nooblk-98/noobwrt-custom-feeds.git;main" >> feeds.conf.default
+
       - name: Initialize Cache directory
         env:
           DEBIAN_FRONTEND: noninteractive

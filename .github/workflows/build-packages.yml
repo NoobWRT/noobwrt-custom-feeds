@@ -77,7 +77,15 @@ jobs:
           set -euo pipefail
           SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" -print -quit)
           cd "$SDK_DIR"
-          make package/feeds/noobwrt_packages/compile -j"$(nproc)" V=s
+          mapfile -t PKGS < <(./scripts/feeds list -s -r noobwrt_packages | awk '{print $2}' | sort -u)
+          if [ "${#PKGS[@]}" -eq 0 ]; then
+            echo "No packages found in feed 'noobwrt_packages'."
+            exit 1
+          fi
+          for pkg in "${PKGS[@]}"; do
+            echo "Building ${pkg}..."
+            make "package/feeds/noobwrt_packages/${pkg}/compile" -j"$(nproc)" V=s
+          done
 
       - name: Gather artifacts
         id: artifacts

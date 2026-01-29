@@ -35,6 +35,7 @@ on:
       MODEL:
         description: 'Device model'
         required: false
+        default: 'arcadyan_aw1000'
         type: string
       ARCH:
         description: 'Architecture'

@@ -26,18 +26,45 @@ jobs:
         run: |
           sudo apt-get update
           sudo apt-get install -y \
+            axel \
             build-essential \
-            file \
+            ccache \
+            clang \
+            curl \
+            flex \
+            bison \
+            g++ \
             gawk \
+            gcc-multilib \
+            g++-multilib \
+            genisoimage \
             gettext \
             git \
+            libdw-dev \
+            libelf-dev \
             libncurses5-dev \
+            libssl-dev \
+            locales \
+            pv \
+            pwgen \
             python3 \
+            python3-pip \
+            python3-setuptools \
+            python3-pyelftools \
+            qemu-utils \
             rsync \
+            signify-openbsd \
+            subversion \
+            swig \
             unzip \
-            wget \
             zlib1g-dev \
-            zstd
+            file \
+            wget \
+            zstd \
+            clang \
+            llvm \
+            libbpf-dev \
+            pkg-config
 
       - name: Download OpenWrt SDK
         env:

@@ -1,0 +1,103 @@
+name: Build feed packages (OpenWrt SDK 24.10.5)
+
+on:
+  workflow_dispatch:
+    inputs:
+      sdk_url:
+        description: "Full OpenWrt SDK URL for 24.10.5 (target-specific)"
+        required: true
+      sdk_sha256:
+        description: "Optional SHA256 for SDK tarball"
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 240
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            build-essential \
+            file \
+            gawk \
+            gettext \
+            git \
+            libncurses5-dev \
+            python3 \
+            rsync \
+            unzip \
+            wget \
+            zlib1g-dev \
+            zstd
+
+      - name: Download OpenWrt SDK
+        env:
+          SDK_URL: ${{ inputs.sdk_url }}
+          SDK_SHA256: ${{ inputs.sdk_sha256 }}
+        run: |
+          set -euo pipefail
+          wget -O sdk.tar "$SDK_URL"
+          if [ -n "${SDK_SHA256}" ]; then
+            echo "${SDK_SHA256}  sdk.tar" | sha256sum -c -
+          fi
+          if [[ "${SDK_URL}" == *.tar.zst ]]; then
+            tar --zstd -xf sdk.tar
+          else
+            tar -xf sdk.tar
+          fi
+
+      - name: Prepare SDK and feeds
+        run: |
+          set -euo pipefail
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" -print -quit)
+          if [ -z "$SDK_DIR" ]; then
+            echo "OpenWrt SDK directory not found after extraction."
+            exit 1
+          fi
+          cd "$SDK_DIR"
+          FEED_LINE='src-git noobwrt_packages https://github.com/nooblk-98/noobwrt-custom-feeds.git;main'
+          if ! grep -qF "$FEED_LINE" feeds.conf.default; then
+            echo "$FEED_LINE" >> feeds.conf.default
+          fi
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a -p noobwrt_packages
+          make defconfig
+
+      - name: Build noobwrt_packages feed
+        run: |
+          set -euo pipefail
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" -print -quit)
+          cd "$SDK_DIR"
+          make package/feeds/noobwrt_packages/compile -j"$(nproc)" V=s
+
+      - name: Gather artifacts
+        id: artifacts
+        run: |
+          set -euo pipefail
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" -print -quit)
+          cd "$SDK_DIR"
+          ARCH=$(grep -m1 '^CONFIG_TARGET_ARCH_PACKAGES=' .config | cut -d\" -f2)
+          if [ -z "$ARCH" ]; then
+            echo "Failed to determine target ARCH_PACKAGES."
+            exit 1
+          fi
+          PKG_DIR="bin/packages/${ARCH}/noobwrt_packages"
+          if [ ! -d "$PKG_DIR" ]; then
+            echo "Package output directory not found: $PKG_DIR"
+            exit 1
+          fi
+          echo "pkg_dir=${SDK_DIR}/${PKG_DIR}" >> "$GITHUB_OUTPUT"
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: noobwrt_packages-${{ github.run_id }}
+          path: ${{ steps.artifacts.outputs.pkg_dir }}

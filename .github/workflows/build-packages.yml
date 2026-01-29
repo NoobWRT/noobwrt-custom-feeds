@@ -10,6 +10,10 @@ on:
       sdk_sha256:
         description: "Optional SHA256 for SDK tarball"
         required: false
+      packages:
+        description: "Space-separated package names to build from noobwrt_packages"
+        required: true
+        default: "luci-app-passwall"
 
 permissions:
   contents: read
@@ -110,15 +114,17 @@ jobs:
           make defconfig
 
       - name: Build noobwrt_packages feed
+        env:
+          PACKAGES: ${{ inputs.packages }}
         run: |
           set -euo pipefail
           SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*" -print -quit)
           cd "$SDK_DIR"
-          mapfile -t PKGS < <(./scripts/feeds list -s -r noobwrt_packages | awk '{print $2}' | sort -u)
-          if [ "${#PKGS[@]}" -eq 0 ]; then
-            echo "No packages found in feed 'noobwrt_packages'."
+          if [ -z "${PACKAGES}" ]; then
+            echo "No packages specified in inputs.packages."
             exit 1
           fi
+          read -r -a PKGS <<< "${PACKAGES}"
           for pkg in "${PKGS[@]}"; do
             echo "Building ${pkg}..."
             make "package/feeds/noobwrt_packages/${pkg}/compile" -j"$(nproc)" V=s

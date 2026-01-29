@@ -85,7 +85,7 @@ on:
 
 env:
 # 使用 GPG 签名 Packages (非必要)
-  GPG_SIGN: true
+  GPG_SIGN: false
 # Cache Libraries
   CACHE_DOWNLOAD: true
 # 删除无用文件以增加编译空间

@@ -1,0 +1,159 @@
+name: AutoBuild
+
+on:
+  workflow_dispatch:
+    inputs:
+      compile_packages:
+        description: 'Compile packages'
+        required: false
+        default: 'A B C etc.'
+        type: string
+      ignore_packages:
+        description: 'Ignore packages'
+        required: false
+        default: 'luci-app-qbittorrent qbittorrent rblibtorrent qt6base qt6tools'
+        type: string
+
+  push:
+    branches: [ master ]
+    paths:
+    - 'Makefile'
+
+  watch:
+    types: [started]
+
+env:
+# 删除早期的 workflow 任务
+  DELETE_OLD_WORKFLOW: true
+  WORKFLOW_RETAIN_DAYS: 14
+  KEEP_RUNS_RECORD: 100
+### End
+
+# Allow only one concurrent deployment, skipping runs queued between the run in-progress and latest queued.
+# However, do NOT cancel in-progress runs as we want to allow these production deployments to complete.
+concurrency:
+  group: "${{ github.workflow }}-${{ github.ref }}"
+  cancel-in-progress: false
+
+jobs:
+  compile:
+    permissions:
+      contents: write  # To push a branch
+    strategy:
+      matrix:
+        version:
+          #- SNAPSHOT
+          - '25.12-SNAPSHOT'
+        arch_packages:
+          - x86_64
+          - aarch64_cortex-a53
+          - aarch64_cortex-a72
+          - aarch64_generic
+          - arm_cortex-a15_neon-vfpv4
+          - arm_cortex-a9_vfpv3-d16
+          - mips_24kc
+          - mipsel_24kc
+          - riscv64_generic
+        include:
+          - apk_sign_id: ${{ vars.APK_SIGN_ID }}
+          - gpg_id: ${{ vars.GPG_ID }}
+          - arch_packages: x86_64
+            target: ['x86', '64']
+            profile: generic # for imagebuilder
+          - arch_packages: aarch64_cortex-a53
+            target: ['mvebu', 'cortexa53']
+          - arch_packages: aarch64_cortex-a72
+            target: ['mvebu', 'cortexa72']
+          - arch_packages: aarch64_generic
+            target: ['armsr', 'armv8']
+          - arch_packages: arm_cortex-a15_neon-vfpv4
+            target: ['armsr', 'armv7']
+          - arch_packages: arm_cortex-a9_vfpv3-d16
+            target: ['mvebu', 'cortexa9']
+          - arch_packages: mips_24kc
+            target: ['ath79', 'generic']
+          - arch_packages: mipsel_24kc
+            target: ['ramips', 'mt7621']
+          - arch_packages: riscv64_generic
+            target: ['sifiveu', 'generic']
+    uses: ./.github/workflows/compile.yml
+    with:
+      compiles: ${{ inputs.compile_packages }}
+      ignores: ${{ inputs.ignore_packages }}
+      GHPAGES_PATH: 'releases'
+      OP_VERSION: ${{ matrix.version }}
+      ARCH: ${{ matrix.arch_packages }}
+      BOARD: ${{ matrix.target[0] }}
+      SUBTARGET: ${{ matrix.target[1] }}
+      MODEL: ${{ matrix.profile }}
+      APK_SIGN_ID: ${{ matrix.apk_sign_id }}
+      GPG_ID: ${{ matrix.gpg_id }}
+    secrets: inherit
+
+  push_packages:
+    needs: compile
+    permissions:
+      contents: write  # To push a branch
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+        with:
+          token: ${{ secrets.RELEASES_PUSH }}
+          repository: ${{ github.repository_owner }}/releases
+          ref: 'gh-pages'
+      - name: Download artifact
+        uses: actions/download-artifact@v7
+        with:
+          pattern: OpenWRT-Build-*
+          path: packages-artifact
+          merge-multiple: true
+      - name: Move artifact
+        shell: bash
+        run: |
+          cp -rf packages-artifact/*/ ./
+          rm -rf packages-artifact/ 2>/dev/null
+      - name: Clean old apk
+        shell: bash
+        run: |
+          # clean old apk
+          clean_old_apk() {
+            local abi_version='[0-9\\.]*'
+            local rmlist=$(ls -1 *.apk | grep -Ev "^($(jq -rc '.packages|to_entries[]|"\(.key)'"$abi_version"'-\(.value)"' index.json | tr '\n' '|' | sed 's,|$,,'))")
+            [ -z "$rmlist" ] || rm -f $rmlist
+          }
+          #
+          for pa in $(find * -name index.json -type f | grep -Ev '^(24.10)'); do
+            pushd "$(dirname $pa)"; clean_old_apk; popd
+          done
+      - name: Display structure of downloaded files
+        run: ls -R
+      - name: Commit and push Packages
+        env:
+          Branch: gh-pages
+        run: |
+          git config --local user.name "GitHub Action"
+          git config --local user.email "actions-user@users.noreply.github.com"
+          #git remote update # include submodules
+          #git fetch --no-tags --prune --no-recurse-submodules --depth=1 origin $Branch
+          #git checkout -B $Branch refs/remotes/origin/$Branch
+          git add .
+          git reset HEAD ./**/targets/
+          git diff-index --cached --quiet HEAD ./**/packages/**/*.{ipk,apk} \
+          && git diff-index --cached --quiet HEAD ./**/packages/**/packages.adb \
+          && git diff-index --cached --quiet HEAD ./**/*.pub \
+          || (git commit -m "Update packages" && git push)
+
+  clean-up-old-workflow:
+    needs: push_packages
+    permissions:
+      contents: read
+      actions: write
+    runs-on: ubuntu-latest
+    steps:
+      - name: Delete old Workflow Runs
+        uses: Mattraks/delete-workflow-runs@v2.1.0
+        if: env.DELETE_OLD_WORKFLOW == 'true' && !cancelled()
+        with:
+          retain_days: ${{ env.WORKFLOW_RETAIN_DAYS }}
+          keep_minimum_runs: ${{ env.KEEP_RUNS_RECORD }}

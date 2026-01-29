@@ -6,6 +6,7 @@ on:
       sdk_url:
         description: "Full OpenWrt SDK URL for 24.10.5 (target-specific)"
         required: true
+        default: "https://downloads.openwrt.org/releases/24.10.5/targets/qualcommax/ipq807x/openwrt-sdk-24.10.5-qualcommax-ipq807x_gcc-13.3.0_musl.Linux-x86_64.tar.zst"
       sdk_sha256:
         description: "Optional SHA256 for SDK tarball"
         required: false

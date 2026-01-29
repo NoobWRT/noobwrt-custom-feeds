@@ -15,18 +15,22 @@ on:
       GHPAGES_PATH:
         description: 'Path for GitHub Pages artifacts'
         required: true
+        default: 'releases'
         type: string
       OP_VERSION:
         description: 'OpenWrt version'
         required: true
+        default: '24.10.5'
         type: string
       BOARD:
         description: 'Target board'
-        required: false
+        required: true
+        default: 'qualcommax'
         type: string
       SUBTARGET:
         description: 'Target subtarget'
-        required: false
+        required: true
+        default: 'ipq807x'
         type: string
       MODEL:
         description: 'Device model'
@@ -35,6 +39,7 @@ on:
       ARCH:
         description: 'Architecture'
         required: true
+        default: 'arm_cortex-a53_neon-vfpv4'
         type: string
       APK_SIGN_ID:
         description: 'APK signing key ID'

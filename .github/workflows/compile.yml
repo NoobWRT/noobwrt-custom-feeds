@@ -1,6 +1,49 @@
 name: Compile packages
 
+
 on:
+  workflow_dispatch:
+    inputs:
+      compiles:
+        description: 'Packages to compile (space separated)'
+        required: false
+        type: string
+      ignores:
+        description: 'Packages to ignore (space separated)'
+        required: false
+        type: string
+      GHPAGES_PATH:
+        description: 'Path for GitHub Pages artifacts'
+        required: true
+        type: string
+      OP_VERSION:
+        description: 'OpenWrt version'
+        required: true
+        type: string
+      BOARD:
+        description: 'Target board'
+        required: false
+        type: string
+      SUBTARGET:
+        description: 'Target subtarget'
+        required: false
+        type: string
+      MODEL:
+        description: 'Device model'
+        required: false
+        type: string
+      ARCH:
+        description: 'Architecture'
+        required: true
+        type: string
+      APK_SIGN_ID:
+        description: 'APK signing key ID'
+        required: true
+        type: string
+      GPG_ID:
+        description: 'GPG key ID'
+        required: false
+        type: string
   workflow_call:
     inputs:
       compiles:

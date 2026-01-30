@@ -3,9 +3,9 @@ name: Sync packages
 on:
   schedule:
     - cron: '0 2 * * *'
-  # push:
-  #   branches:
-  #     - main
+  push:
+    branches:
+      - main
   workflow_dispatch:
     inputs:
       force_sync:

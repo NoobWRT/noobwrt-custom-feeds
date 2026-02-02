@@ -20,8 +20,12 @@ All packages are automatically synchronized with their original repositories **e
 
 ## Quick Start
 
-Add this line to your OpenWrt SDK's `feeds.conf` file:
+Add this line to your OpenWrt SDK's `feeds.conf.default` file:
 
+```bash
+src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main
+```
+or run
 ```bash
 echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main" >> feeds.conf.default
 ```

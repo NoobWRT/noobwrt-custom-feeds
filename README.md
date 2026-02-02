@@ -29,7 +29,7 @@ echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main
 ## Packages Included
 
 
-| Package | Package     | Package   | Package   |
+| packages |      |    |    |
 | :-------- | :------- | :--------  |:-------- |
 | `luci-app-passwall` | `luci-app-modemdata` | `luci-app-qmodem` | `luci-app-bandix` |
 | `	luci-app-adguardhome` | `	luci-app-wrtbwmon` | `	luci-app-bandix` | `	luci-proto-amneziawg` |
@@ -37,6 +37,7 @@ echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main
 | `luci-app-ipinfo` | `luci-app-netstat` | `luci-app-tailscale` | `luci-app-tinyfilemanager` |
 | `luci-theme-carbonpx` | `luci-theme-argon` | `luci-app-argon-config` | `luci-theme-peditx` |
 | `luci-app-sms-tool-js` |  |  |  |
+
 
 
 

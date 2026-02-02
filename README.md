@@ -25,3 +25,7 @@ Add this line to your OpenWrt SDK's `feeds.conf` file:
 ```bash
 echo "src-git noobwrt_packages https://github.com/nooblk-98/noobwrt-custom-feeds.git;main" >> feeds.conf.default
 ```
+
+## Contribute Your Packages
+
+Do you have a favorite custom package? We'd love to have it here! Feel free to submit a pull request and add your custom packages to this repository.

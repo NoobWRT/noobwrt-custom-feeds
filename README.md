@@ -48,3 +48,7 @@ echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main
 ## Contribute Your Packages
 
 Do you have a favorite custom package? We'd love to have it here! Feel free to submit a pull request and add your custom packages to this repository.
+
+## Arcadyan AW1000 5G Openwrt Project
+
+You Can see the project via : [AW1000](https://github.com/nooblk-98/noobwrt-arcadyan-aw1k)

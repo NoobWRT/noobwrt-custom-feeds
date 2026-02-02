@@ -14,9 +14,13 @@
 ---
 
 
-# noobwrt-custom-feeds
+# Noobwrt custom Packages
 
+All packages are automatically synchronized with their original repositories **every day** and kept up-to-date with the latest changes and security updates.
 
+## Quick Start
+
+Add this line to your OpenWrt SDK's `feeds.conf` file:
 
 ```bash
 echo "src-git noobwrt_packages https://github.com/nooblk-98/noobwrt-custom-feeds.git;main" >> feeds.conf.default

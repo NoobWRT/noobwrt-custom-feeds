@@ -36,7 +36,7 @@ echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main
 | `luci-app-internet-detector` | `luci-theme-alpha` | `luci-app-alpha-config` | `luci-app-aw1k-led` |
 | `luci-app-ipinfo` | `luci-app-netstat` | `luci-app-tailscale` | `luci-app-tinyfilemanager` |
 | `luci-theme-carbonpx` | `luci-theme-argon` | `luci-app-argon-config` | `luci-theme-peditx` |
-| `luci-app-sms-tool-js` |  |  |  |
+| `luci-app-sms-tool-js` | `luci-app-cpu-status-mini` | `luci-app-diskman` | `luci-app-cpu-status` |
 
 
 

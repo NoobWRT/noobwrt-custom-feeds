@@ -26,6 +26,20 @@ Add this line to your OpenWrt SDK's `feeds.conf` file:
 echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main" >> feeds.conf.default
 ```
 
+## Packages Included
+
+
+| Package | Package     | Package   | Package   |
+| :-------- | :------- | :--------  |:-------- |
+| `luci-app-passwall` | `luci-app-modemdata` | `luci-app-qmodem` | `luci-app-bandix` |
+| `	luci-app-adguardhome` | `	luci-app-wrtbwmon` | `	luci-app-bandix` | `	luci-proto-amneziawg` |
+| `luci-app-internet-detector` | `luci-theme-alpha` | `luci-app-alpha-config` | `luci-app-aw1k-led` |
+| `luci-app-ipinfo` | `luci-app-netstat` | `luci-app-tailscale` | `luci-app-tinyfilemanager` |
+| `luci-theme-carbonpx` | `luci-theme-argon` | `luci-app-argon-config` | `luci-theme-peditx` |
+| `luci-app-sms-tool-js` |  |  |  |
+
+
+
 ## Contribute Your Packages
 
 Do you have a favorite custom package? We'd love to have it here! Feel free to submit a pull request and add your custom packages to this repository.

@@ -135,11 +135,10 @@ fi
 # Commit changes
 echo ""
 echo "Committing ${TOTAL} files..."
-COMMIT_MSG="chore: sync packages from upstream repositories
+COMMIT_MSG="🎈 Sync $(date -u +"%Y-%m-%d %H:%M:%S")
 
 - Destinations: ${CHANGED_DESTS_STR}
-- Total files: ${TOTAL}
-- Timestamp: $(date -u +"%Y-%m-%dT%H:%M:%SZ")"
+- Total files: ${TOTAL}"
 if ! git commit -m "${COMMIT_MSG}"; then
     echo "ERROR: Failed to create commit"
     git status

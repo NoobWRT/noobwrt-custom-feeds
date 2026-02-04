@@ -96,6 +96,7 @@ fi
 # Copy files based on SYNC_COPY_SUBDIRS
 if [ "${SYNC_COPY_SUBDIRS}" = "true" ]; then
     echo "Copying subdirectories from ${SOURCE_PATH}..."
+    shopt -s nullglob dotglob
     
     # Copy only top-level subdirectories
     for subdir in "${SOURCE_PATH}"/*/; do
@@ -114,6 +115,7 @@ if [ "${SYNC_COPY_SUBDIRS}" = "true" ]; then
             cp "${file}" "${SYNC_DEST_DIR}/"
         fi
     done
+    shopt -u nullglob dotglob
 else
     echo "Copying entire path from ${SOURCE_PATH}..."
     shopt -s nullglob dotglob

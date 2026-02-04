@@ -4,7 +4,7 @@
 set -e
 
 # Environment parameters for luci-app-wrtbwmon
-export SYNC_REPO_URL="https://github.com/Jaykwok2999/luci-app-passwall.git"
+export SYNC_REPO_URL="https://github.com/Jaykwok2999/lights-app-passwall.git"
 export SYNC_REMOTE_PATH="/lights-app-passwall"
 export SYNC_DEST_DIR="package/lights-app-passwall"
 export SYNC_COPY_SUBDIRS=true

@@ -1,0 +1,201 @@
+{#
+	Argon is a clean HTML5 theme for LuCI. It is based on luci-theme-bootstrap and MUI and Argon Template
+
+	luci-theme-noobwrt
+	Copyright 2020 Jerryk <jerrykuku@gmail.com>
+
+	Have a bug? Please create an issue here on GitHub!
+	https://github.com/jerrykuku/luci-theme-noobwrt/issues
+
+	luci-theme-bootstrap:
+	Copyright 2008 Steven Barth <steven@midlink.org>
+	Copyright 2008-2016 Jo-Philipp Wich <jow@openwrt.org>
+	Copyright 2012 David Menting <david@nut-bolt.nl>
+
+	MUI:
+	https://github.com/muicss/mui
+
+	Argon Theme
+	https://demos.creative-tim.com/argon-dashboard/index.html
+
+	Licensed to the public under the Apache License 2.0
+-#}
+
+{% include("themes/" + theme + "/out_header_login") %}
+{%
+	import * as fs from 'fs';
+	import { cursor } from 'uci';
+	import { rand } from 'math';
+
+	let cfg = cursor();
+
+	//Fetch Local Background Media
+
+	const imageTypes = " jpg jpeg png gif webp ";
+	const videoTypes = " mp4 webm ";
+	const allTypes = imageTypes + videoTypes;
+
+	function fetchMedia(path, themeDir) {
+		let backgroundTable = [];
+		for (f in (fs.lsdir(path))) {
+			let ext = lc(split(f, '.')?.[1]);
+			if (ext && index(allTypes, " " + ext + " ") != -1) {
+				let bg = {};
+				bg.type = ext;
+				bg.url = themeDir + f;
+				push(backgroundTable, bg);
+			}
+		}
+		return backgroundTable;
+	}
+
+	function selectBackground(themeDir) {
+		let bgUrl = media + "/img/bg1.jpg";
+		let backgroundType = "Image";
+		let mimeType = "";
+
+		if (fs.access("/etc/config/noobwrt")) {
+			let online_wallpaper = cfg.get_first('noobwrt', 'global', 'online_wallpaper') ?? (cfg.get_first('noobwrt', 'global', 'bing_background') == '1' ? 'bing' : null);
+			if (online_wallpaper && online_wallpaper != "none") {
+				const picurl = ubus.call("luci.noobwrt_wallpaper", "get_url") ?? {};
+				if (picurl?.url) {
+					bgUrl = picurl.url;
+					return {bgUrl, backgroundType, mimeType};
+				}
+			}
+		}
+
+		let background = fetchMedia("/www" + themeDir, themeDir);
+		if ( length(background) > 0 ) {
+			let currentBg = background[(rand() % length(background))];
+			bgUrl = currentBg.url;
+			if (index(videoTypes, " " + currentBg.type + " ") != -1) {
+				backgroundType = "Video";
+				mimeType = "video/" + currentBg.type;
+			}
+		}
+
+		return {bgUrl, backgroundType, mimeType};
+	}
+
+	const boardinfo = ubus.call("system", "board");
+	const hostname = striptags(boardinfo?.hostname ?? '?');
+	const themeDir = media + "/background/";
+	const bgArry = selectBackground(themeDir);
+
+%}
+<!-- Login Page Start -->
+<div class="login-page">
+	{% if ( bgArry.backgroundType == "Video" ): %}
+	<!-- Video Player Start -->
+	<div class="video">
+		<video autoplay loop muted id="video">
+			<source src="{{ bgArry.bgUrl }}" type="{{ bgArry.mimeType }}">
+		</video>
+	</div>
+	<div class="volume-control mute"></div>
+	<script>
+		document.querySelector(".volume-control").addEventListener("click", function(){
+			if(this.classList.contains("mute")){
+				this.classList.remove("mute");
+				document.getElementById("video").muted = false;
+			}else{
+				this.classList.add("mute");
+				document.getElementById("video").muted = true;
+			}
+		});
+	</script>
+	<!-- Video Player End -->
+	{% else %}
+	<!-- Image Background Start -->
+	<div class="main-bg" id="main-bg" style="background-image:url({{ bgArry.bgUrl }})"></div>
+	<!-- Image Background End -->
+	{% endif %}
+	<!-- Login Container Start (Centered Material Design) -->
+	<div class="login-container-md">
+		<div class="login-card-md">
+			<!-- Brand Logo Start -->
+			<div class="login-header-md">
+				<a class="brand-md" href="/">
+					<img src="{{ media }}/brand.png" class="brand-logo-md" alt="NoobWRT">
+				</a>
+			</div>
+			<!-- Brand Logo End -->
+
+			<!-- Login Form Start -->
+			<form class="form-login-md" method="post" action="{{ http.getenv("REQUEST_URI") }}">
+
+				{%- if (fuser): %}
+				<div class="error-message-md">
+					<svg class="error-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<circle cx="12" cy="12" r="10"></circle>
+						<line x1="12" y1="8" x2="12" y2="12"></line>
+						<line x1="12" y1="16" x2="12.01" y2="16"></line>
+					</svg>
+					{{ _('Invalid username and/or password! Please try again.') }}
+				</div>
+				{% endif -%}
+
+				<!-- Username Field -->
+				<div class="form-field-md">
+					<div class="input-wrapper-md">
+						<svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"></path>
+							<circle cx="12" cy="7" r="4"></circle>
+						</svg>
+						<input 
+							class="input-field-md" 
+							id="cbi-input-user" 
+							type="text" 
+							name="luci_username" 
+							value="{{ entityencode(duser, true) }}" 
+							placeholder="{{ _('Username') }}"
+							required
+						/>
+					</div>
+				</div>
+
+				<!-- Password Field -->
+				<div class="form-field-md">
+					<div class="input-wrapper-md">
+						<svg class="field-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+							<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>
+							<path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+						</svg>
+						<input 
+							class="input-field-md" 
+							id="cbi-input-password" 
+							type="password" 
+							name="luci_password" 
+							placeholder="{{ _('Password') }}"
+						/>
+					</div>
+				</div>
+
+				<!-- Login Button -->
+				<button type="submit" class="login-button-md">
+					{{ _('Sign In') }}
+					<svg class="button-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+						<line x1="5" y1="12" x2="19" y2="12"></line>
+						<polyline points="12 5 19 12 12 19"></polyline>
+					</svg>
+				</button>
+
+			</form>
+			<!-- Login Form End -->
+
+			<!-- Theme Credit Start -->
+			<div class="theme-credit-md">
+				<a href="https://github.com/nooblk-98" target="_blank" rel="noopener noreferrer">
+					theme by nooblk
+				</a>
+			</div>
+			<!-- Theme Credit End -->
+
+			<script type="text/javascript">//<![CDATA[
+				var input = document.getElementsByName('luci_password')[0];
+				if (input) input.focus();
+			//]]></script>
+		</div>
+	</div>
+{% include("themes/" + theme + "/footer_login") %}

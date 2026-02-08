@@ -36,14 +36,14 @@ echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main
 | packages |      |    |    |
 | :-------- | :------- | :--------  |:-------- |
 | `luci-app-passwall` | `luci-app-modemdata` | `luci-app-qmodem` | `luci-app-bandix` |
-| `luci-app-adguardhome` | `luci-app-wrtbwmon` | `luci-app-bandix` | `luci-proto-amneziawg` |
+| `luci-app-adguardhome` | `luci-app-wrtbwmon` | `luci-proto-amneziawg` | `passwall-packages` |
 | `luci-app-internet-detector` | `luci-theme-alpha` | `luci-app-alpha-config` | `luci-app-aw1k-led` |
 | `luci-app-ipinfo` | `luci-app-netstat` | `luci-app-tailscale` | `luci-app-tinyfilemanager` |
 | `luci-theme-carbonpx` | `luci-theme-argon` | `luci-app-argon-config` | `luci-theme-peditx` |
-| `luci-app-sms-tool-js` | `luci-app-cpu-status-mini` | `luci-app-diskman` | `luci-app-cpu-status` |
-| `luci-app-passwall2` | `luci-app-qbittorrent` | `luci-app-3ginfo` | `luci-app-clash` |
+| `luci-app-sms-tool-js` | `luci-app-cpu-status-mini` | `luci-app-cpu-status` | `luci-app-diskman` |
+| `luci-app-passwall2` | `luci-app-qbittorrent` | `luci-app-3ginfo-lite` | `luci-app-clash` |
 | `luci-app-alwaysonline` | `luci-app-netspeedtest` | `luci-app-mini-diskmanager` | `luci-app-eqosplus` |
-| `luci-theme-noobwrt` | `luci-app-netspeedtest` | `luci-app-mini-diskmanager` | `luci-app-eqosplus` |
+| `luci-theme-noobwrt` | `luci-app-cpufreq` | `luci-app-ramfree` | `openwrt-bandix` |
 
 
 

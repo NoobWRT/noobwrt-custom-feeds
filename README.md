@@ -42,7 +42,8 @@ echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main
 | `luci-theme-carbonpx` | `luci-theme-argon` | `luci-app-argon-config` | `luci-theme-peditx` |
 | `luci-app-sms-tool-js` | `luci-app-cpu-status-mini` | `luci-app-diskman` | `luci-app-cpu-status` |
 | `luci-app-passwall2` | `luci-app-qbittorrent` | `luci-app-3ginfo` | `luci-app-clash` |
-| `luci-app-alwaysonline` | `luci-app-netspeedtest` | `luci-app-mini-diskmanager` |  |
+| `luci-app-alwaysonline` | `luci-app-netspeedtest` | `luci-app-mini-diskmanager` | `luci-app-eqosplus` |
+| `luci-theme-noobwrt` | `luci-app-netspeedtest` | `luci-app-mini-diskmanager` | `luci-app-eqosplus` |
 
 
 

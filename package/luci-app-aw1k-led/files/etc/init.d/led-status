@@ -1,0 +1,30 @@
+#!/bin/sh /etc/rc.common
+
+START=99
+STOP=10
+USE_PROCD=1
+
+start_service() {
+    procd_open_instance
+    procd_set_param command "/bin/sh" "-c" "while true; do /usr/bin/led-status.sh; sleep 20; done"
+    procd_set_param respawn
+    procd_close_instance
+}
+
+stop_service() {
+    killall -q -9 led-status.sh 2>/dev/null
+}
+
+restart_service() {
+    stop_service
+    sleep 1
+    start_service
+}
+
+status_service() {
+    if pgrep -f led-status.sh > /dev/null; then
+        /usr/bin/led-status.sh
+    else
+        echo "Not Running"
+    fi
+}

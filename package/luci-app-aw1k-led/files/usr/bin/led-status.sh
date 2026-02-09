@@ -102,26 +102,21 @@ fi
 
 #------------------------------------#  MODEM & SNR 
 COMM=$(uci get modeminfo.settings.comm 2>/dev/null)
-if [ -z "$COMM" ]; then
-    echo "Modem: Not Configured"
-    turn_on_led "red:phone"
-    exit 1
-fi
+[ -z "$COMM" ] && COMM="/dev/ttyUSB2"
 
-MODEM_INFO=$(sms_tool -d "$COMM" at 'AT+CSQ;+QENG="servingcell"')
+CSQ_DATA=$(sms_tool -d "$COMM" at 'at+csq' 2>/dev/null | tr -d '\r')
+QENG_DATA=$(sms_tool -d "$COMM" at 'at+qeng="servingcell"' 2>/dev/null | tr -d '\r')
 
 #------------------------------------#  CSQ & SNR 
-CSQ=$(echo "$MODEM_INFO" | grep -i '+CSQ:' | awk -F'[ ,:]+' '{print $2}')
+CSQ_LINE=$(echo "$CSQ_DATA" | grep -Eoi '\\+?csq: *[0-9]+,[0-9]+' | head -n1)
+CSQ=$(echo "$CSQ_LINE" | awk -F'[:, ]+' '{print $2}')
 [ -z "$CSQ" ] && CSQ=0
 
-QENG_NR5G=$(echo "$MODEM_INFO" | grep 'NR5G-NSA')
-if [ -n "$QENG_NR5G" ]; then
-    NR5G_SINR=$(echo "$QENG_NR5G" | awk -F',' '{print $6}' | tr -d '"')
-    if echo "$NR5G_SINR" | grep -qE '^[0-9]+$'; then
-        SNR=$NR5G_SINR
-    else
-        SNR=0
-    fi
+QENG_LINE=$(echo "$QENG_DATA" | grep -Eio 'QENG: "NR5G[^"]*".*' | head -n1)
+SNR_RAW=$(echo "$QENG_LINE" | awk -F',' '{print $6}' | grep -oE '[-0-9.]+' || echo "")
+if [ -n "$SNR_RAW" ]; then
+    SNR=$(printf "%.0f" "$SNR_RAW" 2>/dev/null)
+    [ -z "$SNR" ] && SNR=0
 else
     SNR=0
 fi
@@ -131,7 +126,7 @@ echo "SNR = $SNR"
 
 #------------------------------------#  PHONE LED 
 if [ "$(uci get 5g-led.station.enable_phone 2>/dev/null)" = "1" ]; then
-    if [ -n "$MODEM_INFO" ]; then
+    if [ -n "$CSQ_DATA$QENG_DATA" ]; then
         turn_on_led "green:phone"
         set_led_blink "red:phone"
     else

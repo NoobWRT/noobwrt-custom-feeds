@@ -9,4 +9,5 @@ function index()
     entry({"admin", "tools", "5g", "quality"}, cbi("5g/quality"), _("Quality"), 1)
     entry({"admin", "tools", "5g", "settings"}, cbi("5g/settings"), _("LED Settings"), 2)
     entry({"admin", "tools", "5g", "status"}, cbi("5g/status"), _("Signal Status"), 3)
+    entry({"admin", "tools", "5g", "about"}, cbi("5g/about"), _("About"), 4)
 end

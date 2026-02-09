@@ -44,7 +44,7 @@ echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main
 | `luci-app-passwall2` | `luci-app-qbittorrent` | `luci-app-3ginfo-lite` | `luci-app-clash` |
 | `luci-app-alwaysonline` | `luci-app-netspeedtest` | `luci-app-mini-diskmanager` | `luci-app-eqosplus` |
 | `luci-theme-noobwrt` | `luci-app-cpufreq` | `luci-app-ramfree` | `openwrt-bandix` |
-| `autocore` | `dns2tcp` | ` ` | ` ` |
+| `autocore` | `dns2tcp` | `luci-app-homeproxy` | ` ` |
 
 
 

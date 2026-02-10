@@ -238,7 +238,7 @@ body.dark-theme .theme-toggle svg {
 		</a>
 
 		<!-- Nas -->
-		<a href="/cgi-bin/luci/admin/nas/samba4" class="toolbar-item" title="Nas">
+		<a href="/cgi-bin/luci/admin/services/samba4" class="toolbar-item" title="Nas">
 			<img src="/luci-static/noobwrt/navbar/nas.png" alt="Nas" loading="lazy">
 		</a>
 
@@ -268,7 +268,7 @@ body.dark-theme .theme-toggle svg {
 		</a>
 
 		<!-- Files -->
-		<a href="/cgi-bin/luci/admin/system/filemanager" class="toolbar-item" title="Files">
+		<a href="/cgi-bin/luci/admin/nas/tinyfilemanager" class="toolbar-item" title="Files">
 			<img src="/luci-static/noobwrt/navbar/files.png" alt="Files" loading="lazy">
 		</a>
 
@@ -289,7 +289,7 @@ body.dark-theme .theme-toggle svg {
 	const toolbarToggle = document.querySelector('.toolbar-item.toolbar-toggle');
 	const toolbarContainer = document.querySelector('.toolbar-container');
 	const toolbarMenu = document.getElementById('toolbar-menu');
-	
+
 	// Get or create dark theme style element
 	let darkThemeStyle = document.getElementById('dark-theme-style');
 	if (!darkThemeStyle) {
@@ -297,13 +297,13 @@ body.dark-theme .theme-toggle svg {
 		darkThemeStyle.id = 'dark-theme-style';
 		document.head.appendChild(darkThemeStyle);
 	}
-	
+
 	// Fetch dark CSS from existing file
 	const darkCssUrl = '/luci-static/noobwrt/css/dark.css';
-	
+
 	// Check saved theme preference
 	const savedTheme = localStorage.getItem('luci-theme') || 'light';
-	
+
 	function loadDarkCSS() {
 		fetch(darkCssUrl)
 			.then(response => response.text())
@@ -320,7 +320,7 @@ body.dark-theme .theme-toggle svg {
 				enableDarkThemeFallback();
 			});
 	}
-	
+
 	function removeDarkCSS() {
 		darkThemeStyle.textContent = '';
 		document.body.classList.remove('dark-theme');
@@ -328,19 +328,19 @@ body.dark-theme .theme-toggle svg {
 		moonIcon.style.display = 'none';
 		localStorage.setItem('luci-theme', 'light');
 	}
-	
+
 	function enableDarkThemeFallback() {
 		document.body.classList.add('dark-theme');
 		sunIcon.style.display = 'none';
 		moonIcon.style.display = 'block';
 		localStorage.setItem('luci-theme', 'dark');
 	}
-	
+
 	// Apply saved theme on load
 	if (savedTheme === 'dark') {
 		loadDarkCSS();
 	}
-	
+
 	// Toggle theme on click
 	themeToggle.addEventListener('click', function(e) {
 		e.preventDefault();

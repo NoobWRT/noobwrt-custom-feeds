@@ -2,8 +2,8 @@
 set -e
 
 
-export SYNC_REPO_URL="https://github.com/dotywrt/linux-5.15.git"
-export SYNC_REMOTE_PATH="/package/custom_app/luci-app-netstat"
+export SYNC_REPO_URL="https://github.com/nooblk-98/luci-app-netstat.git"
+export SYNC_REMOTE_PATH="."
 export SYNC_DEST_DIR="package/luci-app-netstat"
 export SYNC_COPY_SUBDIRS=true
 export SYNC_CLEAN_DEST=true

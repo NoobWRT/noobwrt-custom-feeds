@@ -1,0 +1,45 @@
+.stats-grid {
+  background-color: #f8f9fa !important;
+}
+
+.stats-card,
+.ip-card {
+  color: #222 !important;
+  border: 1px solid rgba(0, 0, 0, 0.1) !important;
+}
+
+.stat-icon {
+  filter: brightness(1) !important;  
+}
+
+.stat-label {
+  color: #333 !important;
+}
+
+.stat-value {
+  color: #111 !important;
+}
+
+.stat-number {
+  color: #000 !important;
+}
+
+.stat-unit {
+  color: #666 !important;
+}
+
+.ip-value {
+  color: #111 !important;
+}
+
+.eye-icon {
+  filter: brightness(1) !important;
+}
+
+.ip-org {
+  color: #666 !important;
+}
+
+.wan-text {
+  color: #888 !important;
+}

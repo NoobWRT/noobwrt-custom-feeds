@@ -1,6 +1,7 @@
 # luci-app-aw1k-led
 
-LuCI app for AW1000 LED status with QModem support.
+QModem support modified luci-app-aw1k-led packge for the Arcadyan AW1000 Telstra 5G Home Modem
+
 
 ## Highlights
 - Tested with QModem

@@ -1,9 +1,0 @@
-#!/bin/sh
-
-chmod +x /usr/bin/led-status.sh
-chmod +x /etc/init.d/led-status
-
-/etc/init.d/led-status enable
-/etc/init.d/led-status start
-
-exit 0

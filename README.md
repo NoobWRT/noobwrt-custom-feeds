@@ -31,7 +31,7 @@ echo "src-git noobwrt https://github.com/nooblk-98/noobwrt-custom-feeds.git;main
 
 ```
 
-## Add Prebuild feed to your Firmware 
+Add Prebuild feed to your Firmware `run in terminal`
 
 ```bash
 feed_line="src/gz snooblk https://feeds.itsnooblk.com/releases/24.10.5/packages/aarch64_cortex-a53/noobwrt"; grep -qxF "$feed_line" /etc/opkg/distfeeds.conf || echo "$feed_line" >> /etc/opkg/distfeeds.conf

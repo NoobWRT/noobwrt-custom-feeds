@@ -83,6 +83,8 @@ srm821 | unisoc |✔ usb(ecm,rndis,ncm) | ✘
 Model | Platform | USB  | PCIe 
 --- | --- | --- | ---
 em9190 | qualcomm |✔ usb(mbim,rmnet) | ✔ pcie(mbim,rmnet)
+mc7354 | lte |✔ usb(qmi) | ✘
+mc7355 | lte |✔ usb(qmi) | ✘
 
 # telit
 Model | Platform | USB  | PCIe 
@@ -109,3 +111,8 @@ t99w640 | qualcomm |✘ | ✔ pcie(mbim)
 Model | Platform | USB  | PCIe 
 --- | --- | --- | ---
 n510m | unisoc |✔ usb(ecm) | ✘
+
+# gosuncn
+Model | Platform | USB  | PCIe 
+--- | --- | --- | ---
+me3630-w | lte |✔ usb(ecm) | ✘

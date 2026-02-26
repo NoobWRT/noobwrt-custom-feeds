@@ -932,3 +932,9 @@ msgstr "（接收信号码功率）"
 
 msgid "(Energy per Chip / Interference)"
 msgstr "（每码片能量 / 干扰比）"
+
+msgid "Skip SSL certificate check"
+msgstr "跳过 SSL 证书检查"
+
+msgid "Disable SSL certificate verification when downloading. Enable if the server uses a self-signed certificate."
+msgstr "下载时禁用 SSL 证书验证。如果服务器使用自签名证书，请启用此选项。"

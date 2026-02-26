@@ -1,12 +1,5 @@
 #!/bin/sh
 
-#
-# (c) 2010-2025 Cezary Jackiewicz <cezary@eko.one.pl>
-#
-# (c) 2021-2025 modified by Rafał Wabik - IceG - From eko.one.pl forum
-#
-
-
 band4g() {
 # see https://en.wikipedia.org/wiki/LTE_frequency_bands
 	echo -n "B${1}"
@@ -153,13 +146,6 @@ band5g() {
 getdevicevendorproduct() {
 	devname="$(basename $1)"
 	case "$devname" in
-        'mhi_DUN'*)
-            devpath=$(find /sys/devices -name "$devname" -type d 2>/dev/null | head -1)
-            target_dir=${devpath%/*/*/*}
-            V=$(cat "$target_dir/vendor")
-            D=$(cat "$target_dir/device")
-            echo "pci/${V/0x/}${D/0x/}"
-	    ;; 
 		'wwan'*'at'*)
 			devpath="$(readlink -f /sys/class/wwan/$devname/device)"
 			T=${devpath%/*/*/*}
@@ -397,17 +383,19 @@ if [ -n "$T" ]; then
 fi
 
 # CREG
-eval $(echo "$O" | busybox awk -F[,] '/^\+CREG/ {gsub(/[[:space:]"]+/,"");printf "T=\"%d\";LAC_HEX=\"%X\";CID_HEX=\"%X\";LAC_DEC=\"%d\";CID_DEC=\"%d\";MODE_NUM=\"%d\"", $2, "0x"$3, "0x"$4, "0x"$3, "0x"$4, $5}')
-case "$T" in
-	0*) REG="0";;
-	1*) REG="1";;
-	2*) REG="2";;
-	3*) REG="3";;
-	5*) REG="5";;
-	6*) REG="6";;
-	7*) REG="7";;
-	*) REG="";;
-esac
+# Prefer CEREG over CREG for registration
+OREG=$(sms_tool -d "$DEVICE" at "AT+CEREG?;+CREG?")
+CEREG=$(echo "$OREG" | awk -F',' '/^\+CEREG:/ {gsub(/[[:space:]]/, "", $2); print $2}')
+CREG=$(echo "$OREG" | awk -F',' '/^\+CREG:/ {gsub(/[[:space:]]/, "", $2); print $2}')
+
+if [ "$CEREG" = "1" ] || [ "$CEREG" = "5" ]; then
+  REG="1"; REGOK=1
+elif [ "$CREG" = "1" ] || [ "$CREG" = "5" ]; then
+  REG="1"; REGOK=1
+else
+  REG="0"; REGOK=0
+fi
+
 
 # MODE
 if [ -z "$MODE_NUM" ] || [ "x$MODE_NUM" == "x0" ]; then
@@ -528,4 +516,3 @@ cat <<EOF
 }
 EOF
 exit 0
-

@@ -4,7 +4,7 @@
 set -e
 
 
-export SYNC_REPO_URL="https://github.com/4IceG/luci-app-3ginfo-lite.git"
+export SYNC_REPO_URL="https://github.com/nooblk-98/luci-app-3ginfo-lite.git"
 export SYNC_REMOTE_PATH="/luci-app-3ginfo-lite"
 export SYNC_DEST_DIR="package/luci-app-3ginfo-lite"
 export SYNC_COPY_SUBDIRS=true

@@ -44,16 +44,75 @@ function getNetdevStats()
         end
     end
     
-    -- Get public IP using curl api.ipify.org with timeout
-    local ip = "N/A"
-    local cmd = "curl -s --max-time 3 'https://api.ipify.org?format=text' 2>/dev/null"
-    local f_ip = io.popen(cmd)
-    if f_ip then
-        local ip_result = f_ip:read("*l")
-        if ip_result and ip_result ~= "" and string.len(ip_result) < 20 then
-            ip = ip_result
+    -- Get public IP from api.ipify.org (real internet-facing address)
+    local function read_cmd_line(cmd)
+        local p = io.popen(cmd)
+        if not p then
+            return nil
         end
-        f_ip:close()
+
+        local line = p:read("*l")
+        p:close()
+
+        if not line then
+            return nil
+        end
+
+        line = line:gsub("^%s+", ""):gsub("%s+$", "")
+        if line == "" then
+            return nil
+        end
+
+        return line
+    end
+
+    local function is_valid_ip(value)
+        if not value then
+            return false
+        end
+
+        -- Simple IPv4 validation
+        local a, b, c, d = value:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+        if a and b and c and d then
+            a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
+            if a <= 255 and b <= 255 and c <= 255 and d <= 255 then
+                return true
+            end
+        end
+
+        -- Basic IPv6 check (contains ':' and only hex/colon chars)
+        if value:find(":", 1, true) and value:match("^[%x:]+$") then
+            return true
+        end
+
+        return false
+    end
+
+    local ip = "N/A"
+
+    -- Try ipify first using whichever HTTP client is available on the router
+    local ip_cmds = {
+        "curl -fsS --max-time 4 'https://api.ipify.org' 2>/dev/null",
+        "curl -fsS --max-time 4 'http://api.ipify.org' 2>/dev/null",
+        "uclient-fetch -qO- --timeout=4 'https://api.ipify.org' 2>/dev/null",
+        "uclient-fetch -qO- --timeout=4 'http://api.ipify.org' 2>/dev/null",
+        "wget -qO- --timeout=4 'https://api.ipify.org' 2>/dev/null",
+        "wget -qO- --timeout=4 'http://api.ipify.org' 2>/dev/null",
+
+        -- Fallback to local WAN address if public IP lookup fails
+        "ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@[\"ipv4-address\"][0].address'",
+        "ifstatus wan 2>/dev/null | jsonfilter -e '@[\"ipv4-address\"][0].address'",
+        "ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@[\"ipv6-address\"][0].address'",
+        "ubus call network.interface.wan6 status 2>/dev/null | jsonfilter -e '@[\"ipv6-address\"][0].address'",
+        "ifstatus wan6 2>/dev/null | jsonfilter -e '@[\"ipv6-address\"][0].address'"
+    }
+
+    for _, cmd in ipairs(ip_cmds) do
+        local detected = read_cmd_line(cmd)
+        if detected and is_valid_ip(detected) then
+            ip = detected
+            break
+        end
     end
     
     local response = {

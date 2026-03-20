@@ -275,14 +275,22 @@ class NetStatSync {
       const localPath = path.join(BASE_DIR, mapping.local);
       
       try {
-        if (mapping.isFile) {
-          // Single file
-          if (fsSynchronous.existsSync(localPath)) {
-            await this.uploadFile(localPath);
-            uploadCount++;
-          }
-        } else {
-          // Directory - recursively upload all files
+        if (!fsSynchronous.existsSync(localPath)) {
+          console.log(`⏭️  Skipping ${mapping.description} (path not found): ${localPath}`);
+          continue;
+        }
+
+        const stats = await fs.stat(localPath);
+
+        if (stats.isFile()) {
+          // Single file mapping
+          await this.uploadFile(localPath);
+          uploadCount++;
+          continue;
+        }
+
+        if (stats.isDirectory()) {
+          // Directory mapping - recursively upload all files
           const files = await this.getAllFiles(localPath);
           for (const filePath of files) {
             try {
@@ -293,7 +301,10 @@ class NetStatSync {
               errorCount++;
             }
           }
+          continue;
         }
+
+        console.log(`⏭️  Skipping ${mapping.description} (unsupported path type): ${localPath}`);
       } catch (err) {
         console.error(`❌ Error processing ${mapping.description}: ${err.message}`);
         errorCount++;

@@ -29,7 +29,9 @@ sh <(wget -O - https://raw.githubusercontent.com/Slava-Shchipunov/awg-openwrt/re
 11) AWG-2.0 [24.10.3](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.3)
 12) AWG-2.0 [24.10.4](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.4)
 13) AWG-2.0 [24.10.5](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.5)
-14) AWG-2.0 [25.12.0](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v25.12.0)
+14) AWG-2.0 [24.10.6](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.6)
+15) AWG-2.0 [25.12.0](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v25.12.0)
+16) AWG-2.0 [25.12.1](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v25.12.1)
 
 Также запускал сборку для версии [22.03.7](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v22.03.7), но там для двух платформ сборка завершилась ошибкой. Так как это достаточно старая версия OpenWRT, я не стал разбираться, в чем проблема.
 
@@ -96,7 +98,9 @@ At the moment I have collected packages for all devices for OpenWRT versions:
 11) AWG-2.0 [24.10.3](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.3)
 12) AWG-2.0 [24.10.4](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.4)
 13) AWG-2.0 [24.10.5](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.5)
-14) AWG-2.0 [25.12.0](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v25.12.0)
+14) AWG-2.0 [24.10.6](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v24.10.6)
+15) AWG-2.0 [25.12.0](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v25.12.0)
+16) AWG-2.0 [25.12.1](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v25.12.1)
 
 I also ran the build for version [22.03.7](https://github.com/Slava-Shchipunov/awg-openwrt/releases/tag/v22.03.7), but the build ended with an error for two platforms. Since this is a fairly old version of OpenWRT, I did not bother to figure out what the problem was.
 

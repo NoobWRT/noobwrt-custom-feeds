@@ -27,10 +27,12 @@ on:
       - "Makefile"
 env:
   TZ: Asia/Shanghai
+  OPENWRT_VERSION: 25.12.1
+  OPENWRT_TARGET: x86
+  OPENWRT_SUBTARGET: 64
 
 jobs:
   job_check:
-    if: github.repository == ${{ github.repository }}
     name: Check Version
     runs-on: ubuntu-latest
     outputs:
@@ -67,7 +69,7 @@ jobs:
           tag_name: ${{steps.check_version.outputs.latest_version}}
 
   job_build_netstat:
-    name: Build luci-app-netstat (master)
+    name: Build luci-app-netstat (OpenWrt 25.12.1)
     needs: job_check
     if: needs.job_check.outputs.has_update == 'true'
     runs-on: ubuntu-latest
@@ -85,21 +87,20 @@ jobs:
         uses: actions/cache@v3
         with:
           path: sdk
-          key: openwrt-sdk-snapshot-x86-64
+          key: openwrt-sdk-${{ env.OPENWRT_VERSION }}-${{ env.OPENWRT_TARGET }}-${{ env.OPENWRT_SUBTARGET }}
 
       - name: Initialization environment
-        env:
-          url_sdk: https://archive.openwrt.org/releases/24.10.0/targets/x86/64/openwrt-sdk-24.10.0-x86-64_gcc-13.3.0_musl.Linux-x86_64.tar.zst
         run: |
           if [ "${{ steps.cache-sdk.outputs.cache-hit }}" != "true" ]; then
-            wget ${{ env.url_sdk }}
-            file_name=$(echo ${{env.url_sdk}} | awk -F/ '{print $NF}')
-            mkdir -p sdk && tar --zstd -xvf $file_name -C ./sdk --strip-components=1
-            cd sdk  
-            echo "src-git base https://github.com/openwrt/openwrt.git;main" > feeds.conf
-            echo "src-git-full packages https://github.com/openwrt/packages.git;master" >> feeds.conf
-            echo "src-git-full luci https://github.com/openwrt/luci.git;master" >> feeds.conf
-            echo "src-git-full routing https://git.openwrt.org/feed/routing.git;master"  >> feeds.conf
+            download_base="https://downloads.openwrt.org/releases/${{ env.OPENWRT_VERSION }}/targets/${{ env.OPENWRT_TARGET }}/${{ env.OPENWRT_SUBTARGET }}"
+            sdk_file=$(wget -qO- "${download_base}/sha256sums" | awk '/openwrt-sdk-${{ env.OPENWRT_VERSION }}-${{ env.OPENWRT_TARGET }}-${{ env.OPENWRT_SUBTARGET }}_.*\.tar\.zst$/{gsub(/^\*/,"",$2); print $2; exit}')
+            if [ -z "${sdk_file}" ]; then
+              echo "::error::Unable to find SDK tarball for OpenWrt ${{ env.OPENWRT_VERSION }}"
+              exit 1
+            fi
+            wget "${download_base}/${sdk_file}"
+            mkdir -p sdk && tar --zstd -xvf "${sdk_file}" -C ./sdk --strip-components=1
+            cd sdk
             ./scripts/feeds update -a
           else
             cd sdk
@@ -128,17 +129,23 @@ jobs:
           cd sdk
           echo "make package/luci-app-netstat/{clean,compile} -j$(nproc)"
           make package/luci-app-netstat/{clean,compile} -j$(nproc)
-          mv bin/packages/x86_64/base/ ../
+          mapfile -t apk_files < <(find bin/packages -type f -name 'luci-app-netstat*.apk')
+          if [ ${#apk_files[@]} -eq 0 ]; then
+            echo "::error::No APK package generated for luci-app-netstat"
+            find bin/packages -maxdepth 4 -type f
+            exit 1
+          fi
+          mkdir -p ../artifacts
+          cp "${apk_files[@]}" ../artifacts/
           rm .config .config.old
           cd ..
           echo "status=success" >> $GITHUB_OUTPUT
-          echo "FIRMWARE=$PWD" >> $GITHUB_ENV
 
-      - name: Upload (master) ipks to release
+      - name: Upload (master) apks to release
         uses: softprops/action-gh-release@v1
         if: steps.compile.outputs.status == 'success'
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           tag_name: ${{needs.job_check.outputs.package_version}}
-          files: ${{ env.FIRMWARE }}/base/luci-app-netstat*.*
+          files: artifacts/luci-app-netstat*.apk

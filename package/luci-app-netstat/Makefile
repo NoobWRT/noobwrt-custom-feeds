@@ -31,7 +31,9 @@ define Build/Compile
 endef
 
 define Package/$(PKG_NAME)/install
-  $(CP) ./files/* $(1)/
+	$(CP) ./files/* $(1)/
+	# Avoid file collision with vnstat package (some forks ship /etc/config/vnstat)
+	$(RM) $(1)/etc/config/vnstat
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

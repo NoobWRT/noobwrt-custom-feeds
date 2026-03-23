@@ -1,0 +1,75 @@
+name: Build luci-app-arwi-dashboard (APK - OpenWrt Snapshot)
+
+on:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          path: luci-app-arwi-dashboard
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential ccache ecj fastjar file g++ gawk \
+            gettext git java-propose-classpath libncurses5-dev libssl-dev python3 \
+            python3-setuptools unzip wget zlib1g-dev zstd
+
+      - name: Download OpenWrt Snapshot SDK (APK support)
+        run: |
+          # Fetch the latest sha256sums file to find the exact SDK tarball name
+          wget -q https://downloads.openwrt.org/snapshots/targets/x86/64/sha256sums
+          
+          # Extract the SDK filename. Usually ending in .tar.zst for snapshots
+          SDK_FILE=$(grep "openwrt-sdk" sha256sums | awk '{print $2}' | tr -d '*')
+          
+          # Download the SDK
+          echo "Downloading $SDK_FILE..."
+          wget -q "https://downloads.openwrt.org/snapshots/targets/x86/64/$SDK_FILE"
+          
+          # Extract the SDK
+          tar -xf "$SDK_FILE"
+          
+          # Rename the extracted folder to openwrt-sdk
+          SDK_DIR=$(find . -maxdepth 1 -type d -name "openwrt-sdk-*")
+          mv "$SDK_DIR" openwrt-sdk
+
+      - name: Setup feeds using Snapshot/Master repositories
+        run: |
+          cd openwrt-sdk
+          # The feeds need to match snapshot master branch for APK dependencies
+          cat > feeds.conf.default <<EOF
+          src-git base https://github.com/openwrt/openwrt.git;master
+          src-git packages https://github.com/openwrt/packages.git;master
+          src-git luci https://github.com/openwrt/luci.git;master
+          src-git routing https://github.com/openwrt/routing.git;master
+          src-git telephony https://github.com/openwrt/telephony.git;master
+          EOF
+          
+          # Update and install feeds
+          ./scripts/feeds update -a
+          ./scripts/feeds install -a
+
+      - name: Copy luci-app-arwi-dashboard to SDK
+        run: |
+          mkdir -p openwrt-sdk/package/custom
+          cp -r luci-app-arwi-dashboard openwrt-sdk/package/custom/
+
+      - name: Configure and Compile APK
+        run: |
+          cd openwrt-sdk
+          # Generate default configurations
+          make defconfig
+          # Compile the package, showing verbose output for debugging
+          make package/custom/luci-app-arwi-dashboard/compile V=s
+
+      - name: Upload APK packages
+        uses: actions/upload-artifact@v4
+        with:
+          name: luci-app-arwi-dashboard-apk
+          path: openwrt-sdk/bin/**/*.apk

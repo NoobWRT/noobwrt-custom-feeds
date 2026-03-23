@@ -1,0 +1,9 @@
+{
+    "admin/services/arwi_dashboard": {
+        "title": "Arwi Dashboard",
+        "action": {
+            "type": "view",
+            "path": "arwi_dashboard/config"
+        }
+    }
+}

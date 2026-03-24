@@ -8,7 +8,7 @@ name: Trigger Build openwrt 24.10.5
     url: https://jk.itsnooblk.com
     user: lahiru
     token: ${{ secrets.TOKEN }}
-    job: job_1
+    job: openwrt-sdk-runner
     parameters: |
       VERSION=24.10.5
 
@@ -19,6 +19,6 @@ name: Trigger Build openwrt 25.12.1
     url: https://jk.itsnooblk.com
     user: lahiru
     token: ${{ secrets.TOKEN }}
-    job: job_1
+    job: openwrt-sdk-runner
     parameters: |
       VERSION=25.12.1

@@ -2,6 +2,8 @@ name: Trigger OpenWrt Builds
 
 on:
   workflow_dispatch:
+  schedule:
+    - cron: "30 22 * * 5"
 
 jobs:
   build_1:

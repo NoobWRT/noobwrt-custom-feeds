@@ -1,24 +1,33 @@
+name: Trigger OpenWrt Builds
+
 on:
   workflow_dispatch:
 
-name: Trigger Build openwrt 24.10.5
-- name: trigger Job with parameters
-  uses: appleboy/jenkins-action@v1
-  with:
-    url: https://jk.itsnooblk.com
-    user: lahiru
-    token: ${{ secrets.TOKEN }}
-    job: openwrt-sdk-runner
-    parameters: |
-      VERSION=24.10.5
+jobs:
+  build_1:
+    name: Trigger Build openwrt 24.10.5
+    runs-on: ubuntu-latest
+    steps:
+      - name: trigger Job with parameters
+        uses: appleboy/jenkins-action@v1
+        with:
+          url: https://jk.itsnooblk.com
+          user: lahiru
+          token: ${{ secrets.TOKEN }}
+          job: openwrt-sdk-runner
+          parameters: |
+            VERSION=24.10.5
 
-name: Trigger Build openwrt 25.12.1
-- name: trigger Job with parameters
-  uses: appleboy/jenkins-action@v1
-  with:
-    url: https://jk.itsnooblk.com
-    user: lahiru
-    token: ${{ secrets.TOKEN }}
-    job: openwrt-sdk-runner
-    parameters: |
-      VERSION=25.12.1
+  build_2:
+    name: Trigger Build openwrt 25.12.1
+    runs-on: ubuntu-latest
+    steps:
+      - name: trigger Job with parameters
+        uses: appleboy/jenkins-action@v1
+        with:
+          url: https://jk.itsnooblk.com
+          user: lahiru
+          token: ${{ secrets.TOKEN }}
+          job: openwrt-sdk-runner
+          parameters: |
+            VERSION=25.12.1

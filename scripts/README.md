@@ -56,6 +56,24 @@ Removes:
 - Git temporary objects
 - Displays final workspace state
 
+### 7. discover-build-targets.sh
+**Purpose**: Auto-discover all OpenWrt package directories under `feeds/` and `package/`
+
+Actions:
+- Finds all package `Makefile`s that include OpenWrt build rules
+- Normalizes paths so they can be built inside the SDK package namespace
+- Outputs one build target per line for reuse in CI jobs
+
+### 8. build-all-ipks.sh
+**Purpose**: Build all packages in this repository with a selected OpenWrt SDK
+
+Actions:
+- Downloads or reuses an SDK cache
+- Updates and installs official OpenWrt feeds required by local packages
+- Copies repo packages into the SDK under a dedicated namespace
+- Compiles every discovered package directory, including kernel module directories
+- Collects all generated `.ipk` files into `artifacts/ipk/`
+
 ## Environment Variables
 
 These variables are set by the Jenkinsfile and used by the scripts:

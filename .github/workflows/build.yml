@@ -1,0 +1,24 @@
+on:
+  workflow_dispatch:
+
+name: Trigger Build openwrt 24.10.5
+- name: trigger Job with parameters
+  uses: appleboy/jenkins-action@v1
+  with:
+    url: https://jk.itsnooblk.com
+    user: lahiru
+    token: ${{ secrets.TOKEN }}
+    job: job_1
+    parameters: |
+      VERSION=24.10.5
+
+name: Trigger Build openwrt 25.12.1
+- name: trigger Job with parameters
+  uses: appleboy/jenkins-action@v1
+  with:
+    url: https://jk.itsnooblk.com
+    user: lahiru
+    token: ${{ secrets.TOKEN }}
+    job: job_1
+    parameters: |
+      VERSION=25.12.1

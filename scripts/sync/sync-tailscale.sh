@@ -4,7 +4,7 @@
 set -e
 
 # Environment parameters for luci-app-wrtbwmon
-export SYNC_REPO_URL="https://github.com/asvow/luci-app-tailscale.git"
+export SYNC_REPO_URL="https://github.com/whzhni1/luci-app-tailscale.git"
 export SYNC_REMOTE_PATH="."
 export SYNC_DEST_DIR="package/luci-app-tailscale"
 export SYNC_COPY_SUBDIRS=true

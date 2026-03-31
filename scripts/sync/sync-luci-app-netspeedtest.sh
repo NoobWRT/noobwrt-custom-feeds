@@ -4,7 +4,7 @@
 set -e
 
 # Environment parameters for luci-app-wrtbwmon
-export SYNC_REPO_URL="https://github.com/muink/luci-app-netspeedtest"
+export SYNC_REPO_URL="https://github.com/sirpdboy/netspeedtest.git"
 export SYNC_REMOTE_PATH="."
 export SYNC_DEST_DIR="feeds/netspeedtest"
 export SYNC_COPY_SUBDIRS=true

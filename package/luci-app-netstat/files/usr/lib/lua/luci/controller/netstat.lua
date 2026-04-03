@@ -7,17 +7,17 @@ function index()
     entry({"admin", "tools", "get_netdev_stats"}, call("getNetdevStats"), nil).sysauth = false
 end
 
+-- Reads /proc/net/dev and returns per-interface rx/tx byte counters.
 function getNetdevStats()
     local f = io.open("/proc/net/dev", "r")
     if not f then
         luci.http.prepare_content("application/json")
-        luci.http.write('{"stats":{}, "ip":"N/A", "status":"Disconnected"}')
+        luci.http.write('{"stats":{},"ip":"N/A","status":"Disconnected"}')
         return
     end
-    
     local content = f:read("*a")
     f:close()
-    
+
     local stats = {}
     for line in content:gmatch("[^\n]+") do
         local iface, values = line:match("^%s*([^:]+):%s+(.*)$")
@@ -27,15 +27,12 @@ function getNetdevStats()
                 table.insert(nums, tonumber(num))
             end
             if #nums >= 9 then
-                stats[iface] = {
-                    rx = nums[1],
-                    tx = nums[9]
-                }
+                stats[iface] = { rx = nums[1], tx = nums[9] }
             end
         end
     end
-    
-    -- Quick connectivity check - just check if we have packets flowing
+
+    -- Quick connectivity check
     local status = "Disconnected"
     for iface, data in pairs(stats) do
         if iface ~= "lo" and (data.rx > 0 or data.tx > 0) then
@@ -43,84 +40,166 @@ function getNetdevStats()
             break
         end
     end
-    
-    -- Get public IP from api.ipify.org (real internet-facing address)
-    local function read_cmd_line(cmd)
-        local p = io.popen(cmd)
-        if not p then
-            return nil
-        end
 
+    -- ── IP detection ─────────────────────────────────────────────────────────
+    -- Strategy: try a single fast HTTP call first (2 s timeout), then fall
+    -- back to local ubus/ifstatus which is instant.  The old code tried 11
+    -- commands with 4 s timeouts each – worst-case 44 s of blocking.
+
+    local function read_cmd(cmd)
+        local p = io.popen(cmd)
+        if not p then return nil end
         local line = p:read("*l")
         p:close()
-
-        if not line then
-            return nil
-        end
-
-        line = line:gsub("^%s+", ""):gsub("%s+$", "")
-        if line == "" then
-            return nil
-        end
-
-        return line
+        if not line then return nil end
+        line = line:gsub("^%s+",""):gsub("%s+$","")
+        return line ~= "" and line or nil
     end
 
-    local function is_valid_ip(value)
-        if not value then
-            return false
-        end
-
-        -- Simple IPv4 validation
-        local a, b, c, d = value:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
+    local function is_valid_ip(v)
+        if not v then return false end
+        local a,b,c,d = v:match("^(%d+)%.(%d+)%.(%d+)%.(%d+)$")
         if a and b and c and d then
-            a, b, c, d = tonumber(a), tonumber(b), tonumber(c), tonumber(d)
-            if a <= 255 and b <= 255 and c <= 255 and d <= 255 then
-                return true
-            end
+            a,b,c,d = tonumber(a),tonumber(b),tonumber(c),tonumber(d)
+            if a<=255 and b<=255 and c<=255 and d<=255 then return true end
         end
-
-        -- Basic IPv6 check (contains ':' and only hex/colon chars)
-        if value:find(":", 1, true) and value:match("^[%x:]+$") then
-            return true
-        end
-
+        if v:find(":",1,true) and v:match("^[%x:]+$") then return true end
         return false
     end
 
     local ip = "N/A"
 
-    -- Try ipify first using whichever HTTP client is available on the router
-    local ip_cmds = {
-        "curl -fsS --max-time 4 'https://api.ipify.org' 2>/dev/null",
-        "curl -fsS --max-time 4 'http://api.ipify.org' 2>/dev/null",
-        "uclient-fetch -qO- --timeout=4 'https://api.ipify.org' 2>/dev/null",
-        "uclient-fetch -qO- --timeout=4 'http://api.ipify.org' 2>/dev/null",
-        "wget -qO- --timeout=4 'https://api.ipify.org' 2>/dev/null",
-        "wget -qO- --timeout=4 'http://api.ipify.org' 2>/dev/null",
-
-        -- Fallback to local WAN address if public IP lookup fails
-        "ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@[\"ipv4-address\"][0].address'",
-        "ifstatus wan 2>/dev/null | jsonfilter -e '@[\"ipv4-address\"][0].address'",
-        "ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@[\"ipv6-address\"][0].address'",
-        "ubus call network.interface.wan6 status 2>/dev/null | jsonfilter -e '@[\"ipv6-address\"][0].address'",
-        "ifstatus wan6 2>/dev/null | jsonfilter -e '@[\"ipv6-address\"][0].address'"
+    -- 1. Try public-IP APIs with a 2-second timeout (not 4)
+    local public_cmds = {
+        "curl -fsS --max-time 2 'https://api.ipify.org' 2>/dev/null",
+        "curl -fsS --max-time 2 'http://api.ipify.org' 2>/dev/null",
+        "uclient-fetch -qO- --timeout=2 'https://api.ipify.org' 2>/dev/null",
+        "wget -qO- --timeout=2 'https://api.ipify.org' 2>/dev/null",
     }
+    for _, cmd in ipairs(public_cmds) do
+        local v = read_cmd(cmd)
+        if is_valid_ip(v) then ip = v; break end
+    end
 
-    for _, cmd in ipairs(ip_cmds) do
-        local detected = read_cmd_line(cmd)
-        if detected and is_valid_ip(detected) then
-            ip = detected
-            break
+    -- 2. Fall back to local WAN address (instant, no network needed)
+    if ip == "N/A" then
+        local local_cmds = {
+            -- wan IPv4
+            "ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@[\"ipv4-address\"][0].address'",
+            "ifstatus wan 2>/dev/null | jsonfilter -e '@[\"ipv4-address\"][0].address'",
+            -- wan IPv6
+            "ubus call network.interface.wan status 2>/dev/null | jsonfilter -e '@[\"ipv6-address\"][0].address'",
+            "ubus call network.interface.wan6 status 2>/dev/null | jsonfilter -e '@[\"ipv6-address\"][0].address'",
+        }
+        for _, cmd in ipairs(local_cmds) do
+            local v = read_cmd(cmd)
+            if is_valid_ip(v) then ip = v; break end
         end
     end
-    
-    local response = {
-        stats = stats,
-        ip = ip,
-        status = status
+
+    -- ── System uptime ─────────────────────────────────────────────────────────
+    local uptime_sec = 0
+    local uf = io.open("/proc/uptime", "r")
+    if uf then
+        local line = uf:read("*l")
+        uf:close()
+        if line then
+            uptime_sec = math.floor(tonumber(line:match("^([%d%.]+)")) or 0)
+        end
+    end
+
+    -- ── CPU usage (two reads 200 ms apart for accurate delta) ────────────────
+    local cpu_pct = 0
+    local function read_cpu_stat()
+        local f = io.open("/proc/stat", "r")
+        if not f then return nil end
+        local line = f:read("*l"); f:close()
+        local vals = {}
+        for n in line:gmatch("%d+") do vals[#vals+1] = tonumber(n) end
+        if #vals < 4 then return nil end
+        local idle, total = vals[4], 0
+        for _, v in ipairs(vals) do total = total + v end
+        return { idle = idle, total = total }
+    end
+    local s1 = read_cpu_stat()
+    if s1 then
+        os.execute("sleep 0.2")
+        local s2 = read_cpu_stat()
+        if s2 then
+            local d_total = s2.total - s1.total
+            local d_idle  = s2.idle  - s1.idle
+            if d_total > 0 then
+                cpu_pct = math.floor((d_total - d_idle) / d_total * 100 + 0.5)
+            end
+        end
+    end
+
+    -- ── Memory usage ──────────────────────────────────────────────────────────
+    local mem_total, mem_available = 0, 0
+    local mf = io.open("/proc/meminfo", "r")
+    if mf then
+        for line in mf:lines() do
+            local k, v = line:match("^(%S+):%s+(%d+)")
+            if k == "MemTotal"     then mem_total     = tonumber(v) or 0 end
+            if k == "MemAvailable" then mem_available = tonumber(v) or 0 end
+            if mem_total > 0 and mem_available > 0 then break end
+        end
+        mf:close()
+    end
+    local mem_pct = 0
+    if mem_total > 0 then
+        mem_pct = math.floor((mem_total - mem_available) / mem_total * 100 + 0.5)
+    end
+    -- used MB and total MB for display
+    local mem_used_mb  = math.floor((mem_total - mem_available) / 1024 + 0.5)
+    local mem_total_mb = math.floor(mem_total / 1024 + 0.5)
+
+    -- ── Disk space (root filesystem) ──────────────────────────────────────────
+    local disk_pct, disk_used_mb, disk_total_mb = 0, 0, 0
+    local df = read_cmd("df -k / 2>/dev/null | awk 'NR==2{print $2,$3}'")
+    if df then
+        local dtotal, dused = df:match("^(%d+)%s+(%d+)$")
+        dtotal = tonumber(dtotal) or 0
+        dused  = tonumber(dused)  or 0
+        if dtotal > 0 then
+            disk_pct      = math.floor(dused / dtotal * 100 + 0.5)
+            disk_used_mb  = math.floor(dused  / 1024 + 0.5)
+            disk_total_mb = math.floor(dtotal / 1024 + 0.5)
+        end
+    end
+
+    -- ── CPU temperature ───────────────────────────────────────────────────────
+    local cpu_temp = nil
+    -- Try common thermal zone paths
+    local temp_paths = {
+        "/sys/class/thermal/thermal_zone0/temp",
+        "/sys/class/thermal/thermal_zone1/temp",
+        "/sys/devices/virtual/thermal/thermal_zone0/temp",
     }
-    
+    for _, path in ipairs(temp_paths) do
+        local tf = io.open(path, "r")
+        if tf then
+            local val = tf:read("*l")
+            tf:close()
+            local t = tonumber(val)
+            if t and t > 0 then
+                -- values > 1000 are in millidegrees
+                if t > 1000 then t = t / 1000 end
+                cpu_temp = math.floor(t + 0.5)
+                break
+            end
+        end
+    end
+
     luci.http.prepare_content("application/json")
-    luci.http.write_json(response)
+    luci.http.write_json({ stats = stats, ip = ip, status = status,
+                           uptime      = uptime_sec,
+                           cpu_pct     = cpu_pct,
+                           cpu_temp    = cpu_temp,
+                           mem_pct     = mem_pct,
+                           mem_used    = mem_used_mb,
+                           mem_total   = mem_total_mb,
+                           disk_pct    = disk_pct,
+                           disk_used   = disk_used_mb,
+                           disk_total  = disk_total_mb })
 end

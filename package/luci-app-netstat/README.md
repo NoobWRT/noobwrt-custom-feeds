@@ -5,7 +5,6 @@
 **A professional network statistics application for OpenWrt LuCI**
 
 [![License: GPL-3.0](https://img.shields.io/badge/License-GPL%203.0-blue.svg)](LICENSE)
-[![Version](https://img.shields.io/badge/Version-1.0.0-success.svg)](Makefile)
 ![OpenWrt Compatible](https://img.shields.io/badge/OpenWrt-Compatible-brightgreen)
 
 [Features](#features) • [Installation](#installation) • [Usage](#usage) • [Development](#development) • [License](#license)
@@ -15,9 +14,8 @@
 ---
 
 ## Overview
-![Dashboard Preview](images/dash.png)
+![Dashboard Preview](images/luci-app-netstat.png)
 
-![Network Preview](images/network.png)
 
 
 **luci-app-netstat** is a modern, feature-rich LuCI application that provides comprehensive network traffic statistics and monitoring for OpenWrt routers. It leverages `vnstat` for accurate traffic monitoring and presents the data through an intuitive web interface.
@@ -103,6 +101,33 @@ service vnstat enable
 - **Current Usage** - Real-time traffic rates
 - **Daily Statistics** - Traffic breakdown by day
 - **Monthly Analysis** - Monthly usage overview
+
+## Dark / Light Theme Switching
+
+The NoobWRT theme stores the user's theme preference in **`localStorage`** under the key `luci-theme` (`'dark'` or `'light'`). When dark mode is active the theme also adds the class `dark-theme` to `document.body`.
+
+`tabs.htm` (rendered on every Netstat tab) reads this value at page load:
+
+```js
+var isDark = localStorage.getItem('luci-theme') === 'dark'
+          || document.body.classList.contains('dark-theme');
+```
+
+If dark mode is detected, a `<style>` block is injected into the page with `!important` overrides for every `.netstat-*` class. This covers:
+
+| Selector | Dark value |
+|---|---|
+| `.netstat-dashboard` | `#1a1d20` background |
+| `.netstat-summary` | `#111315` background |
+| `.netstat-chart-wrap` | `#1a1d20` background |
+| `.netstat-about-card` | `#1a1d20` background |
+| `.netstat-chart-title`, `.netstat-summary-item` | `#f3f4f6` text |
+| `.netstat-summary-label`, `.netstat-about-label` | `#9ca3af` text |
+| `.netstat-about-row a` | `#60a5fa` link color |
+
+The same flag (`window._netstatDark`) is passed to Chart.js so axis labels and grid lines also use dark-friendly colors.
+
+No server-side detection or separate CSS files are needed — everything is driven by the single `localStorage` value the theme toggle button already sets.
 
 ## Credits
 

@@ -15,6 +15,7 @@ on:
 
 permissions:
   contents: write
+  actions: write
 
 jobs:
   sync:
@@ -54,6 +55,13 @@ jobs:
         run: |
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/nooblk-98/noobwrt-custom-feeds.git
           bash ${SCRIPTS_DIR}/commit-push.sh
+
+      - name: Trigger build workflow
+        if: steps.check_changes.outputs.changes == 'true' || inputs.force_sync == true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          gh workflow run build.yml --repo ${{ github.repository }}
 
       - name: Cleanup
         if: always()

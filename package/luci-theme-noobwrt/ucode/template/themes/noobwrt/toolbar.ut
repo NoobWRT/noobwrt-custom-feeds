@@ -1,8 +1,29 @@
 {#
-	Argon Theme - Compact Toolbar
-	Material Design Toolbar with navbar icons
+	NoobWrt Theme - Compact Toolbar
+	Toolbar panel items are loaded dynamically from /etc/config/noobwrt
 	Copyright 2025 nooblk-98
 -#}
+
+{%
+	import { cursor } from 'uci';
+	import { access } from 'fs';
+
+	/* Build sorted list of enabled toolbar items from UCI config */
+	let toolbar_items = [];
+	if (access('/etc/config/noobwrt')) {
+		const tcfg = cursor();
+		tcfg.foreach('noobwrt', 'toolbar_item', function(s) {
+			push(toolbar_items, {
+				title:   s.title   || 'Link',
+				url:     s.url     || '#',
+				icon:    s.icon    || 'home.png',
+				enabled: s.enabled !== '0',
+				order:   +(s.order  || 99)
+			});
+		});
+		sort(toolbar_items, (a, b) => a.order - b.order);
+	}
+-%}
 
 <style>
 .toolbar-container {
@@ -73,12 +94,12 @@ body.dark-theme .toolbar-item img {
 }
 
 .toolbar-item:hover {
-	background: rgba(94, 114, 228, 0.1);
+	background: color-mix(in srgb, var(--primary) 12%, transparent);
 	border-radius: 8px;
 }
 
 body.dark-theme .toolbar-item:hover {
-	background: rgba(94, 114, 228, 0.3);
+	background: color-mix(in srgb, var(--dark-primary) 30%, transparent);
 }
 
 .toolbar-item:hover img {
@@ -119,16 +140,16 @@ body.dark-theme .toolbar-item:hover img {
 	line-height: 1;
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
-	color: #5e72e4;
+	color: var(--primary);
 	font-size: 20px;
 }
 
 body.dark-theme .toolbar-item.toolbar-toggle::before {
-	color: #7c8ff5;
+	color: var(--dark-primary);
 }
 
 body.toolbar-collapsed .toolbar-item.toolbar-toggle {
-	background: rgba(94, 114, 228, 0.15);
+	background: color-mix(in srgb, var(--primary) 15%, transparent);
 }
 
 .toolbar-container.collapsed .toolbar-menu {
@@ -152,7 +173,7 @@ body.toolbar-collapsed .toolbar-item.toolbar-toggle {
 
 /* Theme Toggle Styling */
 .theme-toggle {
-	background: linear-gradient(135deg, rgba(94, 114, 228, 0.2) 0%, rgba(94, 114, 228, 0.1) 100%);
+	background: color-mix(in srgb, var(--primary) 15%, transparent);
 	border-radius: 8px;
 	margin-bottom: 4px;
 	transition: background 0.3s ease;
@@ -164,18 +185,18 @@ body.toolbar-collapsed .toolbar-item.toolbar-toggle {
 }
 
 body.dark-theme .theme-toggle {
-	background: linear-gradient(135deg, rgba(94, 114, 228, 0.4) 0%, rgba(94, 114, 228, 0.3) 100%);
+	background: color-mix(in srgb, var(--dark-primary) 35%, transparent);
 }
 
 .theme-toggle svg {
 	width: 20px;
 	height: 20px;
-	stroke: #5e72e4;
+	stroke: var(--primary);
 	transition: transform 0.3s ease, stroke 0.3s ease;
 }
 
 body.dark-theme .theme-toggle svg {
-	stroke: #7c8ff5;
+	stroke: var(--dark-primary);
 }
 
 .theme-toggle:hover svg {
@@ -223,74 +244,26 @@ body.dark-theme .theme-toggle svg {
 
 	<div class="toolbar-menu active" id="toolbar-menu">
 
-
-		<!-- Home -->
+		{% if (length(toolbar_items) > 0): %}
+			{% for (let item in toolbar_items): %}
+				{% if (item.enabled): %}
+		<a href="{{ item.url }}" class="toolbar-item" title="{{ item.title }}">
+			<img src="/luci-static/noobwrt/navbar/{{ item.icon }}" alt="{{ item.title }}" loading="lazy">
+		</a>
+				{% endif %}
+			{% endfor %}
+		{% else %}
+		<!-- Fallback: no UCI toolbar items configured -->
 		<a href="/cgi-bin/luci/admin/status/overview" class="toolbar-item" title="Home">
 			<img src="/luci-static/noobwrt/navbar/home.png" alt="Home" loading="lazy">
 		</a>
-
-		<!-- Status -->
-		<a href="/cgi-bin/luci/admin/modem/modemdata" class="toolbar-item" title="Status">
-			<img src="/luci-static/noobwrt/navbar/signal.png" alt="Status" loading="lazy">
-		</a>
-
-
-		<!-- Modem -->
-		<a href="/cgi-bin/luci/admin/modem/qmodem" class="toolbar-item" id="info-toggle" title="Modem">
-			<img src="/luci-static/noobwrt/navbar/cell.png" alt="Modem" loading="lazy">
-		</a>
-
-		<!-- sms -->
-		<a href="/cgi-bin/luci/admin/modem/luci-app-sms-tool-js" class="toolbar-item" id="sms" title="sms">
-			<img src="/luci-static/noobwrt/navbar/sms.png" alt="sms" loading="lazy">
-		</a>
-
-
-		<!-- Data Usage -->
-		<a href="/cgi-bin/luci/admin/tools/netstat" class="toolbar-item" title="Data Usage">
-			<img src="/luci-static/noobwrt/navbar/network.png" alt="Data Usage" loading="lazy">
-		</a>
-
-		<!-- Nas -->
-		<a href="/cgi-bin/luci/admin/services/samba4" class="toolbar-item" title="Nas">
-			<img src="/luci-static/noobwrt/navbar/nas.png" alt="Nas" loading="lazy">
-		</a>
-
-		<!-- Wireless -->
 		<a href="/cgi-bin/luci/admin/network/wireless" class="toolbar-item" title="Wireless">
 			<img src="/luci-static/noobwrt/navbar/wifi.png" alt="Wireless" loading="lazy">
 		</a>
-
-		<!-- Firewall -->
-		<a href="/cgi-bin/luci/admin/network/firewall" class="toolbar-item" title="Firewall">
-			<img src="/luci-static/noobwrt/navbar/firewall.png" alt="Firewall" loading="lazy">
-		</a>
-
-		<!-- System -->
 		<a href="/cgi-bin/luci/admin/system/system" class="toolbar-item" title="System">
 			<img src="/luci-static/noobwrt/navbar/settings.png" alt="System" loading="lazy">
 		</a>
-
-		<!-- Terminal -->
-		<a href="/cgi-bin/luci/admin/services/ttyd" class="toolbar-item" title="Terminal">
-			<img src="/luci-static/noobwrt/navbar/terminal.png" alt="Terminal" loading="lazy">
-		</a>
-
-		<!-- VPN -->
-		<a href="/cgi-bin/luci/admin/services/passwall" class="toolbar-item" title="VPN">
-			<img src="/luci-static/noobwrt/navbar/vpn.png" alt="VPN" loading="lazy">
-		</a>
-
-		<!-- Files -->
-		<a href="/cgi-bin/luci/admin/nas/tinyfilemanager" class="toolbar-item" title="Files">
-			<img src="/luci-static/noobwrt/navbar/files.png" alt="Files" loading="lazy">
-		</a>
-
-		<!-- Log -->
-		<a href="/cgi-bin/luci/admin/status/logs" class="toolbar-item" title="System Log">
-			<img src="/luci-static/noobwrt/navbar/info.png" alt="System Log" loading="lazy">
-		</a>
-
+		{% endif %}
 
 	</div>
 </div>
@@ -312,7 +285,6 @@ body.dark-theme .theme-toggle svg {
 		document.head.appendChild(darkThemeStyle);
 	}
 
-	// Fetch dark CSS from existing file
 	const darkCssUrl = '/luci-static/noobwrt/css/dark.css';
 
 	// On first visit (no saved preference), honour the OS colour scheme setting
@@ -324,10 +296,26 @@ body.dark-theme .theme-toggle svg {
 		}
 	}
 
+	// If the server already inlined dark CSS (UCI mode=dark), body already has
+	// 'dark-theme' class — sync localStorage and icons immediately, no fetch needed.
+	if (document.body.classList.contains('server-dark')) {
+		localStorage.setItem('luci-theme', 'dark');
+		sunIcon.style.display = 'none';
+		moonIcon.style.display = 'block';
+	}
+
 	// Check saved theme preference
 	const savedTheme = localStorage.getItem('luci-theme');
 
 	function loadDarkCSS() {
+		// Dark CSS already inlined by the server — just add the class
+		if (darkThemeStyle.textContent) {
+			document.body.classList.add('dark-theme');
+			sunIcon.style.display = 'none';
+			moonIcon.style.display = 'block';
+			localStorage.setItem('luci-theme', 'dark');
+			return;
+		}
 		fetch(darkCssUrl)
 			.then(response => response.text())
 			.then(css => {
@@ -339,7 +327,6 @@ body.dark-theme .theme-toggle svg {
 			})
 			.catch(err => {
 				console.error('Failed to load dark theme:', err);
-				// Fallback: apply dark theme inline
 				enableDarkThemeFallback();
 			});
 	}
@@ -388,7 +375,7 @@ body.dark-theme .theme-toggle svg {
 	function initToolbarState() {
 		let state = null;
 		try {
-			state = localStorage.getItem('argon.toolbar');
+			state = localStorage.getItem('noobwrt.toolbar');
 		} catch (e) {}
 		applyToolbarState(state === 'collapsed');
 	}
@@ -399,7 +386,7 @@ body.dark-theme .theme-toggle svg {
 			const collapsed = !(toolbarContainer && toolbarContainer.classList.contains('collapsed'));
 			applyToolbarState(collapsed);
 			try {
-				localStorage.setItem('argon.toolbar', collapsed ? 'collapsed' : 'expanded');
+				localStorage.setItem('noobwrt.toolbar', collapsed ? 'collapsed' : 'expanded');
 			} catch (e) {}
 		});
 	}

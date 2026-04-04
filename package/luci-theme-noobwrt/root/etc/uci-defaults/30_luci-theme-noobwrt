@@ -23,6 +23,7 @@ uci batch <<-EOF
 	set noobwrt.global.transparency_dark=0.8
 	set noobwrt.global.online_wallpaper=none
 	set noobwrt.global.use_exact_resolution=1
+	set noobwrt.global.auto_dark_mode=0
 	commit noobwrt
 EOF
 
@@ -47,7 +48,7 @@ uci batch <<-EOF
 	set noobwrt.toolbar_modem.title=Modem
 	set noobwrt.toolbar_modem.url=/cgi-bin/luci/admin/modem/qmodem
 	set noobwrt.toolbar_modem.icon=cell.png
-	set noobwrt.toolbar_modem.enabled=1
+	set noobwrt.toolbar_modem.enabled=0
 	set noobwrt.toolbar_modem.order=3
 
 	set noobwrt.toolbar_sms=toolbar_item
@@ -68,7 +69,7 @@ uci batch <<-EOF
 	set noobwrt.toolbar_nas.title=NAS
 	set noobwrt.toolbar_nas.url=/cgi-bin/luci/admin/services/samba4
 	set noobwrt.toolbar_nas.icon=nas.png
-	set noobwrt.toolbar_nas.enabled=1
+	set noobwrt.toolbar_nas.enabled=0
 	set noobwrt.toolbar_nas.order=6
 
 	set noobwrt.toolbar_wireless=toolbar_item
@@ -82,7 +83,7 @@ uci batch <<-EOF
 	set noobwrt.toolbar_firewall.title=Firewall
 	set noobwrt.toolbar_firewall.url=/cgi-bin/luci/admin/network/firewall
 	set noobwrt.toolbar_firewall.icon=firewall.png
-	set noobwrt.toolbar_firewall.enabled=1
+	set noobwrt.toolbar_firewall.enabled=0
 	set noobwrt.toolbar_firewall.order=8
 
 	set noobwrt.toolbar_system=toolbar_item
@@ -90,7 +91,7 @@ uci batch <<-EOF
 	set noobwrt.toolbar_system.url=/cgi-bin/luci/admin/system/noobwrt
 	set noobwrt.toolbar_system.icon=settings.png
 	set noobwrt.toolbar_system.enabled=1
-	set noobwrt.toolbar_system.order=9
+	set noobwrt.toolbar_system.order=13
 
 	set noobwrt.toolbar_terminal=toolbar_item
 	set noobwrt.toolbar_terminal.title=Terminal
@@ -103,7 +104,7 @@ uci batch <<-EOF
 	set noobwrt.toolbar_vpn.title=VPN
 	set noobwrt.toolbar_vpn.url=/cgi-bin/luci/admin/services/passwall
 	set noobwrt.toolbar_vpn.icon=vpn.png
-	set noobwrt.toolbar_vpn.enabled=1
+	set noobwrt.toolbar_vpn.enabled=0
 	set noobwrt.toolbar_vpn.order=11
 
 	set noobwrt.toolbar_files=toolbar_item
@@ -117,8 +118,8 @@ uci batch <<-EOF
 	set noobwrt.toolbar_log.title=System Log
 	set noobwrt.toolbar_log.url=/cgi-bin/luci/admin/status/logs
 	set noobwrt.toolbar_log.icon=info.png
-	set noobwrt.toolbar_log.enabled=1
-	set noobwrt.toolbar_log.order=13
+	set noobwrt.toolbar_log.enabled=0
+	set noobwrt.toolbar_log.order=9
 
 	commit noobwrt
 EOF

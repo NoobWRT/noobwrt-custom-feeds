@@ -2,10 +2,34 @@ name: Build OpenWrt Package
 
 on:
   workflow_dispatch:
+  push:
+    branches:
+      - main
+    paths:
+      - "Makefile"
+      - "files/**"
+
+permissions:
+  contents: write
 
 jobs:
-  build:
+  meta:
+    name: Read Package Metadata
     runs-on: ubuntu-latest
+    outputs:
+      release_tag: ${{ steps.meta.outputs.release_tag }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: meta
+        run: |
+          PKG_VERSION=$(sed -n 's/^PKG_VERSION:=//p' Makefile | head -n1)
+          PKG_RELEASE=$(sed -n 's/^PKG_RELEASE:=//p' Makefile | head -n1)
+          echo "release_tag=v${PKG_VERSION}-${PKG_RELEASE}" >> "$GITHUB_OUTPUT"
+
+  build:
+    name: Build ${{ matrix.label }}
+    runs-on: ubuntu-latest
+    needs: meta
     strategy:
       fail-fast: false
       matrix:
@@ -14,15 +38,30 @@ jobs:
             sdk_version: 24.10.5
           - label: APK
             sdk_version: 25.12.1
-
     steps:
       - uses: actions/checkout@v4
-
-      - name: Build package
-        uses: nooblk-98/openwrt-package-compile-action@v1.1.2
+      - uses: nooblk-98/openwrt-package-compile-action@v1.1.4
         with:
           package-name: luci-app-netstat
           sdk-version: ${{ matrix.sdk_version }}
           sdk-target: x86
           sdk-subtarget: "64"
           artifact-name: luci-app-netstat-${{ matrix.sdk_version }}
+
+  release:
+    name: Publish Release
+    runs-on: ubuntu-latest
+    needs: [meta, build]
+    if: always() && needs.build.result == 'success'
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: ${{ runner.temp }}/release-files
+          merge-multiple: true
+      - uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ needs.meta.outputs.release_tag }}
+          name: luci-app-netstat ${{ needs.meta.outputs.release_tag }}
+          files: ${{ runner.temp }}/release-files/*
+          fail_on_unmatched_files: true
+          overwrite: true

@@ -1,0 +1,8 @@
+#!/bin/sh
+chmod +x /etc/init.d/ledstatus
+chmod +x /usr/bin/led-status-check-daemon.sh
+chmod +x /usr/bin/led-status-check.sh
+
+/etc/init.d/ledstatus enable
+/etc/init.d/ledstatus start
+exit 0

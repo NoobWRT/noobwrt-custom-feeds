@@ -1,0 +1,27 @@
+#!/bin/sh
+
+. /usr/share/libubox/jshn.sh
+
+case "$1" in
+"list")
+    json_init
+    json_add_object "night_enable"
+    json_close_object
+    json_add_object "night_disable"
+    json_close_object
+    json_dump
+    json_cleanup
+    ;;
+"call")
+    case "$2" in
+    "night_enable")
+        /usr/bin/led-night-mode.sh enable >/dev/null 2>&1
+        echo '{"result":0}'
+        ;;
+    "night_disable")
+        /usr/bin/led-night-mode.sh disable >/dev/null 2>&1
+        echo '{"result":0}'
+        ;;
+    esac
+    ;;
+esac

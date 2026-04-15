@@ -1,0 +1,94 @@
+msgid ""
+msgstr ""
+"Content-Type: text/plain; charset=UTF-8\n"
+"Content-Transfer-Encoding: 8bit\n"
+
+msgid "AW1000 LED Status"
+msgstr "AW1000 LED Status"
+
+msgid "AW1000 LEDs"
+msgstr "AW1000 LEDs"
+
+msgid "Configure LED behaviour for the Arcadyan AW1000 router. Service status: "
+msgstr "Configure LED behaviour for the Arcadyan AW1000 router. Service status: "
+
+msgid "General Settings"
+msgstr "General Settings"
+
+msgid "Enable LED service"
+msgstr "Enable LED service"
+
+msgid "Check interval"
+msgstr "Check interval"
+
+msgid "Seconds between each LED update"
+msgstr "Seconds between each LED update"
+
+msgid "Modem AT port"
+msgstr "Modem AT port"
+
+msgid "5G SINR Thresholds"
+msgstr "5G SINR Thresholds"
+
+msgid "LED colours: Excellent = Green, Good = Blue, Average = Red+Green, Very Bad = all blink, No signal = Red"
+msgstr "LED colours: Excellent = Green, Good = Blue, Average = Red+Green, Very Bad = all blink, No signal = Red"
+
+msgid "Excellent (≥)"
+msgstr "Excellent (≥)"
+
+msgid "Good (≥)"
+msgstr "Good (≥)"
+
+msgid "Average (≥)"
+msgstr "Average (≥)"
+
+msgid "SINR ≥ this value → Green LED"
+msgstr "SINR ≥ this value → Green LED"
+
+msgid "SINR ≥ this value → Blue LED"
+msgstr "SINR ≥ this value → Blue LED"
+
+msgid "SINR ≥ this value → Red+Green LED"
+msgstr "SINR ≥ this value → Red+Green LED"
+
+msgid "Signal (CSQ) Thresholds"
+msgstr "Signal (CSQ) Thresholds"
+
+msgid "LED colours: Excellent = Green, Good = Blue, Average = Red+Green, Weak = Red blink"
+msgstr "LED colours: Excellent = Green, Good = Blue, Average = Red+Green, Weak = Red blink"
+
+msgid "CSQ ≥ this value → Green LED"
+msgstr "CSQ ≥ this value → Green LED"
+
+msgid "CSQ ≥ this value → Blue LED"
+msgstr "CSQ ≥ this value → Blue LED"
+
+msgid "CSQ ≥ this value → Red+Green LED"
+msgstr "CSQ ≥ this value → Red+Green LED"
+
+msgid "Service Control"
+msgstr "Service Control"
+
+msgid "Restart LED service"
+msgstr "Restart LED service"
+
+msgid "Restart"
+msgstr "Restart"
+
+msgid "Restarting…"
+msgstr "Restarting…"
+
+msgid "Restarting LED service, please wait…"
+msgstr "Restarting LED service, please wait…"
+
+msgid "LED service restarted."
+msgstr "LED service restarted."
+
+msgid "Settings saved. LED service restarted."
+msgstr "Settings saved. LED service restarted."
+
+msgid "Running"
+msgstr "Running"
+
+msgid "Stopped"
+msgstr "Stopped"

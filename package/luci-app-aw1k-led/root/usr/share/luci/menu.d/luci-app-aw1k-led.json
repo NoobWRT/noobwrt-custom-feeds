@@ -1,0 +1,13 @@
+{
+    "admin/system/aw1k-led": {
+        "title": "AW1000 LEDs",
+        "order": 60,
+        "action": {
+            "type": "view",
+            "path": "aw1k-led/settings"
+        },
+        "depends": {
+            "acl": [ "luci-app-aw1k-led" ]
+        }
+    }
+}

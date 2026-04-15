@@ -1,0 +1,33 @@
+config ledstatus 'settings'
+	option enabled '1'
+	option interval '20'
+	option modem_port '/dev/ttyUSB2'
+
+	# 5G SINR thresholds
+	option sinr_excellent '25'
+	option sinr_good '15'
+	option sinr_average '5'
+
+	# CSQ signal thresholds
+	option csq_excellent '20'
+	option csq_good '14'
+	option csq_average '10'
+
+	# Night Mode
+	option night_enabled '0'
+	option night_start '21:00'
+	option night_end '07:00'
+
+	# 5G LED colors (red/green/blue/yellow/cyan/magenta/white/off)
+	option color_5g_excellent 'green'
+	option color_5g_good 'blue'
+	option color_5g_average 'yellow'
+	option color_5g_poor 'magenta'
+	option color_5g_none 'red'
+
+	# Signal (CSQ) LED colors
+	option color_sig_excellent 'green'
+	option color_sig_good 'blue'
+	option color_sig_average 'yellow'
+	option color_sig_weak 'red'
+	option color_sig_offline 'magenta'

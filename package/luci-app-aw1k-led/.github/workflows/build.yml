@@ -68,3 +68,18 @@ jobs:
           files: ${{ runner.temp }}/release-files/*
           fail_on_unmatched_files: true
           overwrite: true
+
+  release-notes:
+    name: Generate Release Notes
+    runs-on: ubuntu-latest
+    needs: [meta, release]
+    if: always() && needs.release.result == 'success'
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - uses: nooblk-98/copilot-release-notes-action@v1.1.6
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          copilot_model: gpt-4o
+          tag_name: ${{ needs.meta.outputs.release_tag }}

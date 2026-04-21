@@ -109,6 +109,22 @@ Get available reboot methods (hard/soft).
 ubus call qmodem get_reboot_caps '{"config_section":"modem1"}'
 ```
 
+#### get_stats
+Get modem traffic statistics. This is currently only available for Quectel modems. Unsupported vendors return `available: false` and zeroed counters.
+```bash
+ubus call qmodem get_stats '{"config_section":"modem1"}'
+```
+
+Response example:
+```json
+{
+  "available": true,
+  "updated_at": 1710000000,
+  "total_rx_bytes": 4618,
+  "total_tx_bytes": 3832
+}
+```
+
 #### get_sms
 Get SMS messages.
 ```bash
@@ -121,6 +137,19 @@ ubus call qmodem get_sms '{"config_section":"modem1"}'
 Clear the dial log.
 ```bash
 ubus call qmodem clear_dial_log '{"config_section":"modem1"}'
+```
+
+#### clear_stats
+Clear modem traffic statistics. This is currently only available for Quectel modems.
+```bash
+ubus call qmodem clear_stats '{"config_section":"modem1"}'
+```
+
+Response example:
+```json
+{
+  "result": true
+}
 ```
 
 #### delete_sms
@@ -247,6 +276,26 @@ config modem 'modem1'
     option path '1-1.4'
     ...
 ```
+
+### Usage Stats Persistence
+The optional usage stats persistence service is managed by `/etc/init.d/qmodem_usage_stats`.
+
+UCI options:
+
+```uci
+config main 'main'
+    option usage_stats_nvram_save '0'
+    option usage_stats_nvram_interval '300'
+
+config modem-device 'modem1'
+    option usage_stats_nvram_save '1'
+    option usage_stats_nvram_interval '600'
+```
+
+Notes:
+- Only Quectel modems support `get_stats`, `clear_stats`, and NVM persistence.
+- The persistence service is enabled by default, but actual NVM writes are disabled by default until `usage_stats_nvram_save` is set to `1`.
+- Intervals below 60 seconds are clamped to 60 seconds to reduce module flash wear.
 
 ### ACL Permissions
 Edit `/usr/share/rpcd/acl.d/qmodem.json` to configure access control for different user groups.

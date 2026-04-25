@@ -115,6 +115,24 @@ ubus call qmodem get_reboot_caps '{"config_section":"modem1"}'
 ubus call qmodem get_sms '{"config_section":"modem1"}'
 ```
 
+#### get_traffic_reset_schedule
+读取流量自动清零计划。若未配置，返回完整默认结构。
+```bash
+ubus call qmodem get_traffic_reset_schedule '{"config_section":"modem1"}'
+```
+
+响应示例:
+```json
+{
+  "enabled": false,
+  "reset_type": "monthly",
+  "hour": 0,
+  "day": 1,
+  "minute": 0,
+  "line": null
+}
+```
+
 ### 控制方法 (写入)
 
 #### clear_dial_log
@@ -137,6 +155,32 @@ ubus call qmodem do_reboot '{"config_section":"modem1","params":{"method":"hard"
 
 # 软重启
 ubus call qmodem do_reboot '{"config_section":"modem1","params":{"method":"soft"}}'
+```
+
+#### set_traffic_reset_schedule
+设置流量自动清零计划。写入时会先移除旧计划，再按最新参数更新 UCI 和 cron；若 `enabled` 为 `false`，则仅清除旧计划。
+```bash
+ubus call qmodem set_traffic_reset_schedule '{
+  "config_section":"modem1",
+  "enabled":true,
+  "reset_type":"monthly",
+  "hour":3,
+  "day":1
+}'
+```
+
+响应示例:
+```json
+{
+  "result": true,
+  "config_section": "modem1",
+  "enabled": true,
+  "reset_type": "monthly",
+  "hour": 3,
+  "day": 1,
+  "minute": 0,
+  "line": "0 3 1 * * QMODEM_TRAFFIC_RESET_SECTION='modem1' ubus call qmodem clear_stats '{\"config_section\":\"modem1\"}' >/dev/null 2>&1"
+}
 ```
 
 #### send_at

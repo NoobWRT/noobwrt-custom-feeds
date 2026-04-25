@@ -131,6 +131,24 @@ Get SMS messages.
 ubus call qmodem get_sms '{"config_section":"modem1"}'
 ```
 
+#### get_traffic_reset_schedule
+Read the automatic traffic reset schedule. If no schedule is configured yet, the method returns a complete default structure.
+```bash
+ubus call qmodem get_traffic_reset_schedule '{"config_section":"modem1"}'
+```
+
+Response example:
+```json
+{
+  "enabled": false,
+  "reset_type": "monthly",
+  "hour": 0,
+  "day": 1,
+  "minute": 0,
+  "line": null
+}
+```
+
 ### Control Methods (Write)
 
 #### clear_dial_log
@@ -166,6 +184,32 @@ ubus call qmodem do_reboot '{"config_section":"modem1","params":{"method":"hard"
 
 # Soft reboot
 ubus call qmodem do_reboot '{"config_section":"modem1","params":{"method":"soft"}}'
+```
+
+#### set_traffic_reset_schedule
+Set the automatic traffic reset schedule. The backend removes the old schedule first, then updates both UCI and cron with the latest values. If `enabled` is `false`, the old schedule is removed without creating a new one.
+```bash
+ubus call qmodem set_traffic_reset_schedule '{
+  "config_section":"modem1",
+  "enabled":true,
+  "reset_type":"monthly",
+  "hour":3,
+  "day":1
+}'
+```
+
+Response example:
+```json
+{
+  "result": true,
+  "config_section": "modem1",
+  "enabled": true,
+  "reset_type": "monthly",
+  "hour": 3,
+  "day": 1,
+  "minute": 0,
+  "line": "0 3 1 * * QMODEM_TRAFFIC_RESET_SECTION='modem1' ubus call qmodem clear_stats '{\"config_section\":\"modem1\"}' >/dev/null 2>&1"
+}
 ```
 
 #### send_at

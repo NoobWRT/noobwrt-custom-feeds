@@ -1,8 +1,8 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-aw1k-led
-PKG_VERSION:=1.0.0
-PKG_RELEASE:=3
+PKG_VERSION:=1.0.1
+PKG_RELEASE:=0
 
 PKG_MAINTAINER:=NoobLk
 PKG_LICENSE:=GPL-3.0-or-later
@@ -12,8 +12,11 @@ LUCI_DEPENDS:=+luci-base +sms-tool
 
 include $(TOPDIR)/feeds/luci/luci.mk
 
-# call BuildPackage - OpenWrt buildroot signature
 define Package/$(PKG_NAME)/install
+	$(INSTALL_DIR) $(1)/www/luci-static/resources/view/aw1k-led
+	$(INSTALL_DATA) ./htdocs/luci-static/resources/view/aw1k-led/settings.js \
+		$(1)/www/luci-static/resources/view/aw1k-led/settings.js
+
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./root/etc/init.d/ledstatus $(1)/etc/init.d/ledstatus
 
@@ -33,6 +36,9 @@ define Package/$(PKG_NAME)/install
 
 	$(INSTALL_DIR) $(1)/usr/share/rpcd/acl.d
 	$(INSTALL_DATA) ./root/usr/share/rpcd/acl.d/luci-app-aw1k-led.json $(1)/usr/share/rpcd/acl.d/luci-app-aw1k-led.json
+
+	$(INSTALL_DIR) $(1)/usr/libexec/rpcd
+	$(INSTALL_BIN) ./root/usr/libexec/rpcd/luci.aw1k-led $(1)/usr/libexec/rpcd/luci.aw1k-led
 endef
 
 $(eval $(call BuildPackage,$(PKG_NAME)))

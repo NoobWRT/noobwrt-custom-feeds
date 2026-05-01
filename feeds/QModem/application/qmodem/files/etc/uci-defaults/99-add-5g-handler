@@ -38,7 +38,7 @@ modem_settings()
 		#usb slot 2-1
 		add_usb_slot_cfg "eth2" "2-1" "eth2" "" "" "" "" "" ""\
 		#set led script
-		uci set qmodem.wwan0.led_script="c2000-max"
+		uci set qmodem.eth2.led_script="c2000_max"
 		;;
 	hiveton,h5000m)
 		#usb slot

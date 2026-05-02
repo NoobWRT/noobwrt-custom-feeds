@@ -311,6 +311,7 @@ return view.extend({
 				if (uci.get('tailscale', 'settings') === null) {
 					// No existing settings found; initialize UCI with RPC settings
 					uci.add('tailscale', 'settings', 'settings');
+					uci.set('tailscale', 'settings', 'service_enabled', '1');
 					uci.set('tailscale', 'settings', 'fw_mode', 'nftables');
 					uci.set('tailscale', 'settings', 'accept_routes', (settings_from_rpc.accept_routes ? '1' : '0'));
 					uci.set('tailscale', 'settings', 'advertise_exit_node', ((settings_from_rpc.advertise_exit_node || false) ? '1' : '0'));

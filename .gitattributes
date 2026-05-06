@@ -1,2 +1,4 @@
 # Auto detect text files and perform LF normalization
 * text=auto
+# Preserve original line endings in patch files (upstream may use CRLF)
+*.patch binary

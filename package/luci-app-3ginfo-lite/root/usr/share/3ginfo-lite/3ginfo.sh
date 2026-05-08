@@ -409,6 +409,7 @@ case "$MODE_NUM" in
 	5*) MODE="HSUPA";;
 	6*) MODE="HSPA";;
 	7*) MODE="LTE";;
+	16*) MODE="LTE";; # returned by FG621 in LTE-A mode
 	 *) MODE="-";;
 esac
 

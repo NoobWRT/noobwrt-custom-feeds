@@ -42,6 +42,26 @@ get_default_metric()
     config_foreach _get_default_metric_by_slot
 }
 
+get_slot_scan_priority()
+{
+    target_slot=$1
+    scan_priority="pcie"
+    config_load qmodem
+    config_foreach _get_scan_priority_by_slot modem-slot
+    case "$scan_priority" in
+        usb|pcie) ;;
+        *) scan_priority="pcie" ;;
+    esac
+}
+
+get_pcie_slot_by_associated_usb()
+{
+    target_slot=$1
+    associated_pcie_slot=""
+    config_load qmodem
+    config_foreach _get_pcie_slot_by_associated_usb modem-slot
+}
+
 _get_associated_usb_by_path()
 {
     local cfg="$1"
@@ -83,22 +103,44 @@ _get_led_sript_by_slot()
     fi
 }
 
+_get_scan_priority_by_slot()
+{
+    local cfg="$1"
+    config_get _get_slot $cfg slot
+    if [ "$target_slot" == "$_get_slot" ];then
+        config_get scan_priority $cfg scan_priority "pcie"
+    fi
+}
+
+_get_pcie_slot_by_associated_usb()
+{
+    local cfg="$1"
+    local type
+    local cfg_associated_usb
+
+    config_get type "$cfg" type
+    [ "$type" == "pcie" ] || return
+    config_get cfg_associated_usb "$cfg" associated_usb
+    [ "$target_slot" == "$cfg_associated_usb" ] || return
+    config_get associated_pcie_slot "$cfg" slot
+}
+
 scan()
 {
-    local slot_type=$1
-    if [ "$slot_type" == "usb" ] || [ -z "$slot_type" ];then
-        scan_usb
-        usb_slots=$(echo $usb_slots | uniq )
-        for slot in $usb_slots; do
-            slot_type="usb"
-            add $slot
-        done
-    fi
-    if [ "$slot_type" == "pcie" ] || [ -z "$slot_type" ];then
+    local requested_slot_type=$1
+    if [ "$requested_slot_type" == "pcie" ] || [ -z "$requested_slot_type" ];then
         scan_pcie
         pcie_slots=$(echo $pcie_slots | uniq )
         for slot in $pcie_slots; do
             slot_type="pcie"
+            add $slot
+        done
+    fi
+    if [ "$requested_slot_type" == "usb" ] || [ -z "$requested_slot_type" ];then
+        scan_usb
+        usb_slots=$(echo $usb_slots | uniq )
+        for slot in $usb_slots; do
+            slot_type="usb"
             add $slot
         done
     fi
@@ -201,52 +243,63 @@ scan_pcie_slot_interfaces()
     fi
     m_debug "net_devices: $net_devices dun_devices: $dun_devices"
     at_ports="$dun_devices" 
-    [ -n "$net_devices" ] && get_associate_usb $slot
-    if [ -n "$associated_usb" ] && [ -d "/sys/bus/usb/devices/$associated_usb" ]; then
-        echo checking associated_usb: $associated_usb
-        local assoc_usb_path="/sys/bus/usb/devices/$associated_usb"
-        local slot_interfaces=$(ls $assoc_usb_path | grep -E "$associated_usb:[0-9]\.[0-9]+")
-        echo checking slot_interfaces: $slot_interfaces
-        slot_vid=$(cat "$assoc_usb_path/$interface/idVendor")
-        slot_pid=$(cat "$assoc_usb_path/$interface/idProduct")
-        modem_port_rule=$(cat /usr/share/qmodem/modem_port_rule.json)
-        modem_port_config=$(echo $modem_port_rule | jq --arg id "$slot_vid:$slot_pid" '.modem_port_rule.usb[$id]')
-        included_ports=$(echo $modem_port_config | jq -r '.include // empty')
-        for interface in $slot_interfaces; do
-            unset device
-            unset ttyUSB_device
-            unset ttyACM_device
-            interface_driver_path="$assoc_usb_path/$interface/driver"
-            if_port=$(echo "$interface" | grep -oE "[0-9]+\.[0-9]+$" || echo "")
-            include_ports=$(echo $included_ports | jq --arg port "$if_port" 'index($port)')
-            [ ! -d "$interface_driver_path" ] && continue
-            interface_driver=$(basename $(readlink $interface_driver_path))
-            [ -z "$interface_driver" ] && continue
-            case $interface_driver in
-                option|\
-                cdc_acm|\
-                usbserial_generic|\
-                qcserial|\
-                usbserial)
-                    ttyUSB_device=$(ls "$assoc_usb_path/$interface/" | grep ttyUSB)
-                    ttyACM_device=$(ls "$assoc_usb_path/$interface/" | grep ttyACM)
-                    [ -z "$ttyUSB_device" ] && [ -z "$ttyACM_device" ] && continue
-                    if [ -n "$included_ports" ]; then
-                        if [ -n "$if_port" ]; then
-                            index=$(echo $included_ports | jq --arg port "$if_port" 'index($port)')
-                            m_debug "included_ports: $included_ports if_port: $if_port index: $index"
-                            [ "$index" != "null" ] || continue
-                        fi
-                    fi
-                    [ -n "$ttyUSB_device" ] && device="$ttyUSB_device"
-                    [ -n "$ttyACM_device" ] && device="$ttyACM_device"
-                    [ -z "$tty_devices" ] && tty_devices="$device" || tty_devices="$tty_devices $device"
-                ;;
-            esac 
-        done
-        at_ports="$dun_devices $tty_devices"
-    fi
     validate_at_port
+}
+
+scan_associated_usb_slot_interfaces()
+{
+    local slot=$1
+    tty_devices=""
+    associated_usb=""
+
+    get_associate_usb $slot
+    [ -n "$associated_usb" ] || return 1
+    [ -d "/sys/bus/usb/devices/$associated_usb" ] || return 1
+
+    m_debug "checking associated_usb: $associated_usb"
+    local assoc_usb_path="/sys/bus/usb/devices/$associated_usb"
+    local slot_interfaces=$(ls $assoc_usb_path | grep -E "$associated_usb:[0-9]\.[0-9]+")
+    slot_vid=$(cat "$assoc_usb_path/idVendor")
+    slot_pid=$(cat "$assoc_usb_path/idProduct")
+    modem_port_rule=$(cat /usr/share/qmodem/modem_port_rule.json)
+    modem_port_config=$(echo $modem_port_rule | jq --arg id "$slot_vid:$slot_pid" '.modem_port_rule.usb[$id]')
+    included_ports=$(echo $modem_port_config | jq -r '.include // empty')
+
+    for interface in $slot_interfaces; do
+        unset device
+        unset ttyUSB_device
+        unset ttyACM_device
+        interface_driver_path="$assoc_usb_path/$interface/driver"
+        if_port=$(echo "$interface" | grep -oE "[0-9]+\.[0-9]+$" || echo "")
+        [ ! -d "$interface_driver_path" ] && continue
+        interface_driver=$(basename $(readlink $interface_driver_path))
+        [ -z "$interface_driver" ] && continue
+        case $interface_driver in
+            option|\
+            cdc_acm|\
+            usbserial_generic|\
+            qcserial|\
+            usbserial)
+                ttyUSB_device=$(ls "$assoc_usb_path/$interface/" | grep ttyUSB)
+                ttyACM_device=$(ls "$assoc_usb_path/$interface/" | grep ttyACM)
+                [ -z "$ttyUSB_device" ] && [ -z "$ttyACM_device" ] && continue
+                if [ -n "$included_ports" ]; then
+                    if [ -n "$if_port" ]; then
+                        index=$(echo $included_ports | jq --arg port "$if_port" 'index($port)')
+                        m_debug "included_ports: $included_ports if_port: $if_port index: $index"
+                        [ "$index" != "null" ] || continue
+                    fi
+                fi
+                [ -n "$ttyUSB_device" ] && device="$ttyUSB_device"
+                [ -n "$ttyACM_device" ] && device="$ttyACM_device"
+                [ -z "$tty_devices" ] && tty_devices="$device" || tty_devices="$tty_devices $device"
+            ;;
+        esac
+    done
+
+    at_ports="$tty_devices"
+    validate_at_port
+    [ -n "$valid_at_ports" ]
 }
 
 scan_usb_slot_interfaces()
@@ -423,6 +476,123 @@ get_modem_model()
     return 0
 }
 
+match_modem_from_valid_at_ports()
+{
+    modem_name=""
+    for trys in $(seq 1 3);do
+        for at_port in $valid_at_ports; do
+            m_debug "try at port $at_port;time $trys"
+            get_modem_model "/dev/$at_port"
+            [ $? -eq 0 ] && break || modem_name=""
+        done
+        [ -n "$modem_name" ] && break
+        sleep 1
+    done
+    [ -n "$modem_name" ]
+}
+
+match_modem_by_id()
+{
+    [ -f "$modem_path/idProduct" ] || return 1
+    [ -f "$modem_path/idVendor" ] || return 1
+
+    m_debug "modem $modem_name not found, try to get modem model by id"
+    product_id=$(cat $modem_path/idProduct)
+    vendor_id=$(cat $modem_path/idVendor)
+    id="$vendor_id:$product_id"
+    get_model_name_by_id $id
+    [ -n "$modem_name" ]
+}
+
+modem_device_has_name_by_slot()
+{
+    local slot=$1
+    local section_name=$(echo $slot | sed 's/[\.:-]/_/g')
+    local name=$(uci -q get qmodem.$section_name.name)
+    [ -n "$name" ]
+}
+
+should_skip_usb_slot_for_pcie_priority()
+{
+    local slot=$1
+
+    get_pcie_slot_by_associated_usb "$slot"
+    [ -n "$associated_pcie_slot" ] || return 1
+
+    get_slot_scan_priority "$associated_pcie_slot"
+    [ "$scan_priority" == "pcie" ] || return 1
+
+    if modem_device_has_name_by_slot "$associated_pcie_slot"; then
+        m_debug "skip usb slot $slot: associated pcie slot $associated_pcie_slot already matched modem name"
+        return 0
+    fi
+
+    return 1
+}
+
+should_skip_pcie_slot_for_usb_priority()
+{
+    local slot=$1
+    local orig_slot_type
+
+    get_slot_scan_priority "$slot"
+    [ "$scan_priority" == "usb" ] || return 1
+
+    associated_usb=""
+    get_associate_usb "$slot"
+    [ -n "$associated_usb" ] || return 1
+
+    if modem_device_has_name_by_slot "$associated_usb"; then
+        m_debug "skip pcie slot $slot: associated usb slot $associated_usb already matched modem name"
+        return 0
+    fi
+
+    if [ -d "/sys/bus/usb/devices/$associated_usb" ]; then
+        orig_slot_type="$slot_type"
+        slot_type="usb"
+        add "$associated_usb"
+        slot_type="$orig_slot_type"
+
+        if modem_device_has_name_by_slot "$associated_usb"; then
+            m_debug "skip pcie slot $slot: associated usb slot $associated_usb matched modem name first"
+            return 0
+        fi
+    fi
+
+    return 1
+}
+
+match_pcie_modem_by_priority()
+{
+    local slot=$1
+    local pcie_at_ports="$at_ports"
+    local pcie_valid_at_ports="$valid_at_ports"
+
+    get_slot_scan_priority "$slot"
+    m_debug "slot $slot scan_priority: $scan_priority"
+
+    if [ "$scan_priority" == "usb" ]; then
+        if scan_associated_usb_slot_interfaces "$slot"; then
+            match_modem_from_valid_at_ports && return 0
+        fi
+
+        at_ports="$pcie_at_ports"
+        valid_at_ports="$pcie_valid_at_ports"
+        match_modem_from_valid_at_ports && return 0
+    else
+        match_modem_from_valid_at_ports && return 0
+
+        if scan_associated_usb_slot_interfaces "$slot"; then
+            match_modem_from_valid_at_ports && return 0
+        fi
+
+        at_ports="$pcie_at_ports"
+        valid_at_ports="$pcie_valid_at_ports"
+    fi
+
+    return 1
+}
+
 add()
 {
     local slot=$1
@@ -441,10 +611,18 @@ add()
     fi
     case $slot_type in
         "usb")
+            if should_skip_usb_slot_for_pcie_priority "$slot"; then
+                lock -u /tmp/lock/modem_add_$slot
+                return
+            fi
             scan_usb_slot_interfaces $slot
             modem_path="/sys/bus/usb/devices/$slot/"
             ;;
         "pcie")
+            if should_skip_pcie_slot_for_usb_priority "$slot"; then
+                lock -u /tmp/lock/modem_add_$slot
+                return
+            fi
             #under test
             scan_pcie_slot_interfaces $slot
             modem_path="/sys/bus/pci/devices/$slot/"
@@ -452,22 +630,17 @@ add()
     esac
     #if no netdev return
     [ -z "$net_devices" ] && lock -u /tmp/lock/modem_add_$slot && return
-    for trys in $(seq 1 3);do
-        for at_port in $valid_at_ports; do
-            m_debug "try at port $at_port;time $trys"
-            get_modem_model "/dev/$at_port"
-            [ $? -eq 0 ] && break || modem_name=""
-        done
-        [ -n "$modem_name" ] && break
-        sleep 1
-    done
-    if [ -z "$modem_name" ];then
-        m_debug "modem $modem_name not found, try to get modem model by id"
-        product_id=$(cat $modem_path/idProduct)
-        vendor_id=$(cat $modem_path/idVendor)
-        id="$vendor_id:$product_id"
-        get_model_name_by_id $id
-    fi
+
+    case $slot_type in
+        "pcie")
+            match_pcie_modem_by_priority "$slot"
+            ;;
+        *)
+            match_modem_from_valid_at_ports
+            ;;
+    esac
+
+    [ -z "$modem_name" ] && match_modem_by_id
     [ -z "$modem_name" ] && lock -u /tmp/lock/modem_add_$slot && return
     m_debug  "add modem $modem_name slot $slot slot_type $slot_type"
     if [ -n "$is_exist" ]; then

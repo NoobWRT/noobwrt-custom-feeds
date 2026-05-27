@@ -85,6 +85,7 @@ srm821 | unisoc |✔ usb(ecm,rndis,ncm) | ✘
 Model | Platform | USB  | PCIe 
 --- | --- | --- | ---
 em9190 | qualcomm |✔ usb(mbim,rmnet) | ✔ pcie(mbim,rmnet)
+em9291 | qualcomm |✔ usb(mbim,rmnet) | ✔ pcie(mbim,rmnet)
 mc7354 | lte |✔ usb(qmi) | ✘
 mc7355 | lte |✔ usb(qmi) | ✘
 

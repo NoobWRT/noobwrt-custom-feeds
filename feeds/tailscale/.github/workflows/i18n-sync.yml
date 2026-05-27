@@ -1,0 +1,47 @@
+name: i18n Sync
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v6
+
+      - name: Checkout openwrt/luci
+        uses: actions/checkout@v6
+        with:
+          repository: openwrt/luci
+          path: luci
+          fetch-depth: 1
+
+      - name: Install dependencies
+        run: sudo apt-get update && sudo apt-get install -y gettext git
+
+      - name: Replace and sync i18n
+        run: |
+          APP=luci-app-tailscale-community
+          rm -rf luci/applications/$APP
+          cp -r $APP luci/applications/$APP
+          cd luci
+          ./build/i18n-sync.sh ./applications/$APP
+          cd ..
+          rm -rf $APP/po
+          cp -r luci/applications/$APP/po $APP/po
+
+      - name: Create commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add luci-app-tailscale-community/po/
+          if git diff --cached --quiet; then
+            echo "No changes to commit"
+          else
+            git commit -m "chore: sync i18n translations"
+            git push
+          fi

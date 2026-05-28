@@ -94,7 +94,7 @@ msgstr "连接信息"
 
 #: applications/luci-app-tailscale-community/htdocs/luci-static/resources/view/tailscale.js:27
 msgid "Controls how Tailscale DNS is handled."
-msgstr ""
+msgstr "控制 Tailscale DNS 的处理方式。"
 
 #: applications/luci-app-tailscale-community/htdocs/luci-static/resources/view/tailscale.js:498
 msgid ""
@@ -139,7 +139,7 @@ msgstr "已禁用"
 
 #: applications/luci-app-tailscale-community/htdocs/luci-static/resources/view/tailscale.js:27
 msgid "Disabled: system DNS only."
-msgstr ""
+msgstr "已禁用：使用系统指定DNS模式"
 
 #: applications/luci-app-tailscale-community/htdocs/luci-static/resources/view/tailscale.js:487
 msgid "Disconnect from Tailscale and expire current node key."
@@ -311,7 +311,7 @@ msgstr "登出失败: %s"
 
 #: applications/luci-app-tailscale-community/htdocs/luci-static/resources/view/tailscale.js:27
 msgid "MagicDNS: Tailscale overrides resolv.conf."
-msgstr ""
+msgstr "MagicDNS:Tailscale将根据设置覆写系统resolv.conf配置"
 
 #: applications/luci-app-tailscale-community/htdocs/luci-static/resources/view/tailscale.js:88
 msgid "N/A"
@@ -351,7 +351,7 @@ msgstr "OpenWrt 转发"
 
 #: applications/luci-app-tailscale-community/htdocs/luci-static/resources/view/tailscale.js:27
 msgid "OpenWrt Forward: MagicDNS via dnsmasq forwarding.(Only support ts.net)"
-msgstr ""
+msgstr "OpenWrt 转发：通过dnsmasq转发MagicDNS（仅支持 ts.net域名）。"
 
 #: applications/luci-app-tailscale-community/htdocs/luci-static/resources/view/tailscale.js:471
 msgid ""

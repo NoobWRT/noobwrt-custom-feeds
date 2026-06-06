@@ -131,7 +131,11 @@ modem_settings()
 		uci set qmodem.usb0.scan_priority="pcie"
 		#pcie slot
 		uci set qmodem.pcie0="modem-slot"
-		uci set qmodem.pcie0.slot="0002:01:00.0"
+		if [ "$board" = "misectel,m01k43" ]; then
+			uci set qmodem.pcie0.slot="0000:01:00.0"
+		else
+			uci set qmodem.pcie0.slot="0002:01:00.0"
+		fi
 		uci set qmodem.pcie0.type="pcie"
 		uci set	qmodem.pcie0.associated_usb='2-1'
 		uci set qmodem.pcie0.alias="pcie0"

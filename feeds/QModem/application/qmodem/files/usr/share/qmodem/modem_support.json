@@ -1718,6 +1718,18 @@
                     "mbim"
                 ]
             },
+	    "fm160-eau": {
+                "manufacturer": "fibocom",
+                "platform": "qualcomm",
+                "data_interface": "pcie",
+                "pdp_index": "1",
+                "modes": [
+                    "qmi",
+                    "mbim"
+                ],
+		"boost_mode":true,
+		"boost_gpio":"5gpwrkey"
+            },
             "fm170-eau": {
                 "manufacturer": "fibocom",
                 "platform": "qualcomm",

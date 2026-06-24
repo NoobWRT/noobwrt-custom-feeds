@@ -89,18 +89,18 @@ add_bar_info_entry()
 
 add_speed_entry()
 {
-    rate=$1
-    type=$2
+    type=$1
+    rate=$2
     if [ -z "$rate" ]; then
         return
     fi
     rate=`rate_convert $rate`
     case $type in
         "rx")
-            add_plain_info_entry "Rx Rate" "$rate" "Transmit Rate"
+            add_plain_info_entry "Rx Rate" "$rate" "Receive Rate"
             ;;
         "tx")
-            add_plain_info_entry "Tx Rate" "$rate" "Receive Rate"
+            add_plain_info_entry "Tx Rate" "$rate" "Transmit Rate"
             ;;
         *)
             return
@@ -569,6 +569,9 @@ hard_reboot()
     source /lib/functions.sh
     config_load qmodem
     config_foreach get_gpio_by_slot modem-slot
+    if [ -z "$gpio" ] || [ -z "$gpio_up" ] || [ -z "$gpio_down" ]; then
+        config_foreach get_gpio_by_device modem-device
+    fi
     gpio="/sys/class/gpio/$gpio/value"
     [ ! -f "$gpio" ] || [ -z "$gpio_up" ] || [ -z "$gpio_down" ] && {
         soft_reboot
@@ -592,11 +595,25 @@ get_gpio_by_slot()
     fi
 }
 
+get_gpio_by_device()
+{
+    local cfg="$1"
+
+    [ "$config_section" = "$cfg" ] || return
+
+    config_get gpio "$cfg" gpio
+    config_get gpio_up "$cfg" gpio_up
+    config_get gpio_down "$cfg" gpio_down
+}
+
 get_reboot_caps()
 {
     source /lib/functions.sh
     config_load qmodem
     config_foreach get_gpio_by_slot modem-slot
+    if [ -z "$gpio" ] || [ -z "$gpio_up" ] || [ -z "$gpio_down" ]; then
+        config_foreach get_gpio_by_device modem-device
+    fi
     json_init
     json_add_object "reboot_caps"
     json_add_int "soft_reboot_caps" "1"

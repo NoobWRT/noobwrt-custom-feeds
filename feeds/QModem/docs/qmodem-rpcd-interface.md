@@ -103,6 +103,78 @@ Get network preference settings.
 ubus call qmodem get_network_prefer '{"config_section":"modem1"}'
 ```
 
+#### get_current_band_capabilities
+Check whether `get_current_band` is supported by the current modem vendor implementation.
+```bash
+ubus call qmodem get_current_band_capabilities '{"config_section":"modem1"}'
+```
+
+Response example:
+```json
+{
+  "current_band_capabilities": {
+    "supported": true,
+    "vendor": "fibocom",
+    "method": "AT+GTCCINFO?",
+    "schema": "current_band"
+  }
+}
+```
+
+#### get_current_band
+Get the currently connected serving band. The response schema is vendor-neutral; Quectel and Fibocom are supported in the first version.
+```bash
+ubus call qmodem get_current_band '{"config_section":"modem1"}'
+```
+
+Response example:
+```json
+{
+  "current_band": {
+    "status": "ok",
+    "vendor": "quectel",
+    "network_mode": "EN-DC",
+    "cells": [
+      {
+        "role": "pcc",
+        "rat": "LTE",
+        "band": "3",
+        "band_name": "LTE B3",
+        "channel": "1300",
+        "channel_type": "EARFCN",
+        "pci": "123",
+        "ul_bandwidth": "20",
+        "dl_bandwidth": "20",
+        "scs": ""
+      },
+      {
+        "role": "nsa",
+        "rat": "NR",
+        "band": "78",
+        "band_name": "NR n78",
+        "channel": "627264",
+        "channel_type": "NR-ARFCN",
+        "pci": "293",
+        "ul_bandwidth": "",
+        "dl_bandwidth": "100",
+        "scs": "30kHz"
+      }
+    ]
+  }
+}
+```
+
+Return fields:
+- `status`: `ok`, `not_registered`, or `unsupported`.
+- `vendor`: modem vendor implementation that produced the result.
+- `network_mode`: normalized mode such as `LTE`, `WCDMA`, `NR5G-SA`, or `EN-DC`.
+- `cells`: serving cells using the same schema for all vendors.
+- `role`: `pcc` for primary serving cell, `scc` for carrier aggregation secondary cells, or `nsa` for the NR leg in EN-DC.
+- `rat`: radio access technology, currently `WCDMA`, `LTE`, or `NR`.
+- `band` / `band_name`: normalized band number and display name.
+- `channel` / `channel_type`: channel number and its type, for example `EARFCN`, `UARFCN`, or `NR-ARFCN`.
+- `pci`, `ul_bandwidth`, `dl_bandwidth`, `scs`: optional values; empty string means the vendor command did not expose the value.
+
 #### get_reboot_caps
 Get available reboot methods (hard/soft).
 ```bash

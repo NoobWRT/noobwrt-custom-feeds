@@ -10,7 +10,7 @@ msgstr ""
 msgid "$1"
 msgstr ""
 
-#: generic.sh:262
+#: generic.sh:340
 msgid "$arfcn_label"
 msgstr ""
 
@@ -119,7 +119,7 @@ msgstr ""
 msgid "Absolute Radio Frequency Channel Number"
 msgstr ""
 
-#: generic.sh:221
+#: generic.sh:299
 #: vendor/huawei.sh:382
 #: vendor/huawei.sh:514
 #: vendor/neoway.sh:719
@@ -301,9 +301,9 @@ msgstr ""
 msgid "Back"
 msgstr ""
 
-#: generic.sh:150
-#: generic.sh:186
-#: generic.sh:222
+#: generic.sh:228
+#: generic.sh:264
+#: generic.sh:300
 #: vendor/foxconn.sh:582
 #: vendor/foxconn.sh:629
 #: vendor/gosuncn.sh:601
@@ -332,7 +332,7 @@ msgstr ""
 msgid "Band"
 msgstr ""
 
-#: generic.sh:263
+#: generic.sh:341
 msgid "Band (CA)"
 msgstr ""
 
@@ -405,9 +405,9 @@ msgstr ""
 msgid "Celcom (MY)"
 msgstr ""
 
-#: generic.sh:147
-#: generic.sh:183
-#: generic.sh:219
+#: generic.sh:225
+#: generic.sh:261
+#: generic.sh:297
 #: vendor/foxconn.sh:578
 #: vendor/foxconn.sh:634
 #: vendor/gosuncn.sh:599
@@ -608,7 +608,7 @@ msgstr ""
 msgid "Confirm Delete All"
 msgstr ""
 
-#: generic.sh:527
+#: generic.sh:605
 msgid "Connect Status"
 msgstr ""
 
@@ -681,9 +681,9 @@ msgstr ""
 msgid "DL"
 msgstr ""
 
-#: generic.sh:152
-#: generic.sh:188
-#: generic.sh:224
+#: generic.sh:230
+#: generic.sh:266
+#: generic.sh:302
 #: vendor/foxconn.sh:584
 #: vendor/foxconn.sh:630
 #: vendor/huawei.sh:384
@@ -702,7 +702,7 @@ msgstr ""
 msgid "DL Bandwidth"
 msgstr ""
 
-#: generic.sh:265
+#: generic.sh:343
 msgid "DL Bandwidth (CA)"
 msgstr ""
 
@@ -886,7 +886,7 @@ msgstr ""
 msgid "E-Plus (DE)"
 msgstr ""
 
-#: generic.sh:185
+#: generic.sh:263
 #: vendor/foxconn.sh:580
 #: vendor/foxconn.sh:636
 #: vendor/huawei.sh:531
@@ -897,7 +897,7 @@ msgstr ""
 msgid "E-UTRA Absolute Radio Frequency Channel Number"
 msgstr ""
 
-#: generic.sh:155
+#: generic.sh:233
 #: vendor/huawei.sh:582
 #: vendor/meig.sh:627
 #: vendor/neoway.sh:760
@@ -1645,7 +1645,7 @@ msgstr ""
 msgid "Loading..."
 msgstr ""
 
-#: generic.sh:146
+#: generic.sh:224
 #: vendor/gosuncn.sh:598
 #: vendor/gosuncn.sh:677
 #: vendor/huawei.sh:575
@@ -1767,9 +1767,9 @@ msgstr ""
 msgid "Metric"
 msgstr ""
 
-#: generic.sh:144
-#: generic.sh:180
-#: generic.sh:216
+#: generic.sh:222
+#: generic.sh:258
+#: generic.sh:294
 #: vendor/foxconn.sh:575
 #: vendor/foxconn.sh:631
 #: vendor/huawei.sh:376
@@ -1801,9 +1801,9 @@ msgstr ""
 msgid "Mobile Equipment (ME)"
 msgstr ""
 
-#: generic.sh:145
-#: generic.sh:181
-#: generic.sh:217
+#: generic.sh:223
+#: generic.sh:259
+#: generic.sh:295
 #: vendor/foxconn.sh:576
 #: vendor/foxconn.sh:632
 #: vendor/huawei.sh:377
@@ -1875,7 +1875,7 @@ msgstr ""
 msgid "Modem Name"
 msgstr ""
 
-#: generic.sh:543
+#: generic.sh:621
 msgid "Modem Offline"
 msgstr ""
 
@@ -2240,8 +2240,8 @@ msgstr ""
 msgid "Phone Number"
 msgstr ""
 
-#: generic.sh:184
-#: generic.sh:220
+#: generic.sh:262
+#: generic.sh:298
 #: vendor/foxconn.sh:579
 #: vendor/foxconn.sh:635
 #: vendor/gosuncn.sh:609
@@ -2265,7 +2265,7 @@ msgstr ""
 msgid "Physical Cell ID"
 msgstr ""
 
-#: generic.sh:261
+#: generic.sh:339
 msgid "Physical Cell ID (CA)"
 msgstr ""
 
@@ -2337,7 +2337,7 @@ msgstr ""
 msgid "Pre Dial Delay"
 msgstr ""
 
-#: generic.sh:149
+#: generic.sh:227
 #: vendor/gosuncn.sh:600
 #: vendor/gosuncn.sh:679
 #: vendor/huawei.sh:578
@@ -2415,8 +2415,8 @@ msgstr ""
 msgid "RX Power (dBm)"
 msgstr ""
 
-#: generic.sh:192
-#: generic.sh:228
+#: generic.sh:270
+#: generic.sh:306
 #: vendor/foxconn.sh:590
 #: vendor/huawei.sh:544
 #: vendor/huawei.sh:566
@@ -2454,7 +2454,7 @@ msgstr ""
 msgid "Receive Rate"
 msgstr ""
 
-#: generic.sh:153
+#: generic.sh:231
 #: vendor/huawei.sh:387
 #: vendor/huawei.sh:581
 #: vendor/meig.sh:626
@@ -2463,9 +2463,9 @@ msgstr ""
 msgid "Received Signal Code Power"
 msgstr ""
 
-#: generic.sh:156
-#: generic.sh:193
-#: generic.sh:229
+#: generic.sh:234
+#: generic.sh:271
+#: generic.sh:307
 #: vendor/foxconn.sh:589
 #: vendor/huawei.sh:390
 #: vendor/huawei.sh:400
@@ -2501,8 +2501,8 @@ msgstr ""
 msgid "Redial command sent successfully"
 msgstr ""
 
-#: generic.sh:189
-#: generic.sh:225
+#: generic.sh:267
+#: generic.sh:303
 #: vendor/foxconn.sh:640
 #: vendor/huawei.sh:397
 #: vendor/huawei.sh:408
@@ -2524,9 +2524,9 @@ msgstr ""
 msgid "Reference Signal Received Power"
 msgstr ""
 
-#: generic.sh:154
-#: generic.sh:190
-#: generic.sh:226
+#: generic.sh:232
+#: generic.sh:268
+#: generic.sh:304
 #: vendor/foxconn.sh:586
 #: vendor/foxconn.sh:639
 #: vendor/huawei.sh:398
@@ -2594,7 +2594,7 @@ msgstr ""
 msgid "Rostelecom (RU)"
 msgstr ""
 
-#: generic.sh:157
+#: generic.sh:235
 #: vendor/huawei.sh:579
 #: vendor/neoway.sh:755
 msgid "Routing Area Code"
@@ -2637,7 +2637,7 @@ msgstr ""
 msgid "SIM Card SMS Management"
 msgstr ""
 
-#: generic.sh:542
+#: generic.sh:620
 msgid "SIM Error,Error code:"
 msgstr ""
 
@@ -2948,8 +2948,8 @@ msgstr ""
 msgid "Setting..."
 msgstr ""
 
-#: generic.sh:191
-#: generic.sh:227
+#: generic.sh:269
+#: generic.sh:305
 #: vendor/meig.sh:573
 #: vendor/meig.sh:589
 #: vendor/meig.sh:600
@@ -3173,8 +3173,8 @@ msgstr ""
 msgid "Total Messages"
 msgstr ""
 
-#: generic.sh:182
-#: generic.sh:218
+#: generic.sh:260
+#: generic.sh:296
 #: vendor/gosuncn.sh:607
 #: vendor/gosuncn.sh:686
 #: vendor/neoway.sh:732
@@ -3229,9 +3229,9 @@ msgstr ""
 msgid "UL"
 msgstr ""
 
-#: generic.sh:151
-#: generic.sh:187
-#: generic.sh:223
+#: generic.sh:229
+#: generic.sh:265
+#: generic.sh:301
 #: vendor/foxconn.sh:583
 #: vendor/huawei.sh:534
 #: vendor/huawei.sh:559
@@ -3243,7 +3243,7 @@ msgstr ""
 msgid "UL Bandwidth"
 msgstr ""
 
-#: generic.sh:264
+#: generic.sh:342
 msgid "UL Bandwidth (CA)"
 msgstr ""
 
@@ -3272,7 +3272,7 @@ msgstr ""
 msgid "USB scan failed"
 msgstr ""
 
-#: generic.sh:148
+#: generic.sh:226
 #: vendor/huawei.sh:577
 #: vendor/neoway.sh:753
 msgid "UTRA Absolute Radio Frequency Channel Number"

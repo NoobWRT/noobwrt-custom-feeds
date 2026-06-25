@@ -233,10 +233,10 @@ methods.setup_firewall = {
 	call: function() {
 		try {
 			uci.load('tailscale');
-			let fw_mode = uci.get('tailscale', 'settings', 'fw_mode') || 'nftables';
-			if (fw_mode == 'off') {
-				return { success: true, skipped: true, message: 'Firewall auto-configuration is disabled.' };
-			}
+			//let disable_fw = uci.get('tailscale', 'settings', 'disable_fw_config') || '0';
+			//if (disable_fw == '1') {
+			//	return { success: true, skipped: true, message: 'Firewall auto-configuration is disabled.' };
+			//}
 
 			uci.load('network');
 			uci.load('firewall');

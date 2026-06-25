@@ -103,6 +103,78 @@ ubus call qmodem get_neighborcell '{"config_section":"modem1"}'
 ubus call qmodem get_network_prefer '{"config_section":"modem1"}'
 ```
 
+#### get_current_band_capabilities
+查询当前模组厂商适配是否支持 `get_current_band`。
+```bash
+ubus call qmodem get_current_band_capabilities '{"config_section":"modem1"}'
+```
+
+响应示例:
+```json
+{
+  "current_band_capabilities": {
+    "supported": true,
+    "vendor": "fibocom",
+    "method": "AT+GTCCINFO?",
+    "schema": "current_band"
+  }
+}
+```
+
+#### get_current_band
+获取当前连接的服务小区频段。返回结构与厂商无关；第一版支持 Quectel 和 Fibocom。
+```bash
+ubus call qmodem get_current_band '{"config_section":"modem1"}'
+```
+
+响应示例:
+```json
+{
+  "current_band": {
+    "status": "ok",
+    "vendor": "quectel",
+    "network_mode": "EN-DC",
+    "cells": [
+      {
+        "role": "pcc",
+        "rat": "LTE",
+        "band": "3",
+        "band_name": "LTE B3",
+        "channel": "1300",
+        "channel_type": "EARFCN",
+        "pci": "123",
+        "ul_bandwidth": "20",
+        "dl_bandwidth": "20",
+        "scs": ""
+      },
+      {
+        "role": "nsa",
+        "rat": "NR",
+        "band": "78",
+        "band_name": "NR n78",
+        "channel": "627264",
+        "channel_type": "NR-ARFCN",
+        "pci": "293",
+        "ul_bandwidth": "",
+        "dl_bandwidth": "100",
+        "scs": "30kHz"
+      }
+    ]
+  }
+}
+```
+
+返回字段:
+- `status`: `ok`、`not_registered` 或 `unsupported`。
+- `vendor`: 生成该结果的厂商适配实现。
+- `network_mode`: 归一化网络模式，例如 `LTE`、`WCDMA`、`NR5G-SA`、`EN-DC`。
+- `cells`: 当前服务小区列表，所有厂商使用同一结构。
+- `role`: `pcc` 表示主服务小区，`scc` 表示载波聚合辅小区，`nsa` 表示 EN-DC 中的 NR 链路。
+- `rat`: 无线接入制式，目前为 `WCDMA`、`LTE` 或 `NR`。
+- `band` / `band_name`: 归一化频段号和展示名称。
+- `channel` / `channel_type`: 频点号和类型，例如 `EARFCN`、`UARFCN`、`NR-ARFCN`。
+- `pci`、`ul_bandwidth`、`dl_bandwidth`、`scs`: 可选值；空字符串表示厂商命令未返回该值。
+
 #### get_reboot_caps
 获取可用的重启方法 (硬重启/软重启)。
 ```bash

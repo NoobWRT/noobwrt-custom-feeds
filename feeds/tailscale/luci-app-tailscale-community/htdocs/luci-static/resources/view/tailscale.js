@@ -16,7 +16,7 @@ let map;
 
 const tailscaleSettingsConf = [
 	[form.Flag, 'service_enabled', _('Enable Tailscale Service'), _('Enable or disable the Tailscale service. When disabled, the service will be stopped and the process will be killed.'), { rmempty: false }],
-	[form.ListValue, 'fw_mode', _('Firewall Mode'), _('Select the firewall backend for Tailscale to use. Requires service restart to take effect.'), {values: ['nftables','iptables', ['off', _('Disabled')]], rmempty: false}],
+	[form.ListValue, 'fw_mode', _('Firewall Mode'), _('Select the firewall backend for Tailscale to use. Requires service restart to take effect.'), {values: ['nftables','iptables'],rmempty: false}],
 	[form.Flag, 'accept_routes', _('Accept Routes'), _('Allow accepting routes announced by other nodes.'), { rmempty: false }],
 	[form.Flag, 'advertise_exit_node', _('Advertise Exit Node'), _('Declare this device as an Exit Node.'), { rmempty: false }],
 	[form.Flag, 'exit_node_allow_lan_access', _('Allow LAN Access'), _('When using the exit node, access to the local LAN is allowed.'), { rmempty: false }],
@@ -25,6 +25,7 @@ const tailscaleSettingsConf = [
 	[form.Flag, 'shields_up', _('Shields Up'), _('When enabled, blocks all inbound connections from the Tailscale network.'), { rmempty: false }],
 	[form.Flag, 'ssh', _('Enable Tailscale SSH'), _('Allow connecting to this device through the SSH function of Tailscale.'), { rmempty: false }],
 	[form.ListValue, 'dns_mode', _('DNS Mode'), _('Controls how Tailscale DNS is handled.')+'<br>'+_('Disabled: system DNS only.')+'<br>'+_('MagicDNS: Tailscale overrides resolv.conf.')+'<br>'+_('OpenWrt Forward: MagicDNS via dnsmasq forwarding.(Only support ts.net)'), { values: [['disabled', _('Disabled')], ['magicdns', 'MagicDNS'], ['openwrt_forward', _('OpenWrt Forward')]], rmempty: false }],
+	[form.Flag, 'disable_fw_config', _('Disable Firewall Configuration'), _('Completely disable all Tailscale firewall auto-configuration, including zone creation, forwarding rules, and netfilter settings.'), { rmempty: false }],
 	[form.Flag, 'enable_relay', _('Enable Peer Relay'), _('Enable this device as a Peer Relay server. Requires a public IP and an UDP port open on the router.'), { rmempty: false }]
 ];
 
@@ -323,6 +324,7 @@ return view.extend({
 					uci.set('tailscale', 'settings', 'runwebclient', ((settings_from_rpc.runwebclient || false) ? '1' : '0'));
 					uci.set('tailscale', 'settings', 'nosnat', ((settings_from_rpc.nosnat || false) ? '1' : '0'));
 					uci.set('tailscale', 'settings', 'dns_mode', 'disabled');
+					uci.set('tailscale', 'settings', 'disable_fw_config', '0');
 
 					uci.set('tailscale', 'settings', 'daemon_reduce_memory', '0');
 					uci.set('tailscale', 'settings', 'daemon_mtu', '');

@@ -12,7 +12,6 @@
 					"getInitList",
 					"getInitStatus",
 					"getCronStatus",
-					"getCronEntry",
 					"getPlatformSupport",
 					"getQueryLogStatus"
 				],
@@ -26,16 +25,12 @@
 			"uci": [
 				"adblock-fast",
 				"dhcp",
-				"smartdns",
-				"unbound"
+				"smartdns"
 			]
 		},
 		"write": {
 			"uci": [
-				"adblock-fast",
-				"dhcp",
-				"smartdns",
-				"unbound"
+				"adblock-fast"
 			],
 			"ubus": {
 				"luci.adblock-fast": [

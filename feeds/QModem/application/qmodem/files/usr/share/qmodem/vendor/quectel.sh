@@ -1882,11 +1882,19 @@ set_sim_slot(){
 
 get_usage_stats()
 {
-    local response tx_bytes rx_bytes updated_at
+    local response marker tx_bytes rx_bytes updated_at
 
-    response=$(at "$at_port" "AT+QGDNRCNT?")
-    tx_bytes=$(echo "$response" | awk -F'[:, ]+' '/\+QGDNRCNT:/ {gsub(/\r/, "", $2); print $2; exit}')
-    rx_bytes=$(echo "$response" | awk -F'[:, ]+' '/\+QGDNRCNT:/ {gsub(/\r/, "", $3); print $3; exit}')
+    if [ "$platform" = "unisoc" ]; then
+        marker="+QGDCNT:"
+        response=$(at "$at_port" "AT+QGDCNT?")
+        rx_bytes=$(echo "$response" | awk -F'[:, ]+' '/\+QGDCNT:/ {gsub(/\r/, "", $2); print $2; exit}')
+        tx_bytes=$(echo "$response" | awk -F'[:, ]+' '/\+QGDCNT:/ {gsub(/\r/, "", $3); print $3; exit}')
+    else
+        marker="+QGDNRCNT:"
+        response=$(at "$at_port" "AT+QGDNRCNT?")
+        tx_bytes=$(echo "$response" | awk -F'[:, ]+' '/\+QGDNRCNT:/ {gsub(/\r/, "", $2); print $2; exit}')
+        rx_bytes=$(echo "$response" | awk -F'[:, ]+' '/\+QGDNRCNT:/ {gsub(/\r/, "", $3); print $3; exit}')
+    fi
 
     case "$tx_bytes" in
         ''|*[!0-9]*)
@@ -1899,7 +1907,7 @@ get_usage_stats()
             ;;
     esac
 
-    if echo "$response" | grep -q "+QGDNRCNT:"; then
+    if echo "$response" | grep -q "$marker"; then
         updated_at=$(date +%s)
         json_add_boolean "available" 1
         json_add_int "updated_at" "$updated_at"
@@ -1917,7 +1925,11 @@ write_usage_stats()
 {
     local response
 
-    response=$(at "$at_port" "AT+QGDNRCNT=1")
+    if [ "$platform" = "unisoc" ]; then
+        response=$(at "$at_port" "AT+QAUGDCNT=30")
+    else
+        response=$(at "$at_port" "AT+QGDNRCNT=1")
+    fi
     echo "$response" | grep -qi "OK"
 }
 
@@ -1925,7 +1937,11 @@ clear_usage_stats()
 {
     local response
 
-    response=$(at "$at_port" "AT+QGDNRCNT=0")
+    if [ "$platform" = "unisoc" ]; then
+        response=$(at "$at_port" "AT+QGDCNT=0")
+    else
+        response=$(at "$at_port" "AT+QGDNRCNT=0")
+    fi
     if echo "$response" | grep -qi "OK"; then
         json_add_boolean "result" 1
     else

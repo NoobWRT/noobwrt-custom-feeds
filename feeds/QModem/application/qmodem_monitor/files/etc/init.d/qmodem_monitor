@@ -20,9 +20,7 @@ stop_service(){
 
 reload_service()
 {
-    _stop_instances
-    _start_instances
-    /etc/init.d/qmodem_led start >/dev/null 2>&1
+    rc_procd start_service
 }
 
 _start_instances(){

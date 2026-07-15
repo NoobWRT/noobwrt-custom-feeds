@@ -246,7 +246,7 @@ _send_at_command(){
 # Action: switch_sim_slot - Switch SIM slot
 # Usage: switch_sim_slot <Modem_ID>
 switch_sim_slot() {
-  local capabilities current_slot available_slots new_slot response result redial
+  local capabilities current_slot available_slots new_slot response success redial
 
   capabilities=$(ubus call qmodem get_sim_switch_capabilities '{"config_section": "'$Modem_ID'"}' 2>/dev/null)
   is_supported=$(printf '%s\n' "$capabilities" | jq -r '.supportSwitch // "0"')
@@ -265,9 +265,9 @@ switch_sim_slot() {
         return 1
     fi
     response=$(ubus call qmodem set_sim_slot '{"config_section": "'$Modem_ID'", "slot": "'$new_slot'"}' 2>/dev/null)
-    result=$(printf '%s\n' "$response" | jq -r '.result // empty')
+    success=$(printf '%s\n' "$response" | jq -r '.success // false')
     redial=$(printf '%s\n' "$response" | jq -r '.redial // empty')
-    if echo "$result" | grep -qi "OK" && { [ -z "$redial" ] || [ "$redial" = "0" ]; }; then
+    if [ "$success" = "true" ] && [ "$redial" = "0" ]; then
         log "Switch SIM slot from $current_slot to $new_slot"
         return 0
     fi

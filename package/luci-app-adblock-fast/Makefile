@@ -11,7 +11,7 @@ PKG_RELEASE:=4
 PKG_CPE_ID:=cpe:/a:mossdef:luci-app-adblock-fast
 
 LUCI_TITLE:=AdBlock-Fast Web UI
-LUCI_URL:=https://github.com/mossdef-org/luci-app-adblock-fast/
+LUCI_URL:=https://docs.mossdef.org/adblock-fast/
 LUCI_DESCRIPTION:=Provides Web UI for adblock-fast service.
 LUCI_DEPENDS:=+luci-base +adblock-fast +rpcd-mod-ucode
 

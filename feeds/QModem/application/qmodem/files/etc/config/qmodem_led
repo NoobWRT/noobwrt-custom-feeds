@@ -1,0 +1,8 @@
+config main 'main'
+	option poll_interval '5'
+
+# config led 'modem_status'
+#	option enabled '1'
+#	option script 'example'
+#	option bind 'port'  # port, any, or none
+#	option port '2-1'   # required when bind is port

@@ -1,0 +1,221 @@
+#!/bin/sh
+
+. /lib/functions.sh
+. /lib/functions/system.sh
+
+BOARD_DEFAULTS_VERSION=1
+BOARD_FILE=/etc/board.json
+BOARD_SCRIPT=/etc/board.d/03_qmodem
+
+merge_qmodem_board_data()
+{
+	local board_tmp="/tmp/qmodem-board.$$.json"
+
+	[ -s "$BOARD_FILE" ] || return 1
+	cp "$BOARD_FILE" "$board_tmp" || return 1
+	if CFG="$board_tmp" /bin/sh "$BOARD_SCRIPT"; then
+		mv "$board_tmp" "$BOARD_FILE"
+		return 0
+	fi
+	rm -f "$board_tmp"
+	return 1
+}
+
+uci_set_missing()
+{
+	local config="$1"
+	local section="$2"
+	local option="$3"
+	local value="$4"
+
+	uci -q get "${config}.${section}.${option}" >/dev/null && return 0
+	uci -q set "${config}.${section}.${option}=${value}"
+}
+
+import_named_sections()
+{
+	local json_path="$1"
+	local config="$2"
+	local section_type="$3"
+	local section option value
+	local tab
+
+	tab="$(printf '\t')"
+	jq -r --argjson path "$json_path" --arg type "$section_type" '
+		getpath($path) // {} | to_entries[] as $section |
+		([$section.key, "@type", $type],
+		 ($section.value | to_entries[] | [$section.key, .key, (.value | tostring)])) |
+		@tsv
+	' "$BOARD_FILE" | while IFS="$tab" read -r section option value; do
+		case "$section" in
+			''|*[!A-Za-z0-9_]* ) continue ;;
+		esac
+		case "$option" in
+			@type) ;;
+			''|*[!A-Za-z0-9_]*) continue ;;
+		esac
+		if [ "$option" = '@type' ]; then
+			uci -q get "${config}.${section}" >/dev/null || \
+				uci -q set "${config}.${section}=${value}"
+		else
+			uci_set_missing "$config" "$section" "$option" "$value"
+		fi
+	done
+}
+
+generic_main_default()
+{
+	case "$1" in
+		enable_pcie_scan) echo 1 ;;
+		start_delay) echo 0 ;;
+		*) return 1 ;;
+	esac
+}
+
+import_main_defaults()
+{
+	local board="$1"
+	local marker current default option value
+	local tab
+
+	marker="$(uci -q get qmodem.main.board_defaults_board)"
+	tab="$(printf '\t')"
+	jq -r '.qmodem.main // {} | to_entries[] | [.key, (.value | tostring)] | @tsv' \
+		"$BOARD_FILE" | while IFS="$tab" read -r option value; do
+		case "$option" in
+			''|*[!A-Za-z0-9_]*) continue ;;
+		esac
+		current="$(uci -q get "qmodem.main.${option}")"
+		if [ -z "$current" ]; then
+			uci -q set "qmodem.main.${option}=${value}"
+		elif [ "$marker" != "$board" ]; then
+			default="$(generic_main_default "$option")"
+			[ -n "$default" ] && [ "$current" = "$default" ] && \
+				uci -q set "qmodem.main.${option}=${value}"
+		fi
+	done
+	uci -q set "qmodem.main.board_defaults_board=${board}"
+	uci -q set "qmodem.main.board_defaults_version=${BOARD_DEFAULTS_VERSION}"
+}
+
+led_config_covers()
+{
+	local cover_script="$1"
+	local cover_port="$2"
+	local section enabled script bind port led_sections
+
+	led_sections="$(
+		uci -q show qmodem_led | sed -n \
+			-e "s/^qmodem_led\.\([A-Za-z0-9_]*\)=led$/\1/p" \
+			-e "s/^qmodem_led\.\([A-Za-z0-9_]*\)='led'$/\1/p"
+	)"
+	for section in $led_sections; do
+		enabled="$(uci -q get "qmodem_led.${section}.enabled")"
+		case "$enabled" in
+			0|off|false|no|disabled) continue ;;
+		esac
+		script="$(uci -q get "qmodem_led.${section}.script")"
+		[ "$script" = "$cover_script" ] || continue
+		bind="$(uci -q get "qmodem_led.${section}.bind")"
+		case "$bind" in
+			any|none) return 0 ;;
+			port)
+				port="$(uci -q get "qmodem_led.${section}.port")"
+				[ "$port" = "$cover_port" ] && return 0
+				;;
+		esac
+	done
+	return 1
+}
+
+new_legacy_led_section()
+{
+	local base="legacy_$1"
+	local section="$base"
+	local index=2
+
+	while uci -q get "qmodem_led.${section}" >/dev/null; do
+		section="${base}_${index}"
+		index=$((index + 1))
+	done
+	echo "$section"
+}
+
+migrate_led_option()
+{
+	local source="$1"
+	local port="$2"
+	local script section
+
+	script="$(uci -q get "qmodem.${source}.led_script")"
+	[ -n "$script" ] || return
+	if [ -z "$port" ]; then
+		logger -t qmodem-board "Cannot migrate LED script for ${source}: physical port is unknown"
+		return
+	fi
+	if ! led_config_covers "$script" "$port"; then
+		section="$(new_legacy_led_section "$source")"
+		uci -q set "qmodem_led.${section}=led"
+		uci -q set "qmodem_led.${section}.enabled=1"
+		uci -q set "qmodem_led.${section}.script=${script}"
+		uci -q set "qmodem_led.${section}.bind=port"
+		uci -q set "qmodem_led.${section}.port=${port}"
+	fi
+	uci -q delete "qmodem.${source}.led_script"
+	legacy_led_changed=1
+}
+
+migrate_legacy_leds()
+{
+	local source port path slot_sections device_sections
+
+	legacy_led_changed=0
+	slot_sections="$(
+		uci -q show qmodem | sed -n \
+			-e "s/^qmodem\.\([A-Za-z0-9_]*\)=modem-slot$/\1/p" \
+			-e "s/^qmodem\.\([A-Za-z0-9_]*\)='modem-slot'$/\1/p"
+	)"
+	for source in $slot_sections; do
+		port="$(uci -q get "qmodem.${source}.slot")"
+		migrate_led_option "$source" "$port"
+	done
+	device_sections="$(
+		uci -q show qmodem | sed -n \
+			-e "s/^qmodem\.\([A-Za-z0-9_]*\)=modem-device$/\1/p" \
+			-e "s/^qmodem\.\([A-Za-z0-9_]*\)='modem-device'$/\1/p"
+	)"
+	for source in $device_sections; do
+		path="$(uci -q get "qmodem.${source}.path")"
+		path="${path%/}"
+		port="${path##*/}"
+		[ "$port" = "$path" ] && port=
+		migrate_led_option "$source" "$port"
+	done
+	[ "$legacy_led_changed" = 1 ] && uci -q commit qmodem_led
+}
+
+fix_m01k43_usb_p()
+{
+	[ "$1" = 'misectel,m01k43-usb-p' ] || return
+	[ "$(uci -q get qmodem.usb0.slot)" = '2-1' ] && \
+		uci -q set qmodem.usb0.slot='2-1.1'
+	[ "$(uci -q get qmodem.pcie0.associated_usb)" = '2-1' ] && \
+		uci -q set qmodem.pcie0.associated_usb='2-1.1'
+}
+
+board="$(board_name)"
+if [ -x "$BOARD_SCRIPT" ] && command -v jq >/dev/null 2>&1 && merge_qmodem_board_data; then
+	uci -q get qmodem.main >/dev/null || uci -q set qmodem.main=main
+	uci -q get qmodem_led.main >/dev/null || uci -q set qmodem_led.main=main
+	import_main_defaults "$board"
+	import_named_sections '["qmodem", "slots"]' qmodem modem-slot
+	import_named_sections '["qmodem_led"]' qmodem_led led
+	fix_m01k43_usb_p "$board"
+	migrate_legacy_leds
+	uci -q commit qmodem
+	uci -q commit qmodem_led
+else
+	logger -t qmodem-board 'Unable to import qmodem board defaults'
+fi
+
+exit 0

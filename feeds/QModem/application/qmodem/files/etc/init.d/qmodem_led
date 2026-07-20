@@ -1,132 +1,275 @@
 #!/bin/sh /etc/rc.common
+
 START=99
 STOP=13
 USE_PROCD=1
-service="$(basename ${basescript:-$initscript})"
-LED_CONFIG_STATE="/var/run/qmodem_led.config"
 
-extra_command "start_instance" "<modem_cfg> start led script for one modem"
-extra_command "stop_instance" "<modem_cfg> stop led script for one modem"
-extra_command "restart_instance" "<modem_cfg> restart led script for one modem"
+service="$(basename "${basescript:-$initscript}")"
+LED_SCRIPT_DIR=/usr/share/qmodem/led_scripts
+LED_STATE_FILE=/var/run/qmodem_led.state
+LED_WATCHER=/usr/share/qmodem/qmodem_led_watch.sh
+
+extra_command "resolved_state" "print resolved LED configuration"
 
 service_triggers()
 {
-	procd_add_reload_trigger "qmodem"
-
+	procd_add_reload_trigger qmodem qmodem_led
 }
 
-start_service(){
-    load_led_services
-    save_led_config
+load_network_instances()
+{
+	RUNNING_MODEMS="$(
+		ubus call service list '{"name":"qmodem_network"}' 2>/dev/null |
+			jq -r '.qmodem_network.instances // {} |
+				[to_entries[] | select(.value.running == true) |
+				.key | sub("^modem_"; "")] | join(" ")' 2>/dev/null
+	)"
 }
 
-stop_service(){
-    procd_kill "$service"
-    config_load qmodem
-    config_foreach _turn_off_leds modem-device
-    rm -f "$LED_CONFIG_STATE"
+network_instance_running()
+{
+	case " $RUNNING_MODEMS " in
+		*" $1 "*) return 0 ;;
+		*) return 1 ;;
+	esac
 }
 
-reload_service(){
-    local current_config saved_config
+consider_modem()
+{
+	local section="$1"
+	local state enabled path physical metric
 
-    current_config="$(get_led_config)"
-    saved_config="$(cat "$LED_CONFIG_STATE" 2>/dev/null)"
-    [ "$current_config" = "$saved_config" ] && led_services_running && return 0
+	state="$(uci -q get "qmodem.${section}.state")"
+	[ "$state" = disabled ] && return 0
+	enabled="$(uci -q get "qmodem.${section}.enable_dial")"
+	case "$enabled" in
+		0|off|false|no|disabled) return 0 ;;
+	esac
+	network_instance_running "$section" || return 0
 
-    rc_procd start_service
+	if [ "$TARGET_BIND" = port ]; then
+		path="$(uci -q get "qmodem.${section}.path")"
+		path="${path%/}"
+		physical="${path##*/}"
+		[ "$physical" = "$TARGET_PORT" ] || return 0
+	fi
+
+	metric="$(uci -q get "qmodem.${section}.metric")"
+	case "$metric" in
+		''|*[!0-9]*) metric=255 ;;
+	esac
+	if [ -z "$SELECTED_MODEM" ] || [ "$metric" -lt "$SELECTED_METRIC" ]; then
+		SELECTED_MODEM="$section"
+		SELECTED_METRIC="$metric"
+	fi
+}
+
+resolve_led_target()
+{
+	local bind="$1"
+	local port="$2"
+	local global_enabled section modem_sections
+
+	LED_TARGET=
+	LED_TARGET_FOUND=0
+	case "$bind" in
+		none)
+			LED_TARGET_FOUND=1
+			return 0
+			;;
+		any|port) ;;
+		*) return 1 ;;
+	esac
+	[ "$bind" != port ] || [ -n "$port" ] || return 1
+
+	SELECTED_MODEM=
+	SELECTED_METRIC=256
+	TARGET_BIND="$bind"
+	TARGET_PORT="$port"
+	global_enabled="$(uci -q get qmodem.main.enable_dial)"
+	case "$global_enabled" in
+		0|off|false|no|disabled) return 0 ;;
+	esac
+	modem_sections="$(
+		uci -q show qmodem | sed -n \
+			-e "s/^qmodem\.\([A-Za-z0-9_]*\)=modem-device$/\1/p" \
+			-e "s/^qmodem\.\([A-Za-z0-9_]*\)='modem-device'$/\1/p"
+	)"
+	for section in $modem_sections; do
+		consider_modem "$section"
+	done
+	if [ -n "$SELECTED_MODEM" ]; then
+		LED_TARGET="$SELECTED_MODEM"
+		LED_TARGET_FOUND=1
+	fi
+}
+
+valid_led_script_name()
+{
+	case "$1" in
+		''|*[!A-Za-z0-9_-]*) return 1 ;;
+		*) return 0 ;;
+	esac
+}
+
+print_led_state()
+{
+	local section="$1"
+	local enabled script bind port target_signature
+
+	config_get_bool enabled "$section" enabled 1
+	config_get script "$section" script
+	config_get bind "$section" bind
+	config_get port "$section" port
+	resolve_led_target "$bind" "$port"
+	target_signature=
+	if [ -n "$LED_TARGET" ]; then
+		target_signature="$(uci -q get "qmodem.${LED_TARGET}.at_port"),$(uci -q get "qmodem.${LED_TARGET}.alias"),$(uci -q get "qmodem.${LED_TARGET}.use_ubus")"
+	fi
+	printf 'led|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+		"$section" "$enabled" "$script" "$bind" "$port" \
+		"$LED_TARGET_FOUND" "$LED_TARGET" "$target_signature"
+}
+
+get_led_state()
+{
+	uci -q show qmodem_led | sed 's/^/config|/'
+	load_network_instances
+	config_load qmodem_led
+	config_foreach print_led_state led
+}
+
+save_led_state()
+{
+	local state_tmp="${LED_STATE_FILE}.$$"
+
+	get_led_state > "$state_tmp" && mv "$state_tmp" "$LED_STATE_FILE"
+}
+
+start_led_instance()
+{
+	local section="$1"
+	local enabled script bind port script_path
+
+	config_get_bool enabled "$section" enabled 1
+	[ "$enabled" = 1 ] || return
+	config_get script "$section" script
+	config_get bind "$section" bind
+	config_get port "$section" port
+	valid_led_script_name "$script" || {
+		logger -t qmodem_led "Invalid LED script name for ${section}"
+		return
+	}
+	script_path="${LED_SCRIPT_DIR}/${script}.sh"
+	[ -x "$script_path" ] || {
+		logger -t qmodem_led "LED script is not executable: ${script_path}"
+		return
+	}
+	resolve_led_target "$bind" "$port" || {
+		logger -t qmodem_led "Invalid LED binding for ${section}"
+		return
+	}
+	[ "$LED_TARGET_FOUND" = 1 ] || return
+
+	procd_open_instance "led_${section}"
+	procd_set_param env "QMODEM_LED_SECTION=${section}"
+	procd_set_param command "$script_path" "$LED_TARGET"
+	procd_set_param respawn 120 15 10
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+start_watcher_instance()
+{
+	local poll_interval
+
+	config_load qmodem_led
+	config_get poll_interval main poll_interval 5
+	case "$poll_interval" in
+		''|*[!0-9]*) poll_interval=5 ;;
+		0) poll_interval=1 ;;
+	esac
+	procd_open_instance watcher
+	procd_set_param command "$LED_WATCHER" "$LED_STATE_FILE" "$poll_interval"
+	procd_set_param respawn 3600 5 5
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+start_service()
+{
+	save_led_state
+	config_load qmodem_led
+	config_foreach start_led_instance led
+	start_watcher_instance
+}
+
+turn_off_saved_leds()
+{
+	local kind section enabled script bind port found target signature script_path
+
+	[ -s "$LED_STATE_FILE" ] || return
+	while IFS='|' read -r kind section enabled script bind port found target signature; do
+		[ "$kind" = led ] || continue
+		[ "$enabled" = 1 ] && [ "$found" = 1 ] || continue
+		valid_led_script_name "$script" || continue
+		script_path="${LED_SCRIPT_DIR}/${script}.sh"
+		[ -x "$script_path" ] || continue
+		QMODEM_LED_SECTION="$section" "$script_path" "$target" off
+	done < "$LED_STATE_FILE"
+}
+
+stop_saved_led_instances()
+{
+	local kind section enabled script bind port found target signature
+
+	[ -s "$LED_STATE_FILE" ] || return
+	while IFS='|' read -r kind section enabled script bind port found target signature; do
+		[ "$kind" = led ] || continue
+		procd_kill "$service" "led_${section}"
+	done < "$LED_STATE_FILE"
 }
 
 led_services_running()
 {
-    all_led_services_running=1
-    config_load qmodem
-    config_foreach _check_led_service modem-device
-    [ "$all_led_services_running" = "1" ]
+	local kind section enabled script bind port found target signature
+	local all_running=1
+
+	service_running watcher || return 1
+	[ -s "$LED_STATE_FILE" ] || return 1
+	while IFS='|' read -r kind section enabled script bind port found target signature; do
+		[ "$kind" = led ] || continue
+		[ "$enabled" = 1 ] && [ "$found" = 1 ] || continue
+		valid_led_script_name "$script" || continue
+		[ -x "${LED_SCRIPT_DIR}/${script}.sh" ] || continue
+		service_running "led_${section}" || all_running=0
+	done < "$LED_STATE_FILE"
+	[ "$all_running" = 1 ]
 }
 
-_check_led_service()
+stop_service()
 {
-    local led_script
-
-    config_get led_script "$1" led_script
-    [ -n "$led_script" ] || return 0
-    [ -x "/usr/share/qmodem/led_scripts/${led_script}.sh" ] || return 0
-    service_running "$service" "led_$1" || all_led_services_running=0
+	procd_kill "$service"
+	turn_off_saved_leds
+	rm -f "$LED_STATE_FILE"
 }
 
-get_led_config()
+reload_service()
 {
-    config_load qmodem
-    config_foreach _print_led_config modem-device
+	local current_state saved_state
+
+	current_state="$(get_led_state)"
+	saved_state="$(cat "$LED_STATE_FILE" 2>/dev/null)"
+	[ "$current_state" = "$saved_state" ] && led_services_running && return 0
+
+	stop_saved_led_instances
+	turn_off_saved_leds
+	rc_procd start_service
 }
 
-_print_led_config()
+resolved_state()
 {
-    local led_script
-
-    config_get led_script "$1" led_script
-    printf '%s=%s\n' "$1" "$led_script"
-}
-
-save_led_config()
-{
-    local state_tmp="${LED_CONFIG_STATE}.$$"
-
-    get_led_config > "$state_tmp"
-    mv "$state_tmp" "$LED_CONFIG_STATE"
-}
-
-load_led_services()
-{
-    config_load qmodem
-    config_foreach _led_services modem-device
-}
-
-
-_led_services()
-{
-    _start_instance "$1"
-}
-
-start_instance()
-{
-    [ -n "$1" ] || return 1
-    config_load qmodem
-    procd_kill "$service" "led_$1"
-    rc_procd _start_instance "$1"
-}
-
-stop_instance()
-{
-    [ -n "$1" ] || return 1
-    config_load qmodem
-    procd_kill "$service" "led_$1"
-    _turn_off_leds "$1"
-}
-
-restart_instance()
-{
-    stop_instance "$1"
-    start_instance "$1"
-}
-
-_start_instance()
-{
-    local led_script
-    config_get led_script "$1" led_script
-    if [ -n "$led_script" ] && [ -x "/usr/share/qmodem/led_scripts/${led_script}.sh" ]; then
-        procd_open_instance led_$1
-        procd_set_param command "/usr/share/qmodem/led_scripts/${led_script}.sh" "$1"
-        procd_set_param respawn 120 15 10
-        procd_close_instance
-    fi
-}
-
-_turn_off_leds(){
-    local led_script
-    config_get led_script "$1" led_script
-    if [ -n "$led_script" ] && [ -x "/usr/share/qmodem/led_scripts/${led_script}.sh" ]; then
-        /usr/share/qmodem/led_scripts/${led_script}.sh "$1" "off"
-    fi
+	get_led_state
 }

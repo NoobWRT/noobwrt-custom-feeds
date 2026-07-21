@@ -1,6 +1,7 @@
 #!/bin/sh /etc/rc.common
 
-START=99
+# qmodem_init may synchronously reload network while restoring modem state.
+START=79
 STOP=13
 USE_PROCD=1
 
@@ -16,39 +17,21 @@ service_triggers()
 	procd_add_reload_trigger qmodem qmodem_led
 }
 
-load_network_instances()
+modem_path_present()
 {
-	RUNNING_MODEMS="$(
-		ubus call service list '{"name":"qmodem_network"}' 2>/dev/null |
-			jq -r '.qmodem_network.instances // {} |
-				[to_entries[] | select(.value.running == true) |
-				.key | sub("^modem_"; "")] | join(" ")' 2>/dev/null
-	)"
-}
+	local path="${1%/}"
 
-network_instance_running()
-{
-	case " $RUNNING_MODEMS " in
-		*" $1 "*) return 0 ;;
-		*) return 1 ;;
-	esac
+	[ -n "$path" ] && [ -e "$path" ]
 }
 
 consider_modem()
 {
 	local section="$1"
-	local state enabled path physical metric
+	local path physical metric
 
-	state="$(uci -q get "qmodem.${section}.state")"
-	[ "$state" = disabled ] && return 0
-	enabled="$(uci -q get "qmodem.${section}.enable_dial")"
-	case "$enabled" in
-		0|off|false|no|disabled) return 0 ;;
-	esac
-	network_instance_running "$section" || return 0
-
+	path="$(uci -q get "qmodem.${section}.path")"
+	modem_path_present "$path" || return 0
 	if [ "$TARGET_BIND" = port ]; then
-		path="$(uci -q get "qmodem.${section}.path")"
 		path="${path%/}"
 		physical="${path##*/}"
 		[ "$physical" = "$TARGET_PORT" ] || return 0
@@ -64,19 +47,15 @@ consider_modem()
 	fi
 }
 
-resolve_led_target()
+resolve_modem_target()
 {
 	local bind="$1"
 	local port="$2"
-	local global_enabled section modem_sections
+	local section modem_sections
 
 	LED_TARGET=
 	LED_TARGET_FOUND=0
 	case "$bind" in
-		none)
-			LED_TARGET_FOUND=1
-			return 0
-			;;
 		any|port) ;;
 		*) return 1 ;;
 	esac
@@ -86,10 +65,6 @@ resolve_led_target()
 	SELECTED_METRIC=256
 	TARGET_BIND="$bind"
 	TARGET_PORT="$port"
-	global_enabled="$(uci -q get qmodem.main.enable_dial)"
-	case "$global_enabled" in
-		0|off|false|no|disabled) return 0 ;;
-	esac
 	modem_sections="$(
 		uci -q show qmodem | sed -n \
 			-e "s/^qmodem\.\([A-Za-z0-9_]*\)=modem-device$/\1/p" \
@@ -112,31 +87,114 @@ valid_led_script_name()
 	esac
 }
 
-print_led_state()
+load_entry_script()
 {
 	local section="$1"
-	local enabled script bind port target_signature
+
+	ENTRY_SCRIPT=
+	ENTRY_SCRIPT_PATH=
+	config_get ENTRY_SCRIPT "$section" script
+	valid_led_script_name "$ENTRY_SCRIPT" || return 1
+	ENTRY_SCRIPT_PATH="${LED_SCRIPT_DIR}/${ENTRY_SCRIPT}.sh"
+	[ -x "$ENTRY_SCRIPT_PATH" ]
+}
+
+reset_modem_registry()
+{
+	MODEM_ANY_CLAIMED=0
+	MODEM_PORTS_CLAIMED=
+}
+
+claim_modem_binding()
+{
+	local bind="$1"
+	local port="$2"
+
+	case "$bind" in
+		any)
+			[ "$MODEM_ANY_CLAIMED" = 0 ] || return 1
+			MODEM_ANY_CLAIMED=1
+			;;
+		port)
+			case "|$MODEM_PORTS_CLAIMED|" in
+				*"|${port}|"*) return 1 ;;
+			esac
+			MODEM_PORTS_CLAIMED="${MODEM_PORTS_CLAIMED:+${MODEM_PORTS_CLAIMED}|}${port}"
+			;;
+		*) return 1 ;;
+	esac
+}
+
+load_modem_status_config()
+{
+	local section="$1"
+
+	config_get_bool ENTRY_ENABLED "$section" enabled 1
+	config_get ENTRY_BIND "$section" bind
+	config_get ENTRY_PORT "$section" port
+	[ "$ENTRY_ENABLED" = 1 ] || return 1
+	load_entry_script "$section" || return 1
+	case "$ENTRY_BIND" in
+		any) ;;
+		port) [ -n "$ENTRY_PORT" ] || return 1 ;;
+		*) return 1 ;;
+	esac
+}
+
+modem_instance_name()
+{
+	if [ "$1" = any ]; then
+		echo modem_status_any
+	else
+		echo "modem_status_port_$2"
+	fi
+}
+
+print_network_detect_state()
+{
+	local section="$1"
+	local enabled accepted=0
 
 	config_get_bool enabled "$section" enabled 1
-	config_get script "$section" script
-	config_get bind "$section" bind
-	config_get port "$section" port
-	resolve_led_target "$bind" "$port"
+	if [ "$enabled" = 1 ] && load_entry_script "$section"; then
+		accepted=1
+	fi
+	printf 'network_detect|%s|%s|%s|||%s|||\n' \
+		"$section" "$enabled" "${ENTRY_SCRIPT:-}" "$accepted"
+}
+
+print_modem_status_state()
+{
+	local section="$1"
+	local accepted=0 target_signature
+
+	ENTRY_ENABLED=0
+	ENTRY_SCRIPT=
+	ENTRY_BIND=
+	ENTRY_PORT=
+	LED_TARGET=
+	LED_TARGET_FOUND=0
+	if load_modem_status_config "$section" && \
+		claim_modem_binding "$ENTRY_BIND" "$ENTRY_PORT"; then
+		accepted=1
+		resolve_modem_target "$ENTRY_BIND" "$ENTRY_PORT"
+	fi
 	target_signature=
 	if [ -n "$LED_TARGET" ]; then
 		target_signature="$(uci -q get "qmodem.${LED_TARGET}.at_port"),$(uci -q get "qmodem.${LED_TARGET}.alias"),$(uci -q get "qmodem.${LED_TARGET}.use_ubus")"
 	fi
-	printf 'led|%s|%s|%s|%s|%s|%s|%s|%s\n' \
-		"$section" "$enabled" "$script" "$bind" "$port" \
-		"$LED_TARGET_FOUND" "$LED_TARGET" "$target_signature"
+	printf 'modem_status|%s|%s|%s|%s|%s|%s|%s|%s|%s\n' \
+		"$section" "$ENTRY_ENABLED" "$ENTRY_SCRIPT" "$ENTRY_BIND" "$ENTRY_PORT" \
+		"$accepted" "$LED_TARGET_FOUND" "$LED_TARGET" "$target_signature"
 }
 
 get_led_state()
 {
 	uci -q show qmodem_led | sed 's/^/config|/'
-	load_network_instances
 	config_load qmodem_led
-	config_foreach print_led_state led
+	config_foreach print_network_detect_state network_detect
+	reset_modem_registry
+	config_foreach print_modem_status_state modem_status
 }
 
 save_led_state()
@@ -146,34 +204,49 @@ save_led_state()
 	get_led_state > "$state_tmp" && mv "$state_tmp" "$LED_STATE_FILE"
 }
 
-start_led_instance()
+start_network_detect_instance()
 {
 	local section="$1"
-	local enabled script bind port script_path
+	local enabled
 
 	config_get_bool enabled "$section" enabled 1
 	[ "$enabled" = 1 ] || return
-	config_get script "$section" script
-	config_get bind "$section" bind
-	config_get port "$section" port
-	valid_led_script_name "$script" || {
-		logger -t qmodem_led "Invalid LED script name for ${section}"
+	load_entry_script "$section" || {
+		logger -t qmodem_led "Invalid network_detect script for ${section}"
 		return
 	}
-	script_path="${LED_SCRIPT_DIR}/${script}.sh"
-	[ -x "$script_path" ] || {
-		logger -t qmodem_led "LED script is not executable: ${script_path}"
-		return
-	}
-	resolve_led_target "$bind" "$port" || {
-		logger -t qmodem_led "Invalid LED binding for ${section}"
-		return
-	}
-	[ "$LED_TARGET_FOUND" = 1 ] || return
 
-	procd_open_instance "led_${section}"
+	procd_open_instance "network_detect_${section}"
 	procd_set_param env "QMODEM_LED_SECTION=${section}"
-	procd_set_param command "$script_path" "$LED_TARGET"
+	procd_set_param command "$ENTRY_SCRIPT_PATH"
+	procd_set_param respawn 120 15 10
+	procd_set_param stdout 1
+	procd_set_param stderr 1
+	procd_close_instance
+}
+
+start_modem_status_instance()
+{
+	local section="$1"
+	local enabled instance
+
+	config_get_bool enabled "$section" enabled 1
+	[ "$enabled" = 1 ] || return
+	load_modem_status_config "$section" || {
+		logger -t qmodem_led "Invalid modem_status configuration for ${section}"
+		return
+	}
+	claim_modem_binding "$ENTRY_BIND" "$ENTRY_PORT" || {
+		logger -t qmodem_led "Duplicate modem_status binding for ${section}: ${ENTRY_BIND} ${ENTRY_PORT}"
+		return
+	}
+	resolve_modem_target "$ENTRY_BIND" "$ENTRY_PORT" || return
+	[ "$LED_TARGET_FOUND" = 1 ] || return
+	instance="$(modem_instance_name "$ENTRY_BIND" "$section")"
+
+	procd_open_instance "$instance"
+	procd_set_param env "QMODEM_LED_SECTION=${section}"
+	procd_set_param command "$ENTRY_SCRIPT_PATH" "$LED_TARGET"
 	procd_set_param respawn 120 15 10
 	procd_set_param stdout 1
 	procd_set_param stderr 1
@@ -202,49 +275,73 @@ start_service()
 {
 	save_led_state
 	config_load qmodem_led
-	config_foreach start_led_instance led
+	config_foreach start_network_detect_instance network_detect
+	reset_modem_registry
+	config_foreach start_modem_status_instance modem_status
 	start_watcher_instance
 }
 
 turn_off_saved_leds()
 {
-	local kind section enabled script bind port found target signature script_path
+	local kind section enabled script bind port accepted found target signature script_path
 
 	[ -s "$LED_STATE_FILE" ] || return
-	while IFS='|' read -r kind section enabled script bind port found target signature; do
-		[ "$kind" = led ] || continue
-		[ "$enabled" = 1 ] && [ "$found" = 1 ] || continue
-		valid_led_script_name "$script" || continue
-		script_path="${LED_SCRIPT_DIR}/${script}.sh"
-		[ -x "$script_path" ] || continue
-		QMODEM_LED_SECTION="$section" "$script_path" "$target" off
+	while IFS='|' read -r kind section enabled script bind port accepted found target signature; do
+		case "$kind" in
+			network_detect)
+				[ "$enabled" = 1 ] && [ "$accepted" = 1 ] || continue
+				valid_led_script_name "$script" || continue
+				script_path="${LED_SCRIPT_DIR}/${script}.sh"
+				[ -x "$script_path" ] && QMODEM_LED_SECTION="$section" "$script_path" off
+				;;
+			modem_status)
+				[ "$enabled" = 1 ] && [ "$accepted" = 1 ] && [ "$found" = 1 ] || continue
+				valid_led_script_name "$script" || continue
+				script_path="${LED_SCRIPT_DIR}/${script}.sh"
+				[ -x "$script_path" ] && QMODEM_LED_SECTION="$section" "$script_path" "$target" off
+				;;
+		esac
 	done < "$LED_STATE_FILE"
 }
 
 stop_saved_led_instances()
 {
-	local kind section enabled script bind port found target signature
+	local kind section enabled script bind port accepted found target signature instance
 
 	[ -s "$LED_STATE_FILE" ] || return
-	while IFS='|' read -r kind section enabled script bind port found target signature; do
-		[ "$kind" = led ] || continue
-		procd_kill "$service" "led_${section}"
+	while IFS='|' read -r kind section enabled script bind port accepted found target signature; do
+		case "$kind" in
+			network_detect)
+				[ "$accepted" = 1 ] && procd_kill "$service" "network_detect_${section}"
+				;;
+			modem_status)
+				[ "$accepted" = 1 ] || continue
+				instance="$(modem_instance_name "$bind" "$section")"
+				procd_kill "$service" "$instance"
+				;;
+		esac
 	done < "$LED_STATE_FILE"
 }
 
 led_services_running()
 {
-	local kind section enabled script bind port found target signature
+	local kind section enabled script bind port accepted found target signature instance
 	local all_running=1
 
 	service_running watcher || return 1
 	[ -s "$LED_STATE_FILE" ] || return 1
-	while IFS='|' read -r kind section enabled script bind port found target signature; do
-		[ "$kind" = led ] || continue
-		[ "$enabled" = 1 ] && [ "$found" = 1 ] || continue
-		valid_led_script_name "$script" || continue
-		[ -x "${LED_SCRIPT_DIR}/${script}.sh" ] || continue
-		service_running "led_${section}" || all_running=0
+	while IFS='|' read -r kind section enabled script bind port accepted found target signature; do
+		case "$kind" in
+			network_detect)
+				[ "$enabled" = 1 ] && [ "$accepted" = 1 ] || continue
+				service_running "network_detect_${section}" || all_running=0
+				;;
+			modem_status)
+				[ "$enabled" = 1 ] && [ "$accepted" = 1 ] && [ "$found" = 1 ] || continue
+				instance="$(modem_instance_name "$bind" "$section")"
+				service_running "$instance" || all_running=0
+				;;
+		esac
 	done < "$LED_STATE_FILE"
 	[ "$all_running" = 1 ]
 }

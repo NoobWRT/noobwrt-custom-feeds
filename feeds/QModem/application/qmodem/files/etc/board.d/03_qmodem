@@ -16,11 +16,11 @@ arcadyan,aw1000)
 alwaylink,m60k63|\
 feiyan,m60k63)
 	ucidef_add_qmodem_slot wwan0 type usb slot 2-1 alias wwan0 gpio 5g-power gpio_up 0 gpio_down 1 default_metric 5
-	ucidef_add_qmodem_led modem_status enabled 1 script m60k63 bind port port 2-1
+	ucidef_add_qmodem_modem_status modem_status enabled 1 script m60k63 bind port port 2-1
 	;;
 nradio,c2000-max)
 	ucidef_add_qmodem_slot eth2 type usb slot 2-1 alias eth2
-	ucidef_add_qmodem_led modem_status enabled 1 script c2000_max bind port port 2-1
+	ucidef_add_qmodem_modem_status modem_status enabled 1 script c2000_max bind port port 2-1
 	;;
 hiveton,h5000m)
 	ucidef_set_qmodem_main enable_pcie_scan 0 start_delay 9
@@ -62,16 +62,15 @@ misectel,m01k43-p|\
 misectel,m02k45)
 	usb_port=2-1
 	pcie_port='0000:01:00.0'
-	led_script=m01k43
 	[ "$board" = 'misectel,m01k43-usb-p' ] && usb_port=2-1.1
 	if [ "$board" = 'misectel,m02k45' ]; then
 		pcie_port='0002:01:00.0'
-		led_script=m02k45
 	fi
 	ucidef_set_qmodem_main start_delay 15
 	ucidef_add_qmodem_slot usb0 type usb slot "$usb_port" alias wwan0 scan_priority pcie
 	ucidef_add_qmodem_slot pcie0 type pcie slot "$pcie_port" associated_usb "$usb_port" alias pcie0 scan_priority pcie
-	ucidef_add_qmodem_led modem_status enabled 1 script "$led_script" bind any
+	ucidef_add_qmodem_network_detect internet enabled 1 script misectel_network_detect
+	ucidef_add_qmodem_modem_status cellular enabled 1 script misectel_modem_status bind any
 	;;
 p2w,r619ac*)
 	ucidef_add_qmodem_slot minipcie type usb slot 3-1 alias wwan0 net_led blue:power default_metric 10

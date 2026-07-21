@@ -16,39 +16,35 @@ uci()
 				'qmodem.modem_a=modem-device' \
 				'qmodem.modem_b=modem-device'
 			;;
-		get:qmodem.main.enable_dial) echo 1 ;;
-		get:qmodem.modem_a.state) echo enabled ;;
-		get:qmodem.modem_a.enable_dial) echo 1 ;;
 		get:qmodem.modem_a.path) echo /sys/bus/usb/devices/2-1/ ;;
 		get:qmodem.modem_a.metric) echo 20 ;;
-		get:qmodem.modem_b.state) echo "${MOCK_B_STATE:-enabled}" ;;
-		get:qmodem.modem_b.enable_dial) echo 1 ;;
 		get:qmodem.modem_b.path) echo /sys/bus/usb/devices/2-1.1/ ;;
 		get:qmodem.modem_b.metric) echo 10 ;;
 		*) return 1 ;;
 	esac
 }
 
-ubus()
+modem_path_present()
 {
-	printf '%s\n' '{"qmodem_network":{"instances":{"modem_modem_a":{"running":true},"modem_modem_b":{"running":true},"modem_stopped":{"running":false}}}}'
+	case "$1" in
+		*/2-1/) return 0 ;;
+		*/2-1.1/) [ "${MOCK_B_PRESENT:-1}" = 1 ] ;;
+		*) return 1 ;;
+	esac
 }
 
-load_network_instances
-[ "$RUNNING_MODEMS" = 'modem_a modem_b' ]
-resolve_led_target any ''
+resolve_modem_target any ''
 [ "$LED_TARGET_FOUND:$LED_TARGET" = '1:modem_b' ]
 
-resolve_led_target port 2-1
+resolve_modem_target port 2-1
 [ "$LED_TARGET_FOUND:$LED_TARGET" = '1:modem_a' ]
 
-MOCK_B_STATE=disabled
-resolve_led_target any ''
+MOCK_B_PRESENT=0
+resolve_modem_target any ''
 [ "$LED_TARGET_FOUND:$LED_TARGET" = '1:modem_a' ]
 
-RUNNING_MODEMS=
-resolve_led_target none ''
-[ "$LED_TARGET_FOUND" = 1 ]
-[ -z "$LED_TARGET" ]
+if resolve_modem_target none ''; then
+	exit 1
+fi
 
 echo 'qmodem_led selector tests passed'

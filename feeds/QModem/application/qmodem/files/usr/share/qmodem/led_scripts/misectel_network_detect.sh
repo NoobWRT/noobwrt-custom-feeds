@@ -20,19 +20,17 @@ while true; do
 		failed_probes=0
 	else
 		failed_probes=$((failed_probes + 1))
-		[ "$last_connected" != 1 ] || [ "$failed_probes" -ge 3 ] || {
-			sleep 5
-			continue
-		}
-		connected=0
-	fi
-	if [ "$connected" != "$last_connected" ]; then
-		if [ "$connected" = 1 ]; then
-			internet_led_connected
+		if [ "$last_connected" = 1 ] && [ "$failed_probes" -lt 3 ]; then
+			connected=1
 		else
-			internet_led_disconnected
+			connected=0
 		fi
-		last_connected="$connected"
 	fi
+	if [ "$connected" = 1 ]; then
+		internet_led_connected
+	else
+		internet_led_disconnected
+	fi
+	last_connected="$connected"
 	sleep 5
 done

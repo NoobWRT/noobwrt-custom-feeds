@@ -5,7 +5,8 @@ set -eu
 QMODEM_PACKAGE_DIR="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
 
 grep -q '^START=79$' "${QMODEM_PACKAGE_DIR}/files/etc/init.d/qmodem_led"
-grep -q 'failed_probes.*-ge 3' "${QMODEM_PACKAGE_DIR}/files/usr/share/qmodem/led_scripts/misectel_network_detect.sh"
+grep -q 'failed_probes.*-lt 3' "${QMODEM_PACKAGE_DIR}/files/usr/share/qmodem/led_scripts/misectel_network_detect.sh"
+! grep -q 'connected.*!=.*last_connected' "${QMODEM_PACKAGE_DIR}/files/usr/share/qmodem/led_scripts/misectel_network_detect.sh"
 
 network_script="${QMODEM_PACKAGE_DIR}/files/usr/share/qmodem/led_scripts/misectel_network_detect.sh"
 led_helper="${QMODEM_PACKAGE_DIR}/files/usr/share/qmodem/led_scripts/misectel_led.sh"

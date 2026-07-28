@@ -163,6 +163,7 @@ return view.extend({
 				smartdns_ipset_support: false,
 				smartdns_nftset_support: false,
 				unbound_installed: false,
+				bind_installed: false,
 				leds: [],
 			},
 			cronEntry:
@@ -211,74 +212,91 @@ return view.extend({
 			'<a href="' + pkg.URL + '#dns-resolver-option" target="_blank">',
 			"</a>",
 		);
-		if (!reply.platform.dnsmasq_installed) {
-			text +=
-				"<br />" +
-				_("Please note that %s is not supported on this system.").format(
-					"<i>dnsmasq.addnhosts</i>",
-				);
-			text +=
-				"<br />" +
-				_("Please note that %s is not supported on this system.").format(
-					"<i>dnsmasq.conf</i>",
-				);
-			text +=
-				"<br />" +
-				_("Please note that %s is not supported on this system.").format(
-					"<i>dnsmasq.ipset</i>",
-				);
-			text +=
-				"<br />" +
-				_("Please note that %s is not supported on this system.").format(
-					"<i>dnsmasq.servers</i>",
-				);
-		} else {
-			if (!reply.platform.dnsmasq_ipset_support) {
+		// Single source of truth for every supported DNS mode: value, dropdown
+		// label, and the platform predicate that enables it. Both the
+		// "not supported" notes and the dropdown values below are driven from
+		// this list, so adding a mode is a one-line change.
+		var dnsModes = [
+			{
+				value: "dnsmasq.addnhosts",
+				label: _("dnsmasq additional hosts"),
+				supported: function (p) {
+					return p.dnsmasq_installed;
+				},
+			},
+			{
+				value: "dnsmasq.conf",
+				label: _("dnsmasq config"),
+				supported: function (p) {
+					return p.dnsmasq_installed;
+				},
+			},
+			{
+				value: "dnsmasq.ipset",
+				label: _("dnsmasq ipset"),
+				supported: function (p) {
+					return p.dnsmasq_installed && p.dnsmasq_ipset_support;
+				},
+			},
+			{
+				value: "dnsmasq.nftset",
+				label: _("dnsmasq nft set"),
+				supported: function (p) {
+					return p.dnsmasq_installed && p.dnsmasq_nftset_support;
+				},
+			},
+			{
+				value: "dnsmasq.servers",
+				label: _("dnsmasq servers file"),
+				supported: function (p) {
+					return p.dnsmasq_installed;
+				},
+			},
+			{
+				value: "smartdns.domainset",
+				label: _("smartdns domain set"),
+				supported: function (p) {
+					return p.smartdns_installed;
+				},
+			},
+			{
+				value: "smartdns.ipset",
+				label: _("smartdns ipset"),
+				supported: function (p) {
+					return p.smartdns_installed && p.smartdns_ipset_support;
+				},
+			},
+			{
+				value: "smartdns.nftset",
+				label: _("smartdns nft set"),
+				supported: function (p) {
+					return p.smartdns_installed && p.smartdns_nftset_support;
+				},
+			},
+			{
+				value: "unbound.adb_list",
+				label: _("unbound adblock list"),
+				supported: function (p) {
+					return p.unbound_installed;
+				},
+			},
+			{
+				value: "bind.rpz",
+				label: _("BIND RPZ zone"),
+				supported: function (p) {
+					return p.bind_installed;
+				},
+			},
+		];
+		dnsModes.forEach(function (m) {
+			if (!m.supported(reply.platform)) {
 				text +=
 					"<br />" +
 					_("Please note that %s is not supported on this system.").format(
-						"<i>dnsmasq.ipset</i>",
+						"<i>" + m.value + "</i>",
 					);
 			}
-			if (!reply.platform.dnsmasq_nftset_support) {
-				text +=
-					"<br />" +
-					_("Please note that %s is not supported on this system.").format(
-						"<i>dnsmasq.nftset</i>",
-					);
-			}
-		}
-		if (!reply.platform.smartdns_installed) {
-			text =
-				text +
-				"<br />" +
-				_("Please note that %s is not supported on this system.").format(
-					"<i>smartdns.domainset</i>",
-				);
-		} else {
-			if (!reply.platform.smartdns_ipset_support) {
-				text +=
-					"<br />" +
-					_("Please note that %s is not supported on this system.").format(
-						"<i>smartdns.ipset</i>",
-					);
-			}
-			if (!reply.platform.smartdns_nftset_support) {
-				text +=
-					"<br />" +
-					_("Please note that %s is not supported on this system.").format(
-						"<i>smartdns.nftset</i>",
-					);
-			}
-		}
-		if (!reply.platform.unbound_installed) {
-			text =
-				text +
-				"<br />" +
-				_("Please note that %s is not supported on this system.").format(
-					"<i>unbound.adb_list</i>",
-				);
-		}
+		});
 
 		o = s1.taboption(
 			"tab_basic",
@@ -287,29 +305,11 @@ return view.extend({
 			_("DNS Service"),
 			text,
 		);
-		if (reply.platform.dnsmasq_installed) {
-			o.value("dnsmasq.addnhosts", _("dnsmasq additional hosts"));
-			o.value("dnsmasq.conf", _("dnsmasq config"));
-			if (reply.platform.dnsmasq_ipset_support) {
-				o.value("dnsmasq.ipset", _("dnsmasq ipset"));
+		dnsModes.forEach(function (m) {
+			if (m.supported(reply.platform)) {
+				o.value(m.value, m.label);
 			}
-			if (reply.platform.dnsmasq_nftset_support) {
-				o.value("dnsmasq.nftset", _("dnsmasq nft set"));
-			}
-			o.value("dnsmasq.servers", _("dnsmasq servers file"));
-		}
-		if (reply.platform.smartdns_installed) {
-			o.value("smartdns.domainset", _("smartdns domain set"));
-			if (reply.platform.smartdns_ipset_support) {
-				o.value("smartdns.ipset", _("smartdns ipset"));
-			}
-			if (reply.platform.smartdns_nftset_support) {
-				o.value("smartdns.nftset", _("smartdns nft set"));
-			}
-		}
-		if (reply.platform.unbound_installed) {
-			o.value("unbound.adb_list", _("unbound adblock list"));
-		}
+		});
 		o.default = "dnsmasq.servers";
 
 		o = s1.taboption(
@@ -1146,13 +1146,19 @@ return view.extend({
 
 	handleSaveApply: function (ev, mode) {
 		var self = this, map = this._map;
+		// Capture the schedule from the live form BEFORE handleSave(), which
+		// re-renders the map and resets the virtual auto_update_* widgets back to
+		// their cfgvalue (the crontab state parsed at page load). Reading them
+		// after the save/apply would send those stale values to syncCron, so the
+		// user's schedule change is silently lost (issue #8882).
+		var schedule = self.collectSchedule(map);
 		return this.handleSave(ev)
 			.then(function () {
 				return ui.changes.apply(mode == "0");
 			})
 			.then(function () {
 				return L.resolveDefault(
-					adb.syncCron(pkg.Name, null, self.collectSchedule(map)),
+					adb.syncCron(pkg.Name, null, schedule),
 					false,
 				).then(function (result) {
 					if (result === false)

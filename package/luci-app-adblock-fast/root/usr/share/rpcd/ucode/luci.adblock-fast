@@ -24,7 +24,7 @@ import { readfile, writefile, stat, rename, unlink, chmod, mkdir, access } from 
 import { cursor } from 'uci';
 
 const packageName = 'adblock-fast';
-const rpcdCompat = 17; // ucode-lsp disable
+const rpcdCompat = 18; // ucode-lsp disable
 
 // ── Helpers ─────────────────────────────────────────────────────────
 
@@ -223,7 +223,17 @@ function cron_write(action, schedule) {
 	if (line_to_add)
 		push(lines, line_to_add);
 
-	writefile(tmp_file, join('\n', lines) + '\n');
+	// /etc/crontabs may not exist on a system where cron was never configured
+	// (fresh install, minimal/nginx builds). Without it writefile() below fails
+	// silently, rename() then fails, and the UI reports "Failed to update cron
+	// schedule." Ensure the directory exists first.
+	if (stat('/etc/crontabs')?.type != 'directory')
+		mkdir('/etc/crontabs', 0755);
+
+	if (!writefile(tmp_file, join('\n', lines) + '\n')) {
+		unlink(tmp_file);
+		return false;
+	}
 
 	if (!rename(tmp_file, cron_file)) {
 		unlink(tmp_file);

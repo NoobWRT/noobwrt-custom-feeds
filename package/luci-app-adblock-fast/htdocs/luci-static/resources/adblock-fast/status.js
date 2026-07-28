@@ -12,7 +12,7 @@ var pkg = {
 		return "adblock-fast";
 	},
 	get LuciCompat() {
-		return 17;
+		return 18;
 	},
 	get ChromeExtensionId() {
 		return "klkdabjeohlmbcnidbealmacfjlihopo";
@@ -95,6 +95,9 @@ var pkg = {
 		warningExternalDnsmasqConfig: _(
 			"Use of external dnsmasq config file detected, please set '%s' option to '%s'",
 		).format("dns", "dnsmasq.conf"),
+		warningBindManualConfig: _(
+			"BIND RPZ zone written; ensure named.conf includes '%s' and adds 'response-policy { zone \"rpz.adblock-fast\"; };' to its options{} (one-time setup)",
+		),
 		warningMissingRecommendedPackages: _("Missing recommended package: '%s'"),
 		warningOutdatedLuciPackage: _(
 			"The WebUI application (luci-app-adblock-fast) is outdated, please update it",

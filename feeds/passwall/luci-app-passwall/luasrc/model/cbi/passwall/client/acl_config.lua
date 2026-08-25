@@ -33,15 +33,17 @@ for _, v in pairs(nodes_table) do
 end
 
 local socks_list = {}
-m:foreach("socks", function(s)
-	if s.enabled == "1" and s.node then
-		socks_list[#socks_list + 1] = {
-			id = s[".name"],
-			remark = translate("Socks Config") .. " " .. string.format("[%s %s]", s.port, translate("Port")),
-			group = "Socks"
-		}
-	end
-end)
+if has_singbox or has_xray then
+	m:foreach("socks", function(s)
+		if s.enabled == "1" and s.node then
+			socks_list[#socks_list + 1] = {
+				id = s[".name"],
+				remark = translate("Socks Config") .. " " .. string.format("[%s %s]", s.port, translate("Port")),
+				group = "Socks"
+			}
+		end
+	end)
+end
 
 -- [[ ACLs Settings ]]--
 s = m:section(NamedSection, arg[1], translate("ACLs"), translate("ACLs"))
@@ -172,7 +174,6 @@ o = s:option(Value, "udp_no_redir_ports", translate("UDP No Redir Ports"),
 o:value("", translate("Use global config") .. "(" .. UDP_NO_REDIR_PORTS .. ")")
 o:value("disable", translate("No patterns are used"))
 o:value("1:65535", translate("All"))
-o:value("1:52,54:442,444:65535", translatef("Forward only %s", "53, 443"))
 o:depends("mode", "1")
 o.validate = port_validate
 

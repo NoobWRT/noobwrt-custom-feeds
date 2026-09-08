@@ -1,7 +1,7 @@
 # QModem VoIP interface reference
 
 This document describes the experimental implementation inspected on
-2026-09-06. The owning application repository remains authoritative while the
+2026-09-07. The owning application repository remains authoritative while the
 contract is evolving.
 
 ## ubus object
@@ -30,7 +30,8 @@ fields. Errors return:
 | `answer` | `{"endpoint":"browser|lan_sip"}` | First local answer wins |
 | `reject` | `{"endpoint":"browser|lan_sip"}` | Valid for incoming ringing/early media; termination is idempotent |
 | `hangup` | `{"endpoint":"browser|lan_sip"}` | Releases the active/setup call; termination is idempotent |
-| `set_sip_credentials` | `{"username":"...","password":"..."}` | Writes credentials, enables LAN SIP/firewall, and reloads or schedules the registrar |
+| `generate_sip_credentials` | `{"username":"..."}` | Generates a password, stores the account in UCI, and returns the password once |
+| `call_history` | `{}` | Returns up to 100 completed calls, newest first, including missed-call classification |
 | `issue_media_token` | session/revision/origin object below | Issues a single-use browser token for the active call |
 | `attach_rtp` | RTP negotiation object below | Internal registrar boundary; attaches PCMA/PCMU RTP to the call |
 | `release_rtp` | `{}` | Internal registrar boundary; detaches RTP idempotently |
@@ -89,7 +90,11 @@ granted to the LuCI ACL and should not be exposed as general browser RPCs.
 | `origin` | endpoint | Endpoint that initiated the call |
 | `endpoint` | endpoint | Current modem-facing endpoint |
 | `answer_owner` | endpoint | Local endpoint that won incoming-call answer ownership |
-| `number_present` | boolean | A number is known internally; the value is not disclosed |
+| `number_present` | boolean | A remote number is known |
+| `remote_number` | string | Remote number when known and not withheld |
+| `call_duration_seconds` | integer | Active call duration, otherwise zero |
+| `sip_configured` | boolean | Valid UCI SIP credentials were loaded |
+| `sip_username` | string | Configured local SIP username; password is never included |
 | `caller_id_withheld` | boolean | Incoming caller ID was withheld |
 | `revision` | uint64 | Monotonic call-state revision |
 | `restart_epoch` | uint64 | AT-daemon restart generation |
@@ -128,9 +133,9 @@ call controls.
 
 ## Events
 
-Events are flattened objects containing `event` and the complete redacted call
-snapshot. They do not include numbers, credentials, raw AT lines, media tokens,
-or media counters. Current event names are `enabled`, `disabled`, `originate`,
+Events are flattened objects containing `event` and the call snapshot. They do
+not include credentials, raw AT lines, media tokens, or media counters. Current
+event names are `enabled`, `disabled`, `originate`,
 `answer`, `reject`, `hangup`, `fault`, `event_gap`, `caller_id`,
 `reconcile_inconclusive`, `reconcile_idle`, `phantom_clcc_quarantined`,
 `release_pending`, `call_state`, `ring`, and `release`.
@@ -168,9 +173,9 @@ Do not depend on a nonexistent `UBUS_STATUS_BUSY`; clients should use the JSON
 
 The LuCI package defines two roles:
 
-- read-only: `status`, `capabilities`;
+- read-only: `status`, `capabilities`, `call_history`;
 - administrator: the read methods plus `enable`, `disable`, `originate`,
-  `answer`, `reject`, `hangup`, `set_sip_credentials`, and
+  `answer`, `reject`, `hangup`, `generate_sip_credentials`, and
   `issue_media_token`.
 
 The ACL is the authorization boundary. Hiding or disabling a LuCI control is
@@ -183,13 +188,18 @@ Package: `/etc/config/qmodem_voip`
 ```uci
 config sip 'sip'
         option enabled '0'
+	option username 'qmodem'
+	option password '<generated>'
         option interface 'br-lan'
         option rtp_start '40000'
         option rtp_end '40031'
 ```
 
 `interface` selects the OpenWrt network interface used to discover the LAN
-address. SIP is disabled until valid credentials are written. The firewall
+address. The daemon generates the password from the kernel random source and
+stores the authoritative account in UCI with mode `0600`. It derives the SIP
+HA1 runtime file under `/var/run` at each start. SIP is disabled until valid
+credentials are generated. The firewall
 include follows the same enable state. Values are product defaults, not an
 external-SIP configuration surface.
 

@@ -6,8 +6,6 @@
 #include <pthread.h>
 #include <stdatomic.h>
 
-#include "modem_profile.h"
-
 struct _snd_pcm;
 
 #define QMODEM_VOIP_MEDIA_RATE 8000U
@@ -16,9 +14,7 @@ struct _snd_pcm;
 #define QMODEM_VOIP_MEDIA_SAMPLES 160U
 #define QMODEM_VOIP_BROWSER_SAMPLES 960U
 #define QMODEM_VOIP_PCM_MAX_SAMPLES 1920U
-/* Keep roughly half a second of 20 ms frames so short USB/WS scheduling
- * jitter does not turn into audible gaps, while bounding end-to-end delay. */
-#define QMODEM_VOIP_MEDIA_QUEUE_FRAMES 25U
+#define QMODEM_VOIP_MEDIA_QUEUE_FRAMES 10U
 #define QMODEM_VOIP_MEDIA_PRODUCT "RM520N-GL"
 #define QMODEM_VOIP_SERIAL_FRAME_BYTES (QMODEM_VOIP_MEDIA_SAMPLES * sizeof(int16_t))
 #define QMODEM_VOIP_SERIAL_PLAYBACK_FRAMES 5U
@@ -42,8 +38,7 @@ enum qmodem_voip_media_attachment {
 	QMODEM_VOIP_MEDIA_ATTACH_NONE,
 	QMODEM_VOIP_MEDIA_ATTACH_BROWSER,
 	QMODEM_VOIP_MEDIA_ATTACH_LAN_SIP,
-	QMODEM_VOIP_MEDIA_ATTACH_CELLULAR,
-	QMODEM_VOIP_MEDIA_ATTACH_SOCKET
+	QMODEM_VOIP_MEDIA_ATTACH_CELLULAR
 };
 
 struct qmodem_voip_media_frame {
@@ -120,7 +115,6 @@ struct qmodem_voip_rtp_endpoint {
 
 struct qmodem_voip_media_engine {
 	struct qmodem_voip_media_device device;
-	struct qmodem_voip_modem_profile profile;
 	struct qmodem_voip_media_queue modem_to_canonical;
 	struct qmodem_voip_media_queue canonical_to_modem;
 	struct qmodem_voip_rtp_endpoint rtp;

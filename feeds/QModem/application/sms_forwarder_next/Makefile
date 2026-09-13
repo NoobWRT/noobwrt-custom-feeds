@@ -13,7 +13,7 @@ define Package/$(PKG_NAME)
   SECTION:=utils
   CATEGORY:=Utilities
   TITLE:=SMS Forward Service
-  DEPENDS:=+tom_modem +jq +curl +ucode +ucode-mod-ubus +ucode-mod-uci +qmodem-sipd
+  DEPENDS:=+tom_modem +jq +curl +ucode +ucode-mod-ubus +ucode-mod-uci
 endef
 
 define Package/$(PKG_NAME)/description
@@ -22,7 +22,6 @@ define Package/$(PKG_NAME)/description
   - ServerChan
   - Generic Webhook
   - Custom Script
-  - SIP MESSAGE
 endef
 
 

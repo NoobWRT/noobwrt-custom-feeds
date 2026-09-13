@@ -6,11 +6,6 @@
       "model": "RM520N-GL",
       "firmware": "RM520NGLAAR03A03M4G",
       "usb_id": "2c7c:0801",
-      "adb_unlock": true,
-      "voice_server_media_gate": true,
-      "voice_server_restart": true,
-      "voice_server_dependency_service": "agm_server.service",
-      "voice_server_service": "quectel-voice-server.service",
       "audio": {
         "method": "serial_pcm",
         "interface_number": "01",
@@ -21,7 +16,7 @@
         "qpcmv": "1,0",
         "qaudmod": 2,
         "transfer_bytes": 1024,
-        "transfer_interval_ms": 60,
+        "transfer_interval_ms": 64,
         "uac": false,
         "gps_outport": "none"
       }

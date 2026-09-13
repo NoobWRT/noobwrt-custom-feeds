@@ -3,7 +3,9 @@
 'require poll';
 'require ui';
 'require dom';
+'require uci';
 'require qmodem.sms as smsService';
+'require qmodem.qmodem as qmodem';
 
 // Load CSS
 document.head.appendChild(E('link', {
@@ -45,7 +47,7 @@ return view.extend({
 		var contact = match ? decodeURIComponent(match[1]) : null;
 
 		return Promise.all([
-			smsService.getModems(),
+			qmodem.getModemSections(),
 			Promise.resolve(contact)
 		]);
 	},

@@ -1,5 +1,4 @@
 'use strict';
-'require baseclass';
 'require rpc';
 'require qmodem-voip.contract as contract';
 
@@ -14,23 +13,6 @@ Object.keys(contract.METHODS).forEach((name) => {
 	});
 });
 
-calls.sipStatus = rpc.declare({
-	object: 'qmodem.sip',
-	method: 'status',
-	params: [],
-	expect: {}
-});
+const api = Object.assign({}, calls, { eventTopic: contract.EVENT_TOPIC });
 
-calls.generateSipCredentials = rpc.declare({
-	object: 'qmodem.sip',
-	method: 'generate_credentials',
-	params: [ 'username' ],
-	expect: {}
-});
-
-const api = Object.freeze(Object.assign({}, calls, { eventTopic: contract.EVENT_TOPIC }));
-
-if (typeof module !== 'undefined' && module.exports && typeof baseclass === 'undefined')
-	module.exports = api;
-else
-	return baseclass.extend(api);
+return Object.freeze(api);

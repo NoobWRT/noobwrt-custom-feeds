@@ -1,39 +1,13 @@
 #!/bin/sh
-qmodem_voip_adapter_device_exists() { [ -c "$1" ]; }
-
 qmodem_voip_adapter_usb_slot()
 {
-	section=$(qmodem_voip_adapter_section) || return 1
-	path=$(uci -q get "qmodem.$section.path") || return 1
-	path=${path%/}
-	slot=${path##*/}
-	case $slot in ''|*[!0-9.-]*) return 1 ;; esac
-	[ -d "${QMODEM_VOIP_SYSFS_ROOT:-/sys/bus/usb/devices}/$slot" ] || return 1
-	printf '%s\n' "$slot"
-}
-
-qmodem_voip_adapter_section()
-{
-	match=
-	for section in $(uci -q show qmodem 2>/dev/null |
-		sed -n 's/^qmodem\.\([A-Za-z0-9_]*\)=modem-device$/\1/p'); do
-		[ "$(uci -q get "qmodem.$section.name")" = rm520n-gl ] || continue
-		[ "$(uci -q get "qmodem.$section.data_interface")" = usb ] || continue
-		[ -n "$(uci -q get "qmodem.$section.at_port")" ] || continue
-		[ -n "$(uci -q get "qmodem.$section.voice_pcm_port")" ] || continue
-		[ -z "$match" ] || return 1
-		match=$section
+	for device in "${QMODEM_VOIP_SYSFS_ROOT:-/sys/bus/usb/devices}"/*; do
+		[ "$(cat "$device/idVendor" 2>/dev/null)" = 2c7c ] || continue
+		[ "$(cat "$device/idProduct" 2>/dev/null)" = 0801 ] || continue
+		basename "$device"
+		return 0
 	done
-	[ -n "$match" ] || return 1
-	printf '%s\n' "$match"
-}
-
-qmodem_voip_adapter_enable_ubus()
-{
-	section=$(qmodem_voip_adapter_section) || return 1
-	[ "$(uci -q get "qmodem.$section.use_ubus" 2>/dev/null)" = 1 ] && return 0
-	uci -q set "qmodem.$section.use_ubus=1" || return 1
-	uci -q commit qmodem
+	return 1
 }
 
 qmodem_voip_adapter_usb_id()
@@ -49,22 +23,17 @@ qmodem_voip_adapter_usb_id()
 
 qmodem_voip_adapter_endpoint()
 {
-	section=$(qmodem_voip_adapter_section) || return 1
-	port=$(uci -q get "qmodem.$section.at_port") || return 1
-	case $port in /dev/ttyUSB*|/dev/ttyACM*) ;; *) return 1 ;; esac
-	qmodem_voip_adapter_device_exists \
-		"${QMODEM_VOIP_DEVICE_ROOT:-/dev}/${port#/dev/}" || return 1
-	printf '%s\n' "$port"
-}
-
-qmodem_voip_adapter_pcm_endpoint()
-{
-	section=$(qmodem_voip_adapter_section) || return 1
-	port=$(uci -q get "qmodem.$section.voice_pcm_port") || return 1
-	case $port in /dev/ttyUSB*|/dev/ttyACM*) ;; *) return 1 ;; esac
-	qmodem_voip_adapter_device_exists \
-		"${QMODEM_VOIP_DEVICE_ROOT:-/dev}/${port#/dev/}" || return 1
-	printf '%s\n' "$port"
+	slot=$(qmodem_voip_adapter_usb_slot) || return 1
+	root=${QMODEM_VOIP_SYSFS_ROOT:-/sys/bus/usb/devices}
+	for interface in "$root/$slot":*; do
+		[ "$(cat "$interface/bInterfaceNumber" 2>/dev/null)" = 02 ] || continue
+		for node in "$interface"/ttyUSB*/tty/* "$interface"/tty/*; do
+			[ -e "$node" ] || continue
+			printf '/dev/%s\n' "$(basename "$node")"
+			return 0
+		done
+	done
+	return 1
 }
 
 qmodem_voip_adapter_normalize()
@@ -136,9 +105,8 @@ qmodem_voip_adapter_at()
 	while [ "$attempt" -lt 3 ]; do
 		result=$(ubus call at-daemon sendat "$payload") || result=
 		status=$(printf '%s\n' "$result" | jsonfilter -e '@.status')
-		end_flag=$(printf '%s\n' "$result" | jsonfilter -e '@.end_flag_matched')
 		response=$(printf '%s\n' "$result" | jsonfilter -e '@.response')
-		if [ "$status" = success ] && [ "$end_flag" = OK ] && [ -n "$response" ]; then
+		if [ "$status" = success ] && [ -n "$response" ]; then
 			printf '%s\n' "$response" | qmodem_voip_adapter_normalize "$command"
 			return $?
 		fi
@@ -150,11 +118,16 @@ qmodem_voip_adapter_at()
 
 qmodem_voip_adapter_rediscover()
 {
-	requested_slot=$1
-	slot=$(qmodem_voip_adapter_usb_slot) || return 1
-	[ "$slot" = "$requested_slot" ] || return 1
-	qmodem_voip_adapter_endpoint || return 1
-	qmodem_voip_adapter_pcm_endpoint
+	slot=$1
+	root=${QMODEM_VOIP_SYSFS_ROOT:-/sys/bus/usb/devices}
+	[ -d "$root/$slot" ] || return 1
+	found=0
+	for node in "$root/$slot":*/ttyUSB*/tty/* "$root/$slot":*/sound/card*; do
+		[ -e "$node" ] || continue
+		printf '%s\n' "$node"
+		found=1
+	done
+	[ "$found" = 1 ]
 }
 
 qmodem_voip_adapter_wait_reenumeration()
@@ -167,14 +140,13 @@ qmodem_voip_adapter_wait_reenumeration()
 	saw_absent=0
 	while [ "$remaining" -gt 0 ]; do
 		endpoint=$(qmodem_voip_adapter_endpoint 2>/dev/null) || endpoint=
-		pcm_endpoint=$(qmodem_voip_adapter_pcm_endpoint 2>/dev/null) || pcm_endpoint=
 		[ -d "$root/$slot" ] && [ -n "$endpoint" ] || saw_absent=1
 		has_audio=0
 		for card in "$root/$slot"/"$slot":*/sound/card*; do
 			[ -d "$card" ] && has_audio=1 && break
 		done
 		if [ "$saw_absent" = 1 ] && [ -n "$endpoint" ] && [ "$has_audio" = "$want_audio" ]; then
-			[ "$want_audio" = 0 ] && [ -n "$pcm_endpoint" ] && return 0
+			[ "$want_audio" = 0 ] && return 0
 			grep -q 'playback.*capture' "$proc/pcm" 2>/dev/null && return 0
 		fi
 		sleep 1
@@ -183,18 +155,8 @@ qmodem_voip_adapter_wait_reenumeration()
 	return 1
 }
 
-if [ "${0##*/}" = at_daemon_adapter.sh ]; then
-	case ${1:-} in
-	at)
-		[ "$#" -eq 2 ] || exit 64
-		qmodem_voip_adapter_at "$2"
-		;;
-	endpoint)
-		[ "$#" -eq 1 ] || exit 64
-		qmodem_voip_adapter_endpoint
-		;;
-	*)
-		exit 64
-		;;
-	esac
+if [ "${1:-}" = at ]; then
+	[ "$#" -eq 2 ] || exit 64
+	qmodem_voip_adapter_at "$2"
+	exit $?
 fi

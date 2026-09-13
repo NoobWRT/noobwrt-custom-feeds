@@ -150,15 +150,14 @@ int qmodem_voip_serial_adopt(struct qmodem_voip_media_engine *engine, int fd,
 			     const char *path)
 {
 	if (!engine || fd < 0 || !path || !path[0] || strlen(path) >= sizeof(engine->serial.path) ||
-		nonblocking(fd) || engine->profile.frame_bytes > sizeof(engine->serial.capture) ||
-		engine->profile.transfer_bytes > sizeof(engine->serial.playback))
+		nonblocking(fd))
 		return -1;
 	memset(&engine->serial, 0, sizeof(engine->serial));
 	engine->serial.fd = fd;
 	engine->serial.active = 1;
 	(void)snprintf(engine->serial.path, sizeof(engine->serial.path), "%s", path);
-	engine->device.capture_rate = engine->profile.sample_rate;
-	engine->device.playback_rate = engine->profile.sample_rate;
+	engine->device.capture_rate = QMODEM_VOIP_MEDIA_RATE;
+	engine->device.playback_rate = QMODEM_VOIP_MEDIA_RATE;
 	engine->device.full_duplex = 1;
 	engine->backend = QMODEM_VOIP_MEDIA_BACKEND_SERIAL;
 	engine->ready = 1;
@@ -189,25 +188,12 @@ int qmodem_voip_serial_start(struct qmodem_voip_media_engine *engine,
 			     const char *slot)
 {
 	char path[256];
-	const char *configured_path = getenv("QMODEM_VOIP_PCM_DEVICE");
 	struct termios settings;
 	int fd;
 
-	if (!engine)
+	if (!engine || qmodem_voip_serial_discover(sysfs_root, device_root, slot,
+		path, sizeof(path)))
 		return -1;
-	if (!engine->profile.frame_bytes)
-		qmodem_voip_profile_default(&engine->profile);
-	if (configured_path && configured_path[0]) {
-		if (strncmp(configured_path, "/dev/ttyUSB", 11) &&
-		    strncmp(configured_path, "/dev/ttyACM", 11))
-			return -1;
-		if (snprintf(path, sizeof(path), "%s", configured_path) < 0 ||
-		    strlen(configured_path) >= sizeof(path))
-			return -1;
-	} else if (qmodem_voip_serial_discover(sysfs_root, device_root, slot,
-		   path, sizeof(path))) {
-		return -1;
-	}
 	fd = open(path, O_RDWR | O_NOCTTY | O_NONBLOCK | O_CLOEXEC);
 	if (fd < 0)
 		return -1;
@@ -240,8 +226,7 @@ int qmodem_voip_serial_start(struct qmodem_voip_media_engine *engine,
 	}
 	engine->serial.thread_started = 1;
 	(void)snprintf(engine->device.slot, sizeof(engine->device.slot), "%s", slot);
-	(void)snprintf(engine->device.pcm_name, sizeof(engine->device.pcm_name),
-		"serial:if%02x", engine->profile.interface_number);
+	(void)snprintf(engine->device.pcm_name, sizeof(engine->device.pcm_name), "serial:if01");
 	return 0;
 }
 
@@ -270,13 +255,16 @@ void qmodem_voip_serial_set_attached(struct qmodem_voip_media_engine *engine,
 
 void qmodem_voip_serial_prepare_call(struct qmodem_voip_media_engine *engine)
 {
+	uint64_t reopen_count;
+
 	if (!engine || engine->backend != QMODEM_VOIP_MEDIA_BACKEND_SERIAL)
 		return;
-	qmodem_voip_serial_reset_stream(engine);
-	/* Do not consume modem PCM while ATD/ATA is still in setup.  RM520
-	 * exposes a short, non-audio stream during that interval; accepting it
-	 * shifts the first real 20 ms frame and can poison the call lifetime. */
-	qmodem_voip_serial_set_attached(engine, 0);
+	if (engine->serial.active && engine->serial.thread_started) {
+		reopen_count = atomic_load(&engine->serial.reopen_count);
+		qmodem_voip_serial_close(engine);
+		atomic_store(&engine->serial.reopen_count, reopen_count);
+	}
+	qmodem_voip_serial_set_attached(engine, 1);
 }
 
 int qmodem_voip_serial_reopen(struct qmodem_voip_media_engine *engine)
@@ -301,14 +289,6 @@ int qmodem_voip_serial_reopen(struct qmodem_voip_media_engine *engine)
 	atomic_store(&engine->serial.reopen_pending, 0);
 	atomic_store(&engine->serial.reopen_count, count + 1U);
 	return 0;
-}
-
-int qmodem_voip_serial_reopen_now(struct qmodem_voip_media_engine *engine)
-{
-	if (!engine || engine->backend != QMODEM_VOIP_MEDIA_BACKEND_SERIAL)
-		return -1;
-	atomic_store(&engine->serial.reopen_pending, 1);
-	return qmodem_voip_serial_reopen(engine);
 }
 
 void qmodem_voip_serial_reset_stream(struct qmodem_voip_media_engine *engine)
@@ -354,23 +334,22 @@ int qmodem_voip_serial_capture(struct qmodem_voip_media_engine *engine,
 				continue;
 			}
 			engine->serial.capture_used += (size_t)received;
-			while (engine->serial.capture_used >=
-			       engine->profile.frame_bytes) {
+			while (engine->serial.capture_used >= QMODEM_VOIP_SERIAL_FRAME_BYTES) {
 				if (atomic_load(&engine->serial.attached) &&
 					qmodem_voip_media_queue_push(&engine->modem_to_canonical,
 					engine->serial.capture,
 					QMODEM_VOIP_MEDIA_SAMPLES, timestamp_ms))
 					return serial_failure(engine);
-				engine->serial.capture_used -= engine->profile.frame_bytes;
+				engine->serial.capture_used -= QMODEM_VOIP_SERIAL_FRAME_BYTES;
 				memmove(engine->serial.capture,
 					(unsigned char *)engine->serial.capture +
-					engine->profile.frame_bytes,
+					QMODEM_VOIP_SERIAL_FRAME_BYTES,
 					engine->serial.capture_used);
 				memset((unsigned char *)engine->serial.capture +
 					engine->serial.capture_used, 0,
 					sizeof(engine->serial.capture) - engine->serial.capture_used);
 				atomic_fetch_add(&engine->serial.captured_frames, 1);
-				timestamp_ms += engine->profile.frame_ms;
+				timestamp_ms += 20U;
 			}
 			continue;
 		}
@@ -392,16 +371,13 @@ int qmodem_voip_serial_playback(struct qmodem_voip_media_engine *engine,
 {
 	struct qmodem_voip_media_frame frame;
 	ssize_t written;
-	size_t transfer = engine->profile.transfer_bytes ?
-		engine->profile.transfer_bytes : QMODEM_VOIP_SERIAL_TRANSFER_BYTES;
-	if (!engine || !engine->ready || !engine->serial.active ||
-	    transfer > sizeof(engine->serial.playback))
+	if (!engine || !engine->ready || !engine->serial.active)
 		return -1;
 	for (;;) {
 		if (!engine->serial.playback_offset) {
 			if (timestamp_ms < engine->serial.next_playback_ms)
 				return 0;
-			while (engine->serial.playback_used < transfer) {
+			while (engine->serial.playback_used < QMODEM_VOIP_SERIAL_TRANSFER_BYTES) {
 			int popped = qmodem_voip_media_queue_pop(
 				&engine->canonical_to_modem, &frame);
 			if (popped < 0)
@@ -417,21 +393,22 @@ int qmodem_voip_serial_playback(struct qmodem_voip_media_engine *engine,
 		}
 		written = write(engine->serial.fd,
 			(unsigned char *)engine->serial.playback + engine->serial.playback_offset,
-			transfer - engine->serial.playback_offset);
+			QMODEM_VOIP_SERIAL_TRANSFER_BYTES - engine->serial.playback_offset);
 		if (written > 0) {
 			atomic_fetch_add(&engine->serial.write_bytes, (uint64_t)written);
 			engine->serial.playback_offset += (size_t)written;
-			if (engine->serial.playback_offset == transfer) {
-				size_t remaining = engine->serial.playback_used - transfer;
+			if (engine->serial.playback_offset == QMODEM_VOIP_SERIAL_TRANSFER_BYTES) {
+				size_t remaining = engine->serial.playback_used -
+					QMODEM_VOIP_SERIAL_TRANSFER_BYTES;
 				memmove(engine->serial.playback,
 					(unsigned char *)engine->serial.playback +
-					transfer, remaining);
+					QMODEM_VOIP_SERIAL_TRANSFER_BYTES, remaining);
 				memset((unsigned char *)engine->serial.playback + remaining, 0,
 					sizeof(engine->serial.playback) - remaining);
 				engine->serial.playback_used = remaining;
 				engine->serial.playback_offset = 0;
 				engine->serial.next_playback_ms = timestamp_ms +
-					engine->profile.transfer_interval_ms;
+					QMODEM_VOIP_SERIAL_TRANSFER_INTERVAL_MS;
 				return 0;
 			}
 			continue;

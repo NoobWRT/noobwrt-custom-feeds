@@ -43,7 +43,6 @@ struct qmodem_voip_browser_media {
 	struct qmodem_voip_media_engine *engine;
 	void *context;
 	void *client;
-	void *pending_client;
 	char address[16];
 	char certificate[256];
 	char key[256];
@@ -58,12 +57,6 @@ struct qmodem_voip_browser_media {
 	int sequence_seen;
 	int16_t uplink[QMODEM_VOIP_MEDIA_SAMPLES];
 	unsigned uplink_count;
-	uint64_t uplink_frames;
-	uint64_t uplink_non_silent_frames;
-	unsigned uplink_peak;
-	uint64_t downlink_frames;
-	uint64_t downlink_empty;
-	uint64_t downlink_write_errors;
 	uint64_t dropped;
 	int attached;
 	int ready;
@@ -84,10 +77,9 @@ int qmodem_voip_browser_frame_parse(const uint8_t *data, size_t length,
 int qmodem_voip_browser_configure(struct qmodem_voip_browser_media *browser,
 				  struct qmodem_voip_media_engine *engine,
 				  const char *address, const char *certificate, const char *key);
-int qmodem_voip_browser_media_start(struct qmodem_voip_browser_media *browser);
-void qmodem_voip_browser_media_reset_call(struct qmodem_voip_browser_media *browser);
+int qmodem_voip_browser_media_start(struct qmodem_voip_browser_media *browser,
+				    uint64_t call_revision);
 void qmodem_voip_browser_media_stop(struct qmodem_voip_browser_media *browser);
-void qmodem_voip_browser_media_release(struct qmodem_voip_browser_media *browser);
 int qmodem_voip_browser_media_receive(struct qmodem_voip_browser_media *browser,
 				      const uint8_t *data, size_t length);
 int qmodem_voip_browser_media_attach(struct qmodem_voip_browser_media *browser,

@@ -3,7 +3,9 @@
 'require poll';
 'require ui';
 'require dom';
+'require uci';
 'require qmodem.sms as smsService';
+'require qmodem.qmodem as qmodem';
 
 // Load CSS
 document.head.appendChild(E('link', {
@@ -39,7 +41,7 @@ return view.extend({
 	},
 
 	load: function() {
-		return smsService.getModems();
+		return qmodem.getModemSections();
 	},
 
 	render: function(modems) {
@@ -124,30 +126,26 @@ return view.extend({
 	timezoneSentRow.appendChild(timezoneSentCell);
 	selectorBody.appendChild(timezoneSentRow);
 
-	var smsModeRow = E('tr', { 'class': 'tr' });
-	var smsModeLabel = E('td', { 'class': 'td', 'width': '33%' }, _('SMS Mode'));
-	var smsModeCell = E('td', { 'class': 'td' });
-	var smsModeSelect = E('select', { 'class': 'cbi-input-select', 'id': 'sms_mode_select' }, [
-		E('option', { 'value': 'direct' }, _('Direct modem access')),
-		E('option', { 'value': 'database_poll' }, _('Database with polling')),
-		E('option', { 'value': 'database_urc' }, _('Database with URC'))
-	]);
-	smsModeCell.appendChild(smsModeSelect);
-	smsModeRow.appendChild(smsModeLabel);
-	smsModeRow.appendChild(smsModeCell);
-	selectorBody.appendChild(smsModeRow);
-
-	var pollIntervalRow = E('tr', { 'class': 'tr' });
-	var pollIntervalLabel = E('td', { 'class': 'td', 'width': '33%' }, _('Poll Interval (seconds)'));
-	var pollIntervalCell = E('td', { 'class': 'td' });
-	var pollIntervalInput = E('input', {
-		'type': 'number', 'class': 'cbi-input-text', 'min': '60', 'max': '3600',
-		'id': 'sms_poll_interval_input'
+	// SMS database path setting
+	var smsDbPathRow = E('tr', { 'class': 'tr' });
+	var smsDbPathLabel = E('td', { 'class': 'td', 'width': '33%' }, 
+		_('SMS Database Path'));
+	var smsDbPathCell = E('td', { 'class': 'td' });
+	
+	var smsDbPathInput = E('input', {
+		'type': 'text',
+		'class': 'cbi-input-text',
+		'id': 'sms_db_path_input',
+		'placeholder': '/etc/qmodem'
 	});
-	pollIntervalCell.appendChild(pollIntervalInput);
-	pollIntervalRow.appendChild(pollIntervalLabel);
-	pollIntervalRow.appendChild(pollIntervalCell);
-	selectorBody.appendChild(pollIntervalRow);
+	
+	smsDbPathCell.appendChild(smsDbPathInput);
+	smsDbPathCell.appendChild(E('div', {
+		'style': 'font-size: 12px; color: #666; margin-top: 5px;'
+	}, _('Path to SMS database file')));
+	smsDbPathRow.appendChild(smsDbPathLabel);
+	smsDbPathRow.appendChild(smsDbPathCell);
+	selectorBody.appendChild(smsDbPathRow);
 
 	// SMS auto delete from SIM setting
 	var smsAutoDeleteRow = E('tr', { 'class': 'tr' });
@@ -272,7 +270,7 @@ return view.extend({
 	var selectedModem = select.value;
 	
 	// Load UCI config for selected modem
-	this.loadBackendConfig(selectedModem, smsModeSelect, pollIntervalInput, smsAutoDeleteCheckbox);
+	this.loadUciConfig(selectedModem, smsDbPathInput, smsAutoDeleteCheckbox);
 		// Load SMS storage info
 	this.loadSmsStorage(selectedModem, readingSelect, writingSelect, etcSelect);
 		this.loadSmsList(contentArea, loadingDiv, selectedModem);
@@ -280,7 +278,7 @@ return view.extend({
 	// Selector change handler
 	select.addEventListener('change', function() {
 		// Load UCI config for selected modem
-		self.loadBackendConfig(select.value, smsModeSelect, pollIntervalInput, smsAutoDeleteCheckbox);
+		self.loadUciConfig(select.value, smsDbPathInput, smsAutoDeleteCheckbox);
 		
 		// Load SMS storage info
 		self.loadSmsStorage(select.value, readingSelect, writingSelect, etcSelect);
@@ -306,18 +304,15 @@ return view.extend({
 		self.loadSmsList(contentArea, loading, select.value);
 	});
 
-	function saveBackendConfig() {
-		var interval = +pollIntervalInput.value;
-		return smsService.configure(select.value, smsModeSelect.value, interval, null,
-			smsAutoDeleteCheckbox.checked).then(function() {
-			ui.addNotification(null, E('p', _('Configuration saved')), 'info');
-		}).catch(function(err) {
-			ui.addNotification(null, E('p', _('Failed to save configuration: ') + err.message), 'error');
-		});
-	}
-	smsModeSelect.addEventListener('change', saveBackendConfig);
-	pollIntervalInput.addEventListener('change', saveBackendConfig);
-	smsAutoDeleteCheckbox.addEventListener('change', saveBackendConfig);
+	// SMS database path change handler
+	smsDbPathInput.addEventListener('change', function() {
+		self.saveUciOption(select.value, 'sms_db_path', smsDbPathInput.value);
+	});
+
+	// SMS auto delete checkbox change handler
+	smsAutoDeleteCheckbox.addEventListener('change', function() {
+		self.saveUciOption(select.value, 'sms_auto_delete_from_sim', smsAutoDeleteCheckbox.checked ? '1' : '0');
+	});
 
 	// Start polling for new messages
 	poll.add(function() {
@@ -647,11 +642,30 @@ return view.extend({
 	encodingSelect.addEventListener('change', updateCounter);
 },
 
-loadBackendConfig: function(configSection, smsModeSelect, pollIntervalInput, smsAutoDeleteCheckbox) {
-	return smsService.getConfig(configSection).then(function(config) {
-		smsModeSelect.value = config.mode || 'database_poll';
-		pollIntervalInput.value = config.poll_interval || 300;
-		smsAutoDeleteCheckbox.checked = !!config.auto_delete;
+loadUciConfig: function(configSection, smsDbPathInput, smsAutoDeleteCheckbox) {
+	return uci.load('qmodem').then(function() {
+		// Load sms_db_path
+		var dbPath = uci.get('qmodem', configSection, 'sms_db_path');
+		if (dbPath) {
+			smsDbPathInput.value = dbPath;
+		} else {
+			smsDbPathInput.value = '';
+		}
+
+		// Load sms_auto_delete_from_sim
+		var autoDelete = uci.get('qmodem', configSection, 'sms_auto_delete_from_sim');
+		smsAutoDeleteCheckbox.checked = (autoDelete === '1');
+	});
+},
+
+saveUciOption: function(configSection, option, value) {
+	return uci.load('qmodem').then(function() {
+		uci.set('qmodem', configSection, option, value);
+		return uci.save();
+	}).then(function() {
+		ui.addNotification(null, E('p', _('Configuration saved')), 'info');
+	}).catch(function(err) {
+		ui.addNotification(null, E('p', _('Failed to save configuration: ') + err.message), 'error');
 	});
 },
 

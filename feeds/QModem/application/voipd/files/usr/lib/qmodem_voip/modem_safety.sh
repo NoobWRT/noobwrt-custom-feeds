@@ -33,12 +33,6 @@ qmodem_voip_load_capability()
 		   [ "$capability_usb_id" = "$requested_usb_id" ]; then
 			capability_matches=$((capability_matches + 1))
 			media_method=$(qmodem_voip_json "@.modems[$capability_index].audio.method") || return 1
-			media_adb_unlock=$(qmodem_voip_json "@.modems[$capability_index].adb_unlock") || return 1
-			case $media_adb_unlock in
-				true|1) media_adb_unlock=1 ;;
-				false|0|'') media_adb_unlock=0 ;;
-				*) qmodem_voip_fault 'ADB capability invalid'; return 1 ;;
-			esac
 			media_uac=$(qmodem_voip_json "@.modems[$capability_index].audio.uac") || return 1
 			media_qpcmv=$(qmodem_voip_json "@.modems[$capability_index].audio.qpcmv") || return 1
 			media_qaudmod=$(qmodem_voip_json "@.modems[$capability_index].audio.qaudmod") || return 1
@@ -53,7 +47,7 @@ qmodem_voip_load_capability()
 					media_transfer_bytes=$(qmodem_voip_json "@.modems[$capability_index].audio.transfer_bytes") || return 1
 					media_transfer_interval=$(qmodem_voip_json "@.modems[$capability_index].audio.transfer_interval_ms") || return 1
 					[ "$media_interface:$media_rate:$media_frame_ms:$media_qdai:$media_qpcmv_cfg:$media_qpcmv:$media_qaudmod:$media_transfer_bytes:$media_transfer_interval:$media_gps" = \
-					  '01:8000:20:x,0,0,4,0,0,1,1:8000,20:1,0:2:1024:60:none' ] || {
+					  '01:8000:20:x,0,0,4,0,0,1,1:8000,20:1,0:2:1024:64:none' ] || {
 						qmodem_voip_fault 'serial PCM capability invalid'; return 1
 					}
 					case $media_uac in false|0) ;; *)
@@ -61,7 +55,7 @@ qmodem_voip_load_capability()
 					esac
 					;;
 				uac)
-					case $media_uac:$media_qpcmv in true:1,2|1:1,2) ;; *)
+					case $media_uac:$media_qpcmv in true:1,3|1:1,3) ;; *)
 						qmodem_voip_fault 'UAC capability invalid'; return 1 ;;
 					esac
 					media_interface=unused media_rate=unused media_frame_ms=unused
@@ -81,8 +75,8 @@ qmodem_voip_write_journal()
 {
 	dir=$(dirname "$QMODEM_VOIP_JOURNAL"); mkdir -p "$dir" || return 1
 	umask 077; tmp=$(mktemp "$dir/.modem-safety.XXXXXX") || return 1
-	printf 'schema=2\nslot=%s\nmedia_method=%s\nmedia_adb_unlock=%s\nmedia_qdai=%s\nmedia_qpcmv_cfg=%s\nmedia_qpcmv=%s\nmedia_qaudmod=%s\nims=%s\nvoice_disable=%s\nqpcmv=%s\nqpcmv_cfg=%s\nqdai=%s\nqaudmod=%s\ngps_outport=%s\nusbcfg=%s\nphase=%s\n' \
-		"$slot" "$media_method" "${media_adb_unlock:-0}" "$media_qdai" "$media_qpcmv_cfg" "$media_qpcmv" "$media_qaudmod" \
+	printf 'schema=2\nslot=%s\nmedia_method=%s\nmedia_qdai=%s\nmedia_qpcmv_cfg=%s\nmedia_qpcmv=%s\nmedia_qaudmod=%s\nims=%s\nvoice_disable=%s\nqpcmv=%s\nqpcmv_cfg=%s\nqdai=%s\nqaudmod=%s\ngps_outport=%s\nusbcfg=%s\nphase=%s\n' \
+		"$slot" "$media_method" "$media_qdai" "$media_qpcmv_cfg" "$media_qpcmv" "$media_qaudmod" \
 		"$ims" "$voice_disable" "$qpcmv" "$qpcmv_cfg" "$qdai" "$qaudmod" \
 		"$gps_outport" "$usbcfg" "$1" >"$tmp" || return 1
 	checksum=$(qmodem_voip_checksum "$tmp") || return 1
@@ -103,11 +97,10 @@ qmodem_voip_read_journal()
 	sed '/^checksum=/d' "$QMODEM_VOIP_JOURNAL" >"$body" || qmodem_voip_journal_error 'journal body read failed' || return 2
 	actual=$(qmodem_voip_checksum "$body") || qmodem_voip_journal_error 'journal checksum failed' || return 2
 	[ -n "$checksum" ] && [ "$checksum" = "$actual" ] || qmodem_voip_journal_error 'journal checksum invalid' || return 2
-	seen_schema= seen_slot= seen_media_method= seen_media_adb_unlock= seen_media_qdai= seen_media_qpcmv_cfg= seen_media_qaudmod=
+	seen_schema= seen_slot= seen_media_method= seen_media_qdai= seen_media_qpcmv_cfg= seen_media_qaudmod=
 	seen_media_qpcmv= seen_ims= seen_voice_disable= seen_qpcmv= seen_qpcmv_cfg=
 	seen_qdai= seen_qaudmod= seen_gps_outport= seen_usbcfg= seen_phase=
-	# Schema-2 journals created before persistent ADB support are migrated enabled.
-	media_qaudmod=2 media_adb_unlock=1
+	media_qaudmod=2
 	cr=$(printf '\r')
 	while IFS='=' read -r key value extra; do
 		[ -n "$key" ] && [ -z "$extra" ] || qmodem_voip_journal_error 'journal field syntax invalid' || return 2
@@ -118,7 +111,6 @@ qmodem_voip_read_journal()
 				schema) [ -z "$seen_schema" ] || qmodem_voip_journal_error 'journal field duplicate' || return 2; schema=$value; seen_schema=1 ;;
 				slot) [ -z "$seen_slot" ] || qmodem_voip_journal_error 'journal field duplicate' || return 2; slot=$value; seen_slot=1 ;;
 				media_method) [ -z "$seen_media_method" ] || qmodem_voip_journal_error 'journal field duplicate' || return 2; media_method=$value; seen_media_method=1 ;;
-				media_adb_unlock) [ -z "$seen_media_adb_unlock" ] || qmodem_voip_journal_error 'journal field duplicate' || return 2; case $value in 0|1) ;; *) qmodem_voip_journal_error 'journal ADB field invalid' || return 2 ;; esac; media_adb_unlock=$value; seen_media_adb_unlock=1 ;;
 				media_qdai) [ -z "$seen_media_qdai" ] || qmodem_voip_journal_error 'journal field duplicate' || return 2; media_qdai=$value; seen_media_qdai=1 ;;
 				media_qpcmv_cfg) [ -z "$seen_media_qpcmv_cfg" ] || qmodem_voip_journal_error 'journal field duplicate' || return 2; media_qpcmv_cfg=$value; seen_media_qpcmv_cfg=1 ;;
 				media_qpcmv) [ -z "$seen_media_qpcmv" ] || qmodem_voip_journal_error 'journal field duplicate' || return 2; media_qpcmv=$value; seen_media_qpcmv=1 ;;
@@ -180,8 +172,8 @@ qmodem_voip_usbcfg_audio()
 {
 	requested_uac=$1
 	requested_usbcfg=${2:-$usbcfg}
-	printf '%s\n' "$requested_usbcfg" | awk -F, -v uac="$requested_uac" -v adb="${media_adb_unlock:-0}" \
-		'BEGIN { OFS = "," } NF == 9 && ($9 == 0 || $9 == 1) && (adb == 0 || adb == 1) { $9 = uac; if (adb == 1) $8 = 1; print; found = 1 } END { if (!found) exit 1 }'
+	printf '%s\n' "$requested_usbcfg" | awk -F, -v uac="$requested_uac" \
+		'BEGIN { OFS = "," } NF == 9 && ($9 == 0 || $9 == 1) { $9 = uac; print; found = 1 } END { if (!found) exit 1 }'
 }
 
 qmodem_voip_apply_media_forwarding()
@@ -199,16 +191,6 @@ qmodem_voip_apply_media_forwarding()
 	return 1
 }
 
-qmodem_voip_reboot_and_wait()
-{
-	requested_slot=$1
-	requested_uac=$2
-	# CFUN may disconnect the AT port before its OK response is delivered.
-	# USB disappearance and re-enumeration are the authoritative result.
-	qmodem_voip_at 'AT+CFUN=1,1' >/dev/null 2>&1 || :
-	qmodem_voip_adapter_wait_reenumeration "$requested_slot" "$requested_uac" 60
-}
-
 qmodem_voip_restore()
 {
 	qmodem_voip_read_journal || return $?
@@ -222,34 +204,17 @@ qmodem_voip_restore()
 	fi
 	qmodem_voip_at "AT+QAUDMOD=$qaudmod" >/dev/null || return 1
 	qmodem_voip_at "AT+QGPSCFG=\"outport\",$gps_outport" >/dev/null || return 1
+	qmodem_voip_at "AT+QCFG=\"usbcfg\",$usbcfg" >/dev/null || return 1
+	qmodem_voip_at 'AT+CFUN=1,1' >/dev/null || return 1
 	baseline_uac=$(printf '%s\n' "$usbcfg" | awk -F, 'NF == 9 { print $9 }') || return 1
 	case $baseline_uac in 0|1) ;; *) return 1 ;; esac
-	restore_usbcfg=$(qmodem_voip_usbcfg_audio "$baseline_uac" "$usbcfg") || return 1
-	qmodem_voip_at "AT+QCFG=\"usbcfg\",$restore_usbcfg" >/dev/null || return 1
-	qmodem_voip_reboot_and_wait "$slot" "$baseline_uac" || return 1
+	qmodem_voip_adapter_wait_reenumeration "$slot" "$baseline_uac" 30 || return 1
 	rm -f "$QMODEM_VOIP_JOURNAL"
 }
 
 qmodem_voip_enable()
 {
-	if [ -f "$QMODEM_VOIP_JOURNAL" ]; then
-		qmodem_voip_read_journal || return $?
-		[ "$phase" = enabled ] || {
-			qmodem_voip_fault 'incomplete modem safety transaction requires recovery'
-			return 1
-		}
-		qmodem_voip_adapter_enable_ubus || {
-			qmodem_voip_fault 'failed to enable the shared AT transport'
-			return 1
-		}
-		qmodem_voip_recover
-		return $?
-	fi
 	qmodem_voip_probe >/dev/null || { qmodem_voip_fault 'unsupported experimental modem prerequisites'; return 1; }
-	qmodem_voip_adapter_enable_ubus || {
-		qmodem_voip_fault 'failed to enable the shared AT transport'
-		return 1
-	}
 	qmodem_voip_capture_baseline || return 1
 	case $media_uac in false|0) requested_uac=0 ;; true|1) requested_uac=1 ;; *) return 1 ;; esac
 	audio_usbcfg=$(qmodem_voip_usbcfg_audio "$requested_uac") || { qmodem_voip_fault 'baseline USB tuple is not audio-toggleable'; return 1; }
@@ -263,50 +228,14 @@ qmodem_voip_enable()
 	if [ "$media_method" = serial_pcm ]; then
 		qmodem_voip_at "AT+QDAI=$media_qdai" >/dev/null && qmodem_voip_write_journal qdai || { qmodem_voip_restore; return 1; }
 	fi
-	qmodem_voip_write_journal reboot || { qmodem_voip_restore; return 1; }
-	qmodem_voip_reboot_and_wait "$slot" "$requested_uac" || { qmodem_voip_restore; return 1; }
+	qmodem_voip_at 'AT+CFUN=1,1' >/dev/null && qmodem_voip_write_journal reboot || { qmodem_voip_restore; return 1; }
+	qmodem_voip_adapter_wait_reenumeration "$slot" "$requested_uac" 30 || { qmodem_voip_restore; return 1; }
 	qmodem_voip_adapter_rediscover "$slot" >/dev/null || { qmodem_voip_restore; return 1; }
 	qmodem_voip_apply_media_forwarding 15 && qmodem_voip_write_journal forwarding || { qmodem_voip_restore; return 1; }
 	qmodem_voip_write_journal enabled || { qmodem_voip_restore; return 1; }
 }
 
 qmodem_voip_disable() { [ -f "$QMODEM_VOIP_JOURNAL" ] && qmodem_voip_restore || [ ! -f "$QMODEM_VOIP_JOURNAL" ]; }
-qmodem_voip_verify()
-{
-	[ -f "$QMODEM_VOIP_JOURNAL" ] || return 1
-	qmodem_voip_read_journal || return $?
-	[ "$phase" = enabled ] || return 1
-	qmodem_voip_adapter_rediscover "$slot" >/dev/null || return 1
-	[ "$(qmodem_voip_value 'AT+QCFG="ims"')" = 1 ] || return 1
-	[ "$(qmodem_voip_value 'AT+QCALLCFG="voice_disable"')" = 2 ] || return 1
-	[ "$(qmodem_voip_value 'AT+QPCMV?')" = "$media_qpcmv" ] || return 1
-	[ "$(qmodem_voip_value 'AT+QAUDMOD?')" = "$media_qaudmod" ] || return 1
-	if [ "$media_method" = serial_pcm ]; then
-		target_usbcfg=$(qmodem_voip_usbcfg_audio 0 "$usbcfg") || return 1
-		[ "$(qmodem_voip_value 'AT+QCFG="usbcfg"')" = "$target_usbcfg" ] || return 1
-		[ "$(qmodem_voip_value 'AT+QDAI?')" = "$media_qdai" ] || return 1
-		[ "$(qmodem_voip_value 'AT+QAUDCFG="qpcmv_cfg"')" = "$media_qpcmv_cfg" ] || return 1
-	fi
-}
-qmodem_voip_arm()
-{
-	current_qpcmv=
-	[ -f "$QMODEM_VOIP_JOURNAL" ] || return 1
-	qmodem_voip_read_journal || return $?
-	[ "$phase" = enabled ] || return 1
-	qmodem_voip_adapter_rediscover "$slot" >/dev/null || return 1
-	if [ "$media_method" = serial_pcm ]; then
-		# QDAI is reboot-applied. During a call, only accept its persisted baseline.
-		[ "$(qmodem_voip_value 'AT+QDAI?')" = "$media_qdai" ] || return 1
-	fi
-	# The voice server opens the stream when the call becomes active. Replaying
-	# QAUDMOD/QAUDCFG here tears that stream down and can leave QPCMV capture
-	# running without forwarding any RX PCM. Only repair a genuinely drifted
-	# QPCMV state; an already-correct value is intentionally a no-op.
-	current_qpcmv=$(qmodem_voip_value 'AT+QPCMV?') || return 1
-	[ "$current_qpcmv" = "$media_qpcmv" ] && return 0
-	qmodem_voip_apply_media_forwarding 3
-}
 qmodem_voip_recover()
 {
 	[ -f "$QMODEM_VOIP_JOURNAL" ] || return 0
@@ -320,7 +249,8 @@ qmodem_voip_recover()
 			if [ "$current_usbcfg" != "$target_usbcfg" ] || [ "$current_qdai" != "$media_qdai" ]; then
 				qmodem_voip_at "AT+QCFG=\"usbcfg\",$target_usbcfg" >/dev/null || return 1
 				qmodem_voip_at "AT+QDAI=$media_qdai" >/dev/null || return 1
-				qmodem_voip_reboot_and_wait "$slot" 0 || return 1
+				qmodem_voip_at 'AT+CFUN=1,1' >/dev/null || return 1
+				qmodem_voip_adapter_wait_reenumeration "$slot" 0 30 || return 1
 					qmodem_voip_adapter_rediscover "$slot" >/dev/null || return 1
 				fi
 			qmodem_voip_at 'AT+QPCMV=0' >/dev/null || return 1

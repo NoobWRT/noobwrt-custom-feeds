@@ -179,7 +179,8 @@ jobs:
           esac
 
       - name: Checkout
-        uses: actions/checkout@v4
+        if: 
+        uses: actions/checkout@v2
         with:
           path: 'qmodem'
 
@@ -206,7 +207,6 @@ jobs:
       matrix:
         build_arch: ['arm64_ipk',"arm64_apk","x64_apk","x64_ipk","mmips_ipk","mmips_apk" ]
     runs-on: ubuntu-latest
-    timeout-minutes: 45
     steps:
       - name: Install packages
         run: |
@@ -217,7 +217,7 @@ jobs:
 
       
       - name: Checkout
-        uses: actions/checkout@v4
+        uses: actions/checkout@v2
         with:
           path: 'qmodem'
 
@@ -325,9 +325,7 @@ jobs:
     name: Release Artifacts
     needs: [job_build_qmodem, job_prepare]
     runs-on: ubuntu-latest
-    # job_prepare recognizes both direct tag pushes and tags created by
-    # job_auto_tag during a stable branch run.
-    if: ${{ always() && needs.job_prepare.result == 'success' && needs.job_prepare.outputs.push_type == 'tag' }}
+    if: ${{ needs.job_prepare.outputs.push_type == 'tag' }}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
@@ -354,7 +352,7 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.2.2
-        if: ${{ always() && needs.job_prepare.outputs.push_type == 'tag' }}
+        if: ${{ needs.job_prepare.outputs.push_type == 'tag' }}
         with:
           body_path: release_note/release_note.md
           generate_release_notes: true

@@ -8,6 +8,7 @@
 #   SYNC_COPY_SUBDIRS - Copy subdirectories (true/false), default: false
 #   SYNC_CLEAN_DEST - Clean destination before sync (true/false), default: false
 #   SYNC_TEMP_DIR - Temporary directory for clone, default: ./temp_sync
+#   SYNC_BRANCH - Branch (or tag) to clone, default: repo's default branch
 
 set -euo pipefail
 
@@ -27,6 +28,7 @@ SYNC_REMOTE_PATH="${SYNC_REMOTE_PATH:-.}"
 SYNC_COPY_SUBDIRS="${SYNC_COPY_SUBDIRS:-false}"
 SYNC_CLEAN_DEST="${SYNC_CLEAN_DEST:-false}"
 SYNC_TEMP_DIR="${SYNC_TEMP_DIR:-./temp_sync}"
+SYNC_BRANCH="${SYNC_BRANCH:-}"
 
 # Normalize paths:
 # - Allow SYNC_REMOTE_PATH values like "/luci-app-foo" by stripping the leading slash
@@ -35,6 +37,7 @@ SYNC_REMOTE_PATH="${SYNC_REMOTE_PATH#/}"
 DEST_PARENT_DIR="$(dirname "${SYNC_DEST_DIR}")"
 
 echo "Syncing from: ${SYNC_REPO_URL}"
+echo "Branch: ${SYNC_BRANCH:-<default>}"
 echo "Remote path: ${SYNC_REMOTE_PATH}"
 echo "Destination: ${SYNC_DEST_DIR}"
 echo "Copy subdirs: ${SYNC_COPY_SUBDIRS}"
@@ -62,8 +65,12 @@ mkdir -p "${SYNC_TEMP_DIR}"
 
 # Clone repository
 echo "Cloning repository..."
-if ! git clone --depth 1 "${SYNC_REPO_URL}" "${SYNC_TEMP_DIR}"; then
-    echo "ERROR: Failed to clone repository"
+CLONE_ARGS=(--depth 1)
+if [ -n "${SYNC_BRANCH}" ]; then
+    CLONE_ARGS+=(--branch "${SYNC_BRANCH}")
+fi
+if ! git clone "${CLONE_ARGS[@]}" "${SYNC_REPO_URL}" "${SYNC_TEMP_DIR}"; then
+    echo "ERROR: Failed to clone repository (branch: ${SYNC_BRANCH:-<default>})"
     rm -rf "${SYNC_TEMP_DIR}"
     exit 1
 fi

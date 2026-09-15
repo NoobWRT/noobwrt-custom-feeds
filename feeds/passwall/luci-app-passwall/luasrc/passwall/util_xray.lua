@@ -43,16 +43,11 @@ function gen_outbound(flag, node, tag, proxy_table)
 		end
 		local remarks = node.remarks
 
-		local proxy_tag = nil
-		local dialer_proxy_tag = nil
-		local fragment = nil
-		local noise = nil
-		local run_socks_instance = true
+		local proxy_tag, dialer_proxy_tag, fragment, noise
 		if proxy_table ~= nil and type(proxy_table) == "table" then
 			proxy_tag = proxy_table.tag or nil
 			fragment = (proxy_table.fragment and not node.hysteria2_realms) and true or nil
 			noise = (proxy_table.noise and not node.hysteria2_realms) and true or nil
-			run_socks_instance = proxy_table.run_socks_instance
 		end
 
 		if node.type ~= "Xray" then
@@ -61,7 +56,12 @@ function gen_outbound(flag, node, tag, proxy_table)
 				node.transport = "raw"
 			else
 				local new_port
-				if run_socks_instance then
+				local run_socks_instance = true
+				if NO_RUN then
+					TMP_PORT = TMP_PORT and TMP_PORT + 1 or 3001
+					new_port = TMP_PORT
+					run_socks_instance = nil
+				else
 					local relay_port = (proxy_tag and node.port) and tostring(node.port) or ""
 					if relay_port == "" then
 						local cache = api.get_socks_port_by_cache(node_id)
@@ -499,7 +499,7 @@ function gen_config_server(node)
 	local settings = nil
 	local routing = nil
 	local outbounds = {
-		{ protocol = "freedom", tag = "direct", finalRules = {{ action = "allow" }}}, { protocol = "blackhole", tag = "blocked" }
+		{ protocol = "freedom", tag = "direct", settings = { finalRules = {{ action = "allow" }}}}, { protocol = "blackhole", tag = "blocked" }
 	}
 
 	local users = node.users or {}
@@ -647,7 +647,9 @@ function gen_config_server(node)
 						interface = node.outbound_node_iface
 					}
 				},
-				finalRules = {{ action = "allow" }}
+				settings = {
+					finalRules = {{ action = "allow" }}
+				}
 			}
 			sys.call(string.format("mkdir -p %s && touch %s/%s", api.TMP_IFACE_PATH, api.TMP_IFACE_PATH, node.outbound_node_iface))
 		else
@@ -908,10 +910,11 @@ function gen_config(var)
 	local dns_socks_address = var["dns_socks_address"]
 	local dns_socks_port = var["dns_socks_port"]
 	local loglevel = var["loglevel"] or "warning"
-	local no_run = var["no_run"]
 	local use_proxy_list = var["use_proxy_list"]
 	local use_gfw_list = var["use_gfw_list"]
 	local chn_list = var["chn_list"]
+	local run_in_global = var["run_in_global"]
+	NO_RUN = var["no_run"]
 
 	local dns_domain_rules = {}
 	local dns = nil
@@ -1086,7 +1089,9 @@ function gen_config(var)
 				blc_nodes = _node.balancing_node
 			end
 
-			-- api.log("  - 加载 Xray 负载均衡 节点【" .. (_node.remarks or "") .. "】，子节点数量：" .. #(blc_nodes or {}))
+			if not NO_RUN and run_in_global then
+				api.log("  - 加载 Xray 负载均衡 节点【" .. (_node.remarks or "") .. "】，子节点数量：" .. #(blc_nodes or {}))
+			end
 
 			local valid_nodes = {}
 			for i = 1, #(blc_nodes or {}) do
@@ -1101,7 +1106,7 @@ function gen_config(var)
 					end
 				end
 				if is_new_blc_node then
-					local outboundTag = gen_outbound_get_tag(flag, blc_node_id, blc_node_tag, { fragment = xray_settings.fragment == "1" or nil, noise = xray_settings.noise == "1" or nil, run_socks_instance = not no_run })
+					local outboundTag = gen_outbound_get_tag(flag, blc_node_id, blc_node_tag, { fragment = xray_settings.fragment == "1" or nil, noise = xray_settings.noise == "1" or nil })
 					if outboundTag then
 						valid_nodes[#valid_nodes + 1] = outboundTag
 					end
@@ -1130,7 +1135,7 @@ function gen_config(var)
 					local fallback_node = get_node_by_id(fallback_node_id)
 					if fallback_node then
 						if fallback_node.protocol ~= "_balancing" then
-							local outboundTag = gen_outbound_get_tag(flag, fallback_node, fallback_node_id, { fragment = xray_settings.fragment == "1" or nil, noise = xray_settings.noise == "1" or nil, run_socks_instance = not no_run })
+							local outboundTag = gen_outbound_get_tag(flag, fallback_node, fallback_node_id, { fragment = xray_settings.fragment == "1" or nil, noise = xray_settings.noise == "1" or nil })
 							if outboundTag then
 								fallback_node_tag = outboundTag
 							end
@@ -1262,7 +1267,6 @@ function gen_config(var)
 						})
 						to_outbound = gen_outbound(node[".name"], to_node, to_node[".name"], {
 							tag = to_node[".name"],
-							run_socks_instance = not no_run
 						})
 					else
 						to_outbound = gen_outbound(node[".name"], to_node)
@@ -1327,7 +1331,9 @@ function gen_config(var)
 									interface = node.iface
 								}
 							},
-							finalRules = {{ action = "allow" }}
+							settings = {
+								finalRules = {{ action = "allow" }}
+							}
 						}
 						sys.call(string.format("mkdir -p %s && touch %s/%s", api.TMP_IFACE_PATH, api.TMP_IFACE_PATH, node.iface))
 					end
@@ -1368,7 +1374,6 @@ function gen_config(var)
 					local proxy_table = {
 						fragment = xray_settings.fragment == "1",
 						noise = xray_settings.noise == "1",
-						run_socks_instance = not no_run,
 					}
 					local preproxy_node_id = node[rule_name .. "_proxy_tag"]
 					if preproxy_node_id == _node_id then preproxy_node_id = nil end
@@ -1570,7 +1575,6 @@ function gen_config(var)
 			COMMON.default_outbound_tag = gen_outbound_get_tag(flag, node or node_id, nil, {
 				fragment = xray_settings.fragment == "1" or nil,
 				noise = xray_settings.noise == "1" or nil,
-				run_socks_instance = not no_run
 			})
 			if COMMON.default_outbound_tag then
 				routing = {
@@ -2038,7 +2042,9 @@ function gen_config(var)
 		local direct_outbound = {
 			protocol = "freedom",
 			tag = "direct",
-			finalRules = {{ action = "allow" }},
+			settings = {
+				finalRules = {{ action = "allow" }}
+			},
 			streamSettings = {
 				sockopt = {
 					mark = 255,
@@ -2064,7 +2070,7 @@ function gen_config(var)
 		for index, value in ipairs(config.outbounds) do
 			local pt = value.protocol
 			local exclude = { blackhole=1, dns=1, freedom=1, loopback=1 }
-			if not value["_flag_proxy_tag"] and value["_id"] and pt and not exclude[pt] and not no_run then
+			if not value["_flag_proxy_tag"] and value["_id"] and pt and not exclude[pt] and not NO_RUN then
 				sys.call(string.format("echo '%s' >> %s", value["_id"], api.TMP_PATH .. "/direct_node_list"))
 			end
 			for k, v in pairs(config.outbounds[index]) do
@@ -2167,7 +2173,9 @@ function gen_proto_config(var)
 	table.insert(outbounds, {
 		protocol = "freedom",
 		tag = "direct",
-		finalRules = {{ action = "allow" }},
+		settings = {
+			finalRules = {{ action = "allow" }}
+		},
 		streamSettings = {
 			sockopt = {mark = 255}
 		}

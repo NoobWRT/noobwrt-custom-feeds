@@ -25,9 +25,10 @@ discover_dest_dirs() {
 echo "Preparing to commit and push changes..."
 echo ""
 
-# Add git config
-git config user.name "Jenkins CI Bot"
-git config user.email "jenkins@noreply.github.com"
+# Add git config (falls back to Jenkins identity when GIT_AUTHOR_NAME/EMAIL
+# aren't already set by the caller, e.g. configure-git.sh in GitHub Actions)
+git config user.name "${GIT_AUTHOR_NAME:-Jenkins CI Bot}"
+git config user.email "${GIT_AUTHOR_EMAIL:-jenkins@noreply.github.com}"
 git config core.safecrlf false
 git config core.autocrlf false
 

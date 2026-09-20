@@ -1,0 +1,28 @@
+name: i18n
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  group: i18n-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  translation-coverage:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source tree
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+
+      # Every template string must have a non-fuzzy, non-empty zh_Hans
+      # translation; the handful of technical tokens that stay as-is are
+      # listed in tests/i18n-ignore.txt. Reports a warning annotation plus a
+      # job summary entry instead of failing the run.
+      - name: Check zh_Hans translation coverage
+        run: python3 tests/i18n-coverage.py --warn-below 100

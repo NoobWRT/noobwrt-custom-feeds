@@ -9,6 +9,8 @@
 
 import { access, error, lstat, popen, readfile, writefile } from 'fs';
 
+import { isBinary, isValidPEM } from '/etc/homeproxy/scripts/homeproxy.uc';
+
 /* Kanged from ucode/luci */
 function shellquote(s) {
 	return `'${replace(s, "'", "'\\''")}'`;
@@ -47,6 +49,15 @@ const methods = {
 				content = replace(content, /\r\n?/g, '\n');
 				if (!match(content, /\n$/))
 					content += '\n';
+
+				/* Domains only: reject lines that could break the downstream
+				   dnsmasq/nftset injection (whitespace / shell or directive chars). */
+				for (let line in split(content, /\n/)) {
+					if (!trim(line))
+						continue;
+					if (match(line, /[ \t\/\\;<>="'&#|]/))
+						return { result: false, error: 'invalid character in domain list' };
+				}
 			}
 
 			system(`mkdir -p ${HP_DIR}/resources`);
@@ -69,25 +80,13 @@ const methods = {
 				}
 
 				let filecontent = readfile(tmpcert);
-				if (is_binary(filecontent)) {
+				if (isBinary(filecontent)) {
 					system(`rm -f ${tmpcert}`);
 					return { result: false, error: 'illegal file type: binary' };
 				}
 
-				/* Kanged from luci-proto-openconnect */
-				const beg = priv ? /^-----BEGIN (RSA|EC) PRIVATE KEY-----$/ : /^-----BEGIN CERTIFICATE-----$/,
-				      end = priv ? /^-----END (RSA|EC) PRIVATE KEY-----$/ : /^-----END CERTIFICATE-----$/,
-				      lines = split(trim(filecontent), /[\r\n]/);
-				let start = false, i;
-
-				for (i = 0; i < length(lines); i++) {
-					if (match(lines[i], beg))
-						start = true;
-					else if (start && !b64dec(lines[i]) && length(lines[i]) !== 64)
-						break;
-				}
-
-				if (!start || i < length(lines) - 1 || !match(lines[i], end)) {
+				/* Validate the PEM structure before storing it */
+				if (!isValidPEM(filecontent, priv)) {
 					system(`rm -f ${tmpcert}`);
 					return { result: false, error: 'this does not look like a correct PEM file' };
 				}
@@ -234,13 +233,21 @@ const methods = {
 	resources_get_version: {
 		args: { type: 'type' },
 		call: function(req) {
-			const version = trim(readfile(`${HP_DIR}/resources/${req.args?.type}.ver`));
+			/* whitelist resource types to prevent path traversal */
+			if (index(['china_ip4', 'china_ip6', 'gfw_list', 'china_list'], req.args?.type) === -1)
+				return { error: 'illegal type', version: null };
+			let version = trim(readfile(`${HP_DIR}/resources/${req.args?.type}.ver`));
+			const fields = version ? match(version, /^(\S+) (\S+)$/) : null;
+			if (fields)
+				version = fields[1];
 			return { version: version, error: error() };
 		}
 	},
 	resources_update: {
 		args: { type: 'type' },
 		call: function(req) {
+			if (index(['china_ip4', 'china_ip6', 'gfw_list', 'china_list'], req.args?.type) === -1)
+				return { status: 255, error: 'illegal type' };
 			if (req.args?.type) {
 				const type = shellquote(req.args?.type);
 				const exit_code = system(`${HP_DIR}/scripts/update_resources.sh ${type}`);

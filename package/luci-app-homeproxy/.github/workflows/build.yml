@@ -1,0 +1,180 @@
+name: Build
+
+on:
+  #push:
+    #branches: [main]
+  #pull_request:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: '发布版本号，须等于 Makefile 的 PKG_VERSION-rPKG_RELEASE（如 27.905.1.14-r9）。留空则只构建不发布。'
+        required: false
+        type: string
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write
+
+env:
+  APK_TOOLS_REF: 'b5a31c0d865342ad80be10d68f1bb3d3ad9b0866'
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout source tree
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          fetch-depth: 0   # build-pkg.sh 的 git describe/rev-parse 兜底需要完整历史
+
+      # 发布前确认新增文案已同步进 zh_Hans（豁免项见 tests/i18n-ignore.txt）
+      - name: Check zh_Hans translation coverage
+        run: python3 tests/i18n-coverage.py --warn-below 100
+
+      - name: Cache apk-tools binary
+        id: cache-apk-tools
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9
+        with:
+          path: /usr/local/bin/apk
+          key: apk-tools-${{ env.APK_TOOLS_REF }}-${{ runner.os }}
+
+      - name: Checkout apk-tools
+        if: steps.cache-apk-tools.outputs.cache-hit != 'true'
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 'alpinelinux/apk-tools'
+          path: 'apk-tools'
+          fetch-depth: 0
+          ref: ${{ env.APK_TOOLS_REF }}
+
+      - name: Checkout po2lmo
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1
+        with:
+          repository: 'openwrt/luci'
+          path: 'po2lmo'
+          sparse-checkout: 'modules/luci-base/src'
+
+      - name: Setup dependencies
+        env:
+          DEBIAN_FRONTEND: noninteractive
+        run: |
+          sudo -E apt-get update -qq
+          sudo -E apt-get install -y build-essential curl fakeroot libssl-dev lua5.1 meson ninja-build
+
+          if [ "${{ steps.cache-apk-tools.outputs.cache-hit }}" != "true" ]; then
+            pushd apk-tools
+            meson setup build \
+              -Db_lto=true \
+              -Dcompressed-help=false \
+              -Ddocs=disabled \
+              -Dhelp=enabled \
+              -Dlua_version=5.1 \
+              -Ddefault_library=static \
+              -Durl_backend=wget \
+              -Dzstd=false \
+              -Dpython=disabled \
+              -Dtests=disabled \
+              -Dcrypto_backend=openssl
+            ninja -C build
+            sudo -E meson install -C build --strip
+            popd
+          else
+            echo "apk-tools 缓存命中，跳过编译"
+          fi
+
+          pushd po2lmo/modules/luci-base/src
+          make po2lmo
+          sudo -E install -m0755 -s po2lmo /usr/local/bin/po2lmo
+          popd
+
+          curl -fLO "https://raw.githubusercontent.com/openwrt/openwrt/master/scripts/ipkg-build"
+          sudo install -m0755 ipkg-build /usr/local/bin/ipkg-build
+
+      - name: Verify toolchain
+        run: |
+          command -v apk >/dev/null || { echo "::error::apk 未正确安装"; exit 1; }
+          command -v po2lmo >/dev/null || { echo "::error::po2lmo 未正确安装"; exit 1; }
+          command -v ipkg-build >/dev/null || { echo "::error::ipkg-build 未正确安装"; exit 1; }
+          apk --version
+
+      - name: Build packages (apk + ipk)
+        run: |
+          fakeroot bash .github/build-pkg.sh apk "${{ github.event_name }}"
+          fakeroot bash .github/build-pkg.sh ipk "${{ github.event_name }}"
+          shopt -s nullglob
+          apks=(.github/*.apk)
+          ipks=(.github/*.ipk)
+          if [ "${#apks[@]}" -eq 0 ] || [ "${#ipks[@]}" -eq 0 ]; then
+            echo "::error::未生成预期的 apk/ipk 文件"
+            exit 1
+          fi
+          printf '生成的包:\n%s\n' "${apks[@]}" "${ipks[@]}"
+
+      - name: Upload package artifacts
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a
+        with:
+          name: homeproxy-packages
+          include-hidden-files: true
+          path: |
+            .github/*.apk
+            .github/*.ipk
+
+      # ========== 发布（仅 workflow_dispatch 且填写了 version 时执行）==========
+      # 瀑布流策略：每个版本一个独立 tag/release，永不删除、永不覆盖已有 release。
+
+      - name: Validate version input
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        run: |
+          set -euo pipefail
+          VERSION="${{ github.event.inputs.version }}"
+          # apk-tools v3 合法版本 + 命名约束：仅数字/点/字母与结尾 -r<数字>（无 _、无 ~）
+          if [[ ! "$VERSION" =~ ^[0-9][0-9A-Za-z.]*-r[0-9]+$ ]]; then
+            echo "::error::版本格式非法（期望形如 27.905.1.14-r9，不允许下划线与波浪号）"
+            exit 1
+          fi
+          # 需求 9：asset 文件名里的版本号必须等于 tag 版本号 → 发布版本必须等于 Makefile 产物版本
+          MK_V="$(sed -n 's/^PKG_VERSION:=//p' Makefile)"
+          MK_R="$(sed -n 's/^PKG_RELEASE:=//p' Makefile)"
+          EXPECTED="${MK_V}-r${MK_R}"
+          if [ "$VERSION" != "$EXPECTED" ]; then
+            echo "::error::输入版本 $VERSION 与 Makefile 产物版本 $EXPECTED 不一致，拒绝发布"
+            exit 1
+          fi
+          # 等位编号：把 -rN 规范为 -rNN（如 r9 -> r09），使 GitHub 按 tag 字符串排序时
+          # r09 < r10 < r11，Release 列表保持从大到小（避免 'r10' 字典序小于 'r9' 的乱序）。
+          BASE="${VERSION%-r*}"
+          R="${VERSION##*-r}"
+          TAG_VERSION="$(printf '%s-r%02d' "$BASE" "$R")"
+          echo "VERSION=$VERSION" >> "${GITHUB_ENV:-/dev/null}"
+          echo "TAG_VERSION=$TAG_VERSION" >> "${GITHUB_ENV:-/dev/null}"
+
+      - name: Publish release (replacing an existing one if present)
+        if: github.event_name == 'workflow_dispatch' && github.event.inputs.version != ''
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          shopt -s nullglob
+          apks=(.github/luci-app-homeproxy-*.apk .github/luci-i18n-homeproxy-*.apk)
+          ipks=(.github/luci-app-homeproxy-*.ipk .github/luci-i18n-homeproxy-*.ipk)
+          if [ "${#apks[@]}" -eq 0 ] || [ "${#ipks[@]}" -eq 0 ]; then
+            echo "::error::找不到待上传的 apk/ipk"
+            exit 1
+          fi
+          # shields.io badge：label 与 message 中 "-" 需写作 "--"（path 分隔转义）
+          LABEL="luci--app--homeproxy"
+          MSG="v${TAG_VERSION//-/--}"
+          NOTES="[![v$TAG_VERSION](https://img.shields.io/badge/${LABEL}-${MSG}-blue)](https://github.com/$GITHUB_REPOSITORY/releases/tag/v$TAG_VERSION)"
+          # 同名 tag/release 视为重新发布：先移除旧的（连同 tag），再由下面的 create 重建
+          if gh release view "v$TAG_VERSION" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            echo "已存在 v$TAG_VERSION，先删除后重新发布"
+            gh release delete "v$TAG_VERSION" --repo "$GITHUB_REPOSITORY" --yes --cleanup-tag
+          fi
+          gh release create "v$TAG_VERSION" \
+            --repo "$GITHUB_REPOSITORY" \
+            --title "v$TAG_VERSION" \
+            --notes "$NOTES" \
+            "${apks[@]}" "${ipks[@]}"

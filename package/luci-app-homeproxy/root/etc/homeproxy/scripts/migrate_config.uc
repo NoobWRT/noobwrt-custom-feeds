@@ -64,7 +64,7 @@ if (!uci.get(uciconfig, ucimigration))
 /* delete old crontab command */
 const migration_crontab = uci.get(uciconfig, ucimigration, 'crontab');
 if (!migration_crontab) {
-	system('sed -i "/update_crond.sh/d" "/etc/crontabs/root" 2>"/dev/null"');
+	system('sed -i "/update_crond.sh/d" "/etc/crontabs/root" 2>/dev/null');
 	uci.set(uciconfig, ucimigration, 'crontab', '1');
 }
 
@@ -94,6 +94,8 @@ if (default_dns_server === 'block-dns') {
 	uci.set(uciconfig, '_migration_dns_final_block', 'action', 'reject');
 	uci.set(uciconfig, ucidns, 'default_server', 'default-dns');
 }
+else if (default_dns_server === 'local-dns')
+	uci.set(uciconfig, ucidns, 'default_server', 'default-dns');
 
 const dns_server_migration = {};
 /* DNS servers options */
@@ -171,7 +173,7 @@ uci.foreach(uciconfig, ucidnsrule, (cfg) => {
 				uci.set(uciconfig, ucirouting, 'default_outbound_dns', cfg.server);
 				break;
 			default:
-				uci.set(uciconfig, cfg.outbound, 'domain_resolver', cfg.server);
+				uci.set(uciconfig, outbound, 'domain_resolver', cfg.server);
 				break;
 			}
 		});
@@ -221,6 +223,29 @@ uci.foreach(uciconfig, ucinode, (cfg) => {
 	/* wireguard_gso was deprecated in sb 1.11 */
 	if (!isEmpty(cfg.wireguard_gso))
 		uci.delete(uciconfig, cfg['.name'], 'wireguard_gso');
+
+	/* hysteria_revc_window was a typo, renamed to hysteria_recv_window */
+	if (!isEmpty(cfg.hysteria_revc_window))
+		uci.rename(uciconfig, cfg['.name'], 'hysteria_revc_window', 'hysteria_recv_window');
+});
+
+/* sing-box 1.14: remove deprecated DNS semantics */
+if (!isEmpty(uci.get(uciconfig, ucidns, 'independent_cache')))
+	uci.delete(uciconfig, ucidns, 'independent_cache');
+
+const legacy_store_rdrc = uci.get(uciconfig, ucidns, 'cache_file_store_rdrc');
+if (!isEmpty(legacy_store_rdrc)) {
+	uci.set(uciconfig, ucidns, 'cache_file_store_dns', legacy_store_rdrc);
+	uci.delete(uciconfig, ucidns, 'cache_file_store_rdrc');
+}
+if (!isEmpty(uci.get(uciconfig, ucidns, 'cache_file_rdrc_timeout')))
+	uci.delete(uciconfig, ucidns, 'cache_file_rdrc_timeout');
+
+uci.foreach(uciconfig, ucidnsrule, (cfg) => {
+	if (!isEmpty(cfg.domain_strategy))
+		uci.delete(uciconfig, cfg['.name'], 'domain_strategy');
+	if (!isEmpty(cfg.rule_set_ip_cidr_accept_empty))
+		uci.delete(uciconfig, cfg['.name'], 'rule_set_ip_cidr_accept_empty');
 });
 
 /* routing rules options */

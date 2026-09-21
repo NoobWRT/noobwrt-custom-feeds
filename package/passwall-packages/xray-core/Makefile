@@ -1,11 +1,11 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=Xray-core
-PKG_VERSION:=26.3.27
+PKG_VERSION:=26.9.9
 PKG_RELEASE:=1
 
 PKG_SOURCE:=$(PKG_NAME)-$(PKG_VERSION).tar.gz
-PKG_SOURCE_URL:=https://codeload.github.com/crazypeace/Xray-core-allowInsecure/tar.gz/v$(PKG_VERSION)-allowInsecure?
+PKG_SOURCE_URL:=https://codeload.github.com/XTLS/Xray-core/tar.gz/v$(PKG_VERSION)?
 PKG_HASH:=efb871a981690688191433a76beef7afdab6750d53cc1775cf8e9e995730ef22
 
 PKG_MAINTAINER:=Tianling Shen <cnsztl@immortalwrt.org>

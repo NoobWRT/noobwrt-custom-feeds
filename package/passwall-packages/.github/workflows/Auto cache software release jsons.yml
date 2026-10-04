@@ -39,6 +39,8 @@ jobs:
           MUST_UPLOAD=false
 
           declare -A repos
+          repos["passwall"]="Openwrt-Passwall/openwrt-passwall"
+          repos["passwall2"]="Openwrt-Passwall/openwrt-passwall2"
           repos["geoview"]="snowie2000/geoview"
           repos["chinadns-ng"]="zfl9/chinadns-ng"
           repos["xray"]="XTLS/Xray-core"

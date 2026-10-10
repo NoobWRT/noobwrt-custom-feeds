@@ -14,6 +14,7 @@ Controls the router's RGB LEDs based on live 5G signal quality and mobile intern
 - **Signal Quality LED** — changes color based on CSQ value (excellent / good / average / weak / offline)
 - **Internet LED** — solid when connected, blinks when disconnected
 - **WiFi LED** — on when WiFi is enabled, off when disabled
+- **Phone LED** — follows the RJ11 phone line when the [aw1000-rj11](https://github.com/nooblk-98/aw1000-rj11) phone port is installed: solid = ready, fast blink = ringing, slow blink = handset off hook, off = phone port off
 - **Night Mode** — turns off all status LEDs on a schedule; power LED does a slow airplane-style double-blink
 - **Customizable colors** — pick any of 8 colors (Red, Green, Blue, Yellow, Cyan, Magenta, White, Off) for each signal level
 - **Adjustable thresholds** — set your own SINR and CSQ cutoff values
@@ -50,6 +51,7 @@ Then reboot or restart the service:
 | Green | `green:internet` | Internet connected |
 | Green | `green:wifi` | WiFi enabled |
 | RGB | `*:signal` | Mobile signal (CSQ) |
+| Green | `green:phone` | Phone line (set by aw1000-rj11's `rj11_led`) |
 | Green | `green:power` | Power / Night Mode beacon |
 
 ---
@@ -61,6 +63,7 @@ When enabled, Night Mode activates at the set start time and deactivates at the 
 During Night Mode:
 - All status LEDs turn **off**
 - Power LED does a slow **double-blink** (airplane tail beacon style)
+- Phone LED stays **off**, except while a call is ringing
 
 Configure under **System → AW1000 LEDs → Night Mode**.
 

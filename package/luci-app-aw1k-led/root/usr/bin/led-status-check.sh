@@ -1,4 +1,11 @@
 #!/bin/sh
+#=================================================
+# Copyright (c) 2026 Lahiru S Liyanage (NoobLK) <liyanagelsofficial@gmail.com>
+# GitHub: https://github.com/nooblk-98/luci-app-aw1k-led
+# Telegram: @itsme_nooblk
+# License: GPL-3.0-or-later
+#=================================================
+
 # AW1000 LED Status Monitor
 # Reads thresholds, colors and settings from UCI: uci get ledstatus.settings.*
 
@@ -118,6 +125,18 @@ else
     echo none > /sys/class/leds/green:wifi/trigger
     echo 1    > /sys/class/leds/green:wifi/brightness
     echo "WiFi: Enabled"
+fi
+
+# ─── Phone ───────────────────────────────────────────────────────────────────
+# The phone service (aw1000-rj11) sets the phone LED on every line change;
+# re-sync it here in case something else touched it. Off without the phone.
+if [ -x /usr/sbin/rj11_led ]; then
+    /usr/sbin/rj11_led
+    echo "Phone: LED follows the phone line"
+else
+    echo none > /sys/class/leds/green:phone/trigger
+    echo 0    > /sys/class/leds/green:phone/brightness
+    echo "Phone: not installed, LED off"
 fi
 
 # ─── CSQ Signal ───────────────────────────────────────────────────────────────

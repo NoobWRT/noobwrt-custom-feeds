@@ -1,8 +1,16 @@
 #!/bin/sh
+#=================================================
+# Copyright (c) 2026 Lahiru S Liyanage (NoobLK) <liyanagelsofficial@gmail.com>
+# GitHub: https://github.com/nooblk-98/luci-app-aw1k-led
+# Telegram: @itsme_nooblk
+# License: GPL-3.0-or-later
+#=================================================
+
 # AW1000 Night Mode controller (cron-based)
 # Usage: led-night-mode.sh on|off|enable|disable
 #
-#   on       — activate night mode now (LEDs off, power LED on)
+#   on       — activate night mode now (status LEDs off, power LED double-blinks,
+#              phone LED off unless a call is ringing)
 #   off      — deactivate night mode now (start LED service)
 #   enable   — save night_enabled=1, set crons, activate if in window
 #   disable  — save night_enabled=0, clear crons, restore LEDs
@@ -30,11 +38,13 @@ is_night_active() {
     [ -f "$NIGHT_ACTIVE_FLAG" ]
 }
 
-# Phone LED slow blink during night mode — runs in background
+# Power LED double-blink beacon during night mode — runs in background.
+# (The phone LED used to be the beacon; it now shows the phone line, see
+# _phone_led.)
 _start_blink() {
     python3 -c "
 import time
-LED = '/sys/class/leds/green:phone'
+LED = '/sys/class/leds/green:power'
 def w(f, v):
     open(LED + '/' + f, 'w').write(v)
 w('trigger', 'none')
@@ -55,8 +65,20 @@ _stop_blink() {
     ps | grep "$BLINK_MARKER" | grep -v grep | awk '{print $1}' | while read -r pid; do
         [ -n "$pid" ] && kill "$pid" 2>/dev/null
     done
-    echo none > "$PHONE_LED/trigger"
-    echo 0    > "$PHONE_LED/brightness"
+    echo none > "$POWER_LED/trigger"
+    echo 1    > "$POWER_LED/brightness"
+}
+
+# Phone LED belongs to the phone service (aw1000-rj11) when it is installed:
+# rj11_led shows the line state and keeps the LED dark during night mode
+# except while a call is ringing. Without it the phone LED stays off.
+_phone_led() {
+    if [ -x /usr/sbin/rj11_led ]; then
+        /usr/sbin/rj11_led
+    else
+        echo none > "$PHONE_LED/trigger"
+        echo 0    > "$PHONE_LED/brightness"
+    fi
 }
 
 night_on() {
@@ -66,14 +88,11 @@ night_on() {
         echo 0    > "/sys/class/leds/$led/brightness"
     done
 
-    # Power LED stays on solid
-    echo none > "$POWER_LED/trigger"
-    echo 1    > "$POWER_LED/brightness"
-
-    # Phone LED blinks as night indicator
+    # Power LED double-blinks as night indicator
     _stop_blink
     _start_blink
     touch "$NIGHT_ACTIVE_FLAG"
+    _phone_led
 
     logger -t led-night-mode "Night Mode activated"
 }
@@ -83,6 +102,7 @@ night_off() {
     echo none > "$POWER_LED/trigger"
     echo 1    > "$POWER_LED/brightness"
     rm -f "$NIGHT_ACTIVE_FLAG"
+    _phone_led
     # Restart LED service to restore normal LED behaviour
     /etc/init.d/ledstatus restart >/dev/null 2>&1 &
     logger -t led-night-mode "Night Mode deactivated"
@@ -179,6 +199,7 @@ do_disable() {
     if is_night_active; then
         _stop_blink
         rm -f "$NIGHT_ACTIVE_FLAG"
+        _phone_led
         /etc/init.d/ledstatus restart >/dev/null 2>&1 &
     fi
 

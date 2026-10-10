@@ -1,7 +1,14 @@
+#=================================================
+# Copyright (c) 2026 Lahiru S Liyanage (NoobLK) <liyanagelsofficial@gmail.com>
+# GitHub: https://github.com/nooblk-98/luci-app-aw1k-led
+# Telegram: @itsme_nooblk
+# License: GPL-3.0-or-later
+#=================================================
+
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=luci-app-aw1k-led
-PKG_VERSION:=1.0.1
+PKG_VERSION:=1.0.2
 PKG_RELEASE:=0
 
 PKG_MAINTAINER:=NoobLk

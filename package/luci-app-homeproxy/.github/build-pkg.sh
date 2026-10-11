@@ -1,6 +1,5 @@
 #!/bin/bash
 # SPDX-License-Identifier: GPL-2.0-only
-#
 
 set -o errexit
 set -o pipefail

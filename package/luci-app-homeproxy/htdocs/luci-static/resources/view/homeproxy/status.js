@@ -14,13 +14,10 @@
 'require ui';
 'require view';
 
-/* Thanks to luci-app-aria2 */
 const css = '				\
-#log_textarea {				\
 	padding: 10px;			\
 	text-align: left;		\
 }					\
-#log_textarea pre {			\
 	padding: .5rem;			\
 	word-break: break-all;		\
 	margin: 0;			\
@@ -257,7 +254,6 @@ return view.extend({
 		o.cfgvalue = L.bind(getResVersion, this, o, 'gfw_list');
 		o.rawhtml = true;
 
-		/* local rule-sets (used by bypass_mainland_china when present) */
 		o = s.option(form.DummyValue, '_geoip_cn_version', _('GeoIP CN rule-set version'));
 		o.cfgvalue = L.bind(getResVersion, this, o, 'geoip_cn');
 		o.rawhtml = true;

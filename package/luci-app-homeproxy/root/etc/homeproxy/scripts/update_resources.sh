@@ -35,12 +35,6 @@ check_list_update() {
 		return 2
 	fi
 
-	# --header= is the only header switch understood by all three wget
-	# implementations this runs on (uclient-fetch, GNU wget, busybox wget);
-	# the previous --header-file= is rejected by uclient-fetch and GNU wget
-	# alike, which made every version probe fail whenever a GitHub token was
-	# configured. The token is therefore visible in `ps` for the duration of
-	# the request; that is the trade-off for a single code path.
 	local api_url="https://api.github.com/repos/$listrepo/commits?sha=$listref&path=$listname&per_page=1"
 	local list_info
 	if [ -n "$github_token" ]; then

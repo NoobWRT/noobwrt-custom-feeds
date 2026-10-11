@@ -20,9 +20,7 @@ import {
 
 const ubus = connect();
 
-/* const features = ubus.call('luci.homeproxy', 'singbox_get_features') || {}; */
 
-/* UCI config start */
 const uci = cursor();
 
 const uciconfig = 'homeproxy';
@@ -45,17 +43,6 @@ const uciruleset = 'ruleset';
 
 const routing_mode = uci.get(uciconfig, ucimain, 'routing_mode') || 'bypass_mainland_china';
 
-/*
- * Single source of truth for "which config branch are we generating".
- *
- * The three generation chains below (DNS, outbounds, route) must be selected by
- * the routing mode, NOT by whether main_node / default_outbound happen to be
- * set. Those two answer a different question: in custom mode default_outbound
- * is legitimately 'nil' (every routing rule picks its own outbound, there is no
- * default) and main_node is never read. Deriving the mode from them made a
- * perfectly normal custom config fall through every branch and emit a config
- * containing none of the user's DNS servers, nodes, rules or rule-sets.
- */
 const is_custom_mode = (routing_mode === 'custom');
 
 let wan_dns = ubus.call('network.interface', 'status', {'interface': 'wan'})?.['dns-server']?.[0];
@@ -96,14 +83,12 @@ if (routing_mode !== 'custom') {
 	proxy_domain_list = proxy_list_raw ? split(trim(proxy_list_raw), /[\r\n]/) : [];
 
 } else {
-	/* DNS settings */
 	dns_default_strategy = uci.get(uciconfig, ucidnssetting, 'default_strategy');
 	dns_default_server = uci.get(uciconfig, ucidnssetting, 'default_server');
 	dns_disable_cache = uci.get(uciconfig, ucidnssetting, 'disable_cache');
 	dns_disable_cache_expire = uci.get(uciconfig, ucidnssetting, 'disable_cache_expire');
 	dns_client_subnet = uci.get(uciconfig, ucidnssetting, 'client_subnet');
 
-	/* Routing settings */
 	default_outbound = uci.get(uciconfig, uciroutingsetting, 'default_outbound') || 'nil';
 	default_outbound_dns = uci.get(uciconfig, uciroutingsetting, 'default_outbound_dns') || 'default-dns';
 	domain_strategy = uci.get(uciconfig, uciroutingsetting, 'domain_strategy');
@@ -148,7 +133,6 @@ if (match(proxy_mode, /tun/)) {
 }
 
 const log_level = uci.get(uciconfig, ucimain, 'log_level') || 'warn';
-/* UCI config end */
 
 const tun_dns_mode_raw = uci.get(uciconfig, ucimain, 'tun_dns_mode'),
       tun_dns_address = uci.get(uciconfig, ucimain, 'tun_dns_address'),
@@ -160,13 +144,6 @@ const tun_dns_mode = (tun_dns_mode_raw === 'default') ? '' : tun_dns_mode_raw,
       udp_mapping = (udp_mapping_raw === 'default') ? '' : udp_mapping_raw,
       udp_filtering = (udp_filtering_raw === 'default') ? '' : udp_filtering_raw;
 
-/* Config helper start */
-/*
- * Direct-node destination override, keyed by node section name. It must be
- * declared before the helpers that touch it: ucode resolves let/const
- * lexically and does not hoist them, so a function defined earlier would
- * resolve the name as an undeclared global and throw under strict mode.
- */
 const direct_overrides = {};
 
 function parse_port(strport) {
@@ -256,28 +233,22 @@ function generate_outbound(node) {
 
 		server: node.address,
 		server_port: strToInt(node.port),
-		/* Hysteria(2) */
 		server_ports: node.hysteria_hopping_port,
 
 		username: (node.type !== 'ssh') ? node.username : null,
 		user: (node.type === 'ssh') ? node.username : null,
-		/* Snell authenticates with psk instead of password */
 		password: (node.type !== 'snell') ? node.password : null,
 		psk: (node.type === 'snell') ? node.password : null,
 		userkey: (node.type === 'snell') ? node.snell_userkey : null,
 		reuse: (node.type === 'snell') ? strToBool(node.snell_reuse) : null,
-		/* Snell v4: HTTP obfuscation; v6: traffic shaping mode */
 		obfs_mode: (node.type === 'snell') ? (node.snell_obfs_mode || null) : null,
 		obfs_host: (node.type === 'snell') ? (node.snell_obfs_host || null) : null,
 		mode: (node.type === 'snell') ? (node.snell_mode || null) : null,
 
-		/* Direct */
 		proxy_protocol: strToInt(node.proxy_protocol),
-		/* AnyTLS */
 		idle_session_check_interval: strToTime(node.anytls_idle_session_check_interval),
 		idle_session_timeout: strToTime(node.anytls_idle_session_timeout),
 		min_idle_session: strToInt(node.anytls_min_idle_session),
-		/* Hysteria (2) */
 		hop_interval: strToTime(node.hysteria_hop_interval),
 		hop_interval_max: strToTime(node.hysteria_hop_interval_max),
 		up_mbps: strToInt(node.hysteria_up_mbps),
@@ -290,29 +261,23 @@ function generate_outbound(node) {
 		} : node.hysteria_obfs_password,
 		auth: (node.hysteria_auth_type === 'base64') ? node.hysteria_auth_payload : null,
 		auth_str: (node.hysteria_auth_type === 'string') ? node.hysteria_auth_payload : null,
-		/* sing-box 1.14: Hysteria2 QUIC params (Hysteria v1 recv-window tuning removed upstream) */
 		bbr_profile: (node.type === 'hysteria2') ? (node.hysteria_bbr_profile || null) : null,
 		disable_chrome_parrot: (node.type === 'hysteria2' && node.hysteria_disable_chrome_parrot === '1') ? true : null,
-		/* Shadowsocks */
 		method: node.shadowsocks_encrypt_method,
 		plugin: node.shadowsocks_plugin,
 		plugin_opts: node.shadowsocks_plugin_opts,
-		/* ShadowTLS / Socks / Snell */
 		version: (node.type === 'shadowtls') ? strToInt(node.shadowtls_version) : ((node.type === 'socks') ? node.socks_version : ((node.type === 'snell') ? (strToInt(node.snell_version) || 4) : null)),
-		/* SSH */
 		client_version: node.ssh_client_version,
 		host_key: node.ssh_host_key,
 		host_key_algorithms: node.ssh_host_key_algo,
 		private_key: node.ssh_priv_key,
 		private_key_passphrase: node.ssh_priv_key_pp,
-		/* Tuic */
 		uuid: node.uuid,
 		congestion_control: node.tuic_congestion_control,
 		udp_relay_mode: node.tuic_udp_relay_mode,
 		udp_over_stream: strToBool(node.tuic_udp_over_stream),
 		zero_rtt_handshake: strToBool(node.tuic_enable_zero_rtt),
 		heartbeat: strToTime(node.tuic_heartbeat),
-		/* VLESS / VMess */
 		flow: node.vless_flow,
 		alter_id: strToInt(node.vmess_alterid),
 		security: node.vmess_encrypt,
@@ -344,8 +309,6 @@ function generate_outbound(node) {
 		udp_fragment: strToBool(node.udp_fragment)
 	};
 
-	/* Direct-node destination override: sing-box removed these options from
-	   the direct outbound since 1.13; emit them via the route action instead */
 	if (node.type === 'direct' && (!isEmpty(node.override_address) || !isEmpty(node.override_port)))
 		direct_overrides[node['.name']] = {
 			override_address: node.override_address,
@@ -432,11 +395,6 @@ function isDirectOutboundTag(tag) {
 	return !isEmpty(node) && node.type === 'direct';
 }
 
-/*
- * Remote rule-sets are downloaded through a top-level http_client in sing-box
- * 1.14 (the per-rule-set download_detour was removed). One client is created
- * per distinct detour and reused by every rule-set that dials through it.
- */
 const http_clients = [];
 const http_seen = {};
 
@@ -450,9 +408,6 @@ function http_client_for(detour) {
 
 	http_seen[detour] = true;
 	const client = { tag: tag };
-	/* sing-box 1.14 rejects an empty detour on the direct outbound (pure TUN
-	   mode has no self_mark on it); omitting detour uses the same system
-	   direct dialer, so behaviour is unchanged. */
 	if (!(isEmpty(self_mark) && isDirectOutboundTag(detour)))
 		client.detour = detour;
 
@@ -461,10 +416,6 @@ function http_client_for(detour) {
 	return tag;
 }
 
-/*
- * sing-box requires dns.servers[].headers to be a map, while the LuCI field is
- * a dynamic list of "Name: value" lines (and older configs may hold either).
- */
 function parse_headers(headers) {
 	if (isEmpty(headers))
 		return null;
@@ -482,11 +433,9 @@ function parse_headers(headers) {
 
 	return isEmpty(out) ? null : out;
 }
-/* Config helper end */
 
 const config = {};
 
-/* Log */
 config.log = {
 	disabled: false,
 	level: log_level,
@@ -494,7 +443,6 @@ config.log = {
 	timestamp: true
 };
 
-/* NTP */
 if (!isEmpty(ntp_server))
 	config.ntp = {
 		enabled: true,
@@ -503,8 +451,6 @@ if (!isEmpty(ntp_server))
 		domain_resolver: 'default-dns',
 	};
 
-/* DNS start */
-/* Default settings */
 config.dns = {
 	servers: [
 		{
@@ -532,7 +478,6 @@ config.dns = {
 };
 
 if (!isEmpty(main_node)) {
-	/* Main DNS */
 	push(config.dns.servers, {
 		tag: 'main-dns',
 		domain_resolver: {
@@ -551,8 +496,6 @@ if (!isEmpty(main_node)) {
 			server: (routing_mode === 'bypass_mainland_china') ? 'china-dns' : 'default-dns'
 		});
 
-	/* Reject SVCB/HTTPS queries to avoid proxy DNS timeout on null domains.
-	   Opt out with `block_https_rr 0` when clients should use HTTPS RR/ECH. */
 	if (uci.get(uciconfig, ucimain, 'block_https_rr') !== '0')
 		push(config.dns.rules, {
 			query_type: [64, 65],
@@ -564,18 +507,12 @@ if (!isEmpty(main_node)) {
 			tag: 'china-dns',
 			domain_resolver: {
 				server: 'default-dns',
-				/* follow the IPv6 setting like main-dns does, instead of
-				   preferring AAAA even on IPv4-only setups */
 				strategy: (ipv6_support !== '1') ? 'ipv4_only' : null
 			},
 			detour: self_mark ? 'direct-out' : null,
 			...parse_dnsserver(china_dns_server)
 		});
 
-		/* Route NAPTR (qtype 35) queries for SIP/ENUM domains to the ISP
-		   default-dns directly: china-dns (223.5.5.5) has intermittent
-		   multi-second first responses for NAPTR, causing 'context deadline
-		   exceeded' (e.g. sipgz12.hbq.r.10086.cn) */
 		push(config.dns.rules, {
 			query_type: [35],
 			domain_suffix: ['r.10086.cn', '10086.cn', 'pub.3gppnetwork.org'],
@@ -596,7 +533,6 @@ if (!isEmpty(main_node)) {
 			server: 'china-dns'
 		});
 
-		/* sing-box 1.14: restore CN-IP fallback via evaluate/match_response (opt-in) */
 		if (uci.get(uciconfig, ucimain, 'cn_ip_fallback') === '1') {
 			push(config.dns.rules, {
 				action: 'evaluate',
@@ -612,7 +548,6 @@ if (!isEmpty(main_node)) {
 		}
 	}
 } else if (is_custom_mode) {
-	/* DNS servers */
 	uci.foreach(uciconfig, ucidnsserver, (cfg) => {
 		if (cfg.enabled !== '1')
 			return;
@@ -640,9 +575,6 @@ if (!isEmpty(main_node)) {
 		});
 	});
 
-	/* DNS rules */
-	/* sing-box >= 1.14: legacy address-filter rules are auto-wrapped with an
-	   evaluate action; deprecated strategy/accept_empty fields are dropped. */
 	const builtin_dns_rules = [];
 	uci.foreach(uciconfig, ucidnsrule, (cfg) => {
 		if (cfg.enabled !== '1')
@@ -705,10 +637,6 @@ if (!isEmpty(main_node)) {
 
 		const legacy_filter = !isEmpty(cfg.ip_cidr) || strToBool(cfg.ip_is_private) === true;
 		if (legacy_filter && !rule.match_response && cfg.action === 'route') {
-			/* Wrap a legacy address-filter rule into the 1.14 evaluate/match_response
-			   paradigm. Carry the original query-matching fields onto the evaluate
-			   prefix rule so only queries that would have hit this rule get
-			   pre-resolved; an unconditional evaluate would resolve every query. */
 			const eval_tag = '_hp_eval_' + cfg['.name'];
 			const eval_rule = {
 				action: 'evaluate',
@@ -730,14 +658,11 @@ if (!isEmpty(main_node)) {
 			rule.match_response = eval_tag;
 		}
 
-		/* ip_cidr / ip_is_private are only valid with match_response in 1.14 */
 		if (rule.match_response) {
 			rule.ip_cidr = cfg.ip_cidr;
 			rule.ip_is_private = strToBool(cfg.ip_is_private);
 		}
 
-		/* sing-box rejects the whole config when a route/evaluate action has no
-		   server, so drop such a rule with a reason instead. */
 		if ((rule.action === 'route' || rule.action === 'evaluate') && isEmpty(rule.server)) {
 			warn(sprintf("homeproxy: DNS rule '%s' has no server configured, skipping it.", cfg['.name']));
 			return;
@@ -749,19 +674,9 @@ if (!isEmpty(main_node)) {
 
 	config.dns.final = get_resolver(dns_default_server);
 }
-/* DNS end */
 
-/* Inbound start */
 config.inbounds = [];
 
-/*
- * dns-in is the local listener the DNS chain hands queries to: dnsmasq
- * forwards to 127.0.0.1#<dns_port> and the nft DNS hijack redirects to
- * dnsmasq, not here.  It used to listen on '::', which published a
- * proxy-backed resolver to every LAN client on the DNS port; loopback is the
- * whole reachable surface it needs.  mixed-in stays on '::' - that one is the
- * SOCKS/HTTP listener clients are meant to reach.
- */
 push(config.inbounds, {
 	type: 'direct',
 	tag: 'dns-in',
@@ -817,12 +732,9 @@ if (match(proxy_mode, /tun/))
 		udp_nat_max: udp_nat_max,
 		stack: tcpip_stack,
 	});
-/* Inbound end */
 
-/* Outbound start */
 config.endpoints = [];
 
-/* Default outbounds */
 config.outbounds = [
 	{
 		type: 'direct',
@@ -835,7 +747,6 @@ config.outbounds = [
 	}
 ];
 
-/* Main outbounds */
 if (!isEmpty(main_node)) {
 	let urltest_nodes = [];
 
@@ -958,16 +869,7 @@ if (!isEmpty(main_node)) {
 
 if (isEmpty(config.endpoints))
 	config.endpoints = null;
-/* Outbound end */
 
-/* Routing rules start */
-/* Default settings */
-/*
- * The sniff rule below deliberately carries no `timeout`. Reports from
- * sing-box 1.14.2 show it rejected with "route.rules[1].timeout: json: unknown
- * field". The official builds accept it, so the exact trigger is still open,
- * but the default is already 300ms and omitting the field is behaviour-neutral.
- */
 config.route = {
 	rules: [
 		{
@@ -983,19 +885,12 @@ config.route = {
 	default_interface: default_interface
 };
 
-/* Routing rules */
 if (!isEmpty(main_node)) {
-	/* Resolve outbound server domains through the WAN default resolver.
-	   Do not use china-dns here: china-dns is for resolving mainland China
-	   destinations, not the proxy node itself. Coupling node bootstrap to
-	   china_dns_server can break dialing when that resolver is polluted or
-	   unsuitable for the node domain. */
 	config.route.default_domain_resolver = {
 		server: 'default-dns',
 		strategy: (ipv6_support !== '1') ? 'prefer_ipv4' : null
 	};
 
-	/* Direct list */
 	if (length(direct_domain_list))
 		push(config.route.rules, {
 			rule_set: 'direct-domain',
@@ -1003,14 +898,17 @@ if (!isEmpty(main_node)) {
 			outbound: 'direct-out'
 		});
 
-	/* Bypass CN traffic: resolve the destination first, then route by IP.
-	   sing-box does not match an IP-based rule set (geoip-cn) against a domain
-	   destination unless it is resolved first, so add an explicit resolve
-	   action; geoip-cn then sends China IPs to direct and everything else falls
-	   through to main-out (proxy). This avoids relying on the geosite-* domain
-	   lists, which can mis-classify foreign domains (e.g. Google's gvt2.com
-	   beacons) as "cn" and send them direct to time out. Keep the direct-domain
-	   fast-path above for known direct domains. */
+	if (dedicated_udp_node) {
+		const udp_override = direct_overrides[main_udp_node] || null;
+		push(config.route.rules, {
+			network: 'udp',
+			action: 'route',
+			outbound: 'main-udp-out',
+			override_address: udp_override ? udp_override.override_address : null,
+			override_port: udp_override ? udp_override.override_port : null
+		});
+	}
+
 	if (routing_mode === 'bypass_mainland_china') {
 		push(config.route.rules, {
 			action: 'resolve',
@@ -1023,20 +921,6 @@ if (!isEmpty(main_node)) {
 		});
 	}
 
-	/* Main UDP out */
-	if (dedicated_udp_node) {
-		const udp_override = direct_overrides[main_udp_node] || null;
-		push(config.route.rules, {
-			network: 'udp',
-			action: 'route',
-			outbound: 'main-udp-out',
-			override_address: udp_override ? udp_override.override_address : null,
-			override_port: udp_override ? udp_override.override_port : null
-		});
-	}
-
-	/* Direct-node destination override, emitted as route-options action
-	   (direct outbound options removed since sing-box 1.13) */
 	const main_override = direct_overrides[main_node] || null;
 	if (main_override)
 		push(config.route.rules, {
@@ -1047,8 +931,6 @@ if (!isEmpty(main_node)) {
 
 	config.route.final = 'main-out';
 
-	/* Rule set */
-	/* Direct list */
 	if (length(direct_domain_list))
 		push(config.route.rule_set, {
 			type: 'inline',
@@ -1060,7 +942,6 @@ if (!isEmpty(main_node)) {
 			]
 		});
 
-	/* Proxy list */
 	if (length(proxy_domain_list))
 		push(config.route.rule_set, {
 			type: 'inline',
@@ -1073,17 +954,6 @@ if (!isEmpty(main_node)) {
 		});
 
 	if (routing_mode === 'bypass_mainland_china') {
-		/*
-		 * The two rule-sets sing-box actually needs for this mode. Each one is
-		 * used from the local .srs file when update_resources.sh has fetched
-		 * it, and only falls back to a remote fetch otherwise: a remote
-		 * rule-set is initialized at every start (sing-box fails to start when
-		 * the fetch fails even if nothing references it), which would make a
-		 * cold boot depend on reaching the CDN through the node. The fallback
-		 * keeps a fresh install working before the first resource update.
-		 * geosite-noncn is intentionally not declared: no rule references it,
-		 * and sing-box downloads it anyway.
-		 */
 		const preset_rulesets = [
 			{
 				tag: 'geoip-cn',
@@ -1147,11 +1017,6 @@ if (!isEmpty(main_node)) {
 			rule_override_port = rule_direct_override.override_port;
 		}
 
-		/* sing-box routing rule: emit match fields plus action-specific fields.
-		   client is the sniffed client type (only set with protocol quic/ssh);
-		   resolve adds server/strategy/disable_cache/rewrite_ttl/client_subnet;
-		   reject adds method/no_drop. Emitted conditionally so a given action
-		   never carries fields sing-box rejects for it. */
 		const rule = {
 			ip_version: strToInt(cfg.ip_version),
 			protocol: cfg.protocol,
@@ -1207,8 +1072,6 @@ if (!isEmpty(main_node)) {
 		push(config.route.rules, rule);
 	});
 
-	/* Direct-node destination override, emitted as route-options action
-	   (direct outbound options removed since sing-box 1.13) */
 	const final_override = get_direct_override(default_outbound);
 	if (final_override)
 		push(config.route.rules, {
@@ -1219,7 +1082,6 @@ if (!isEmpty(main_node)) {
 
 	config.route.final = get_outbound(default_outbound);
 
-	/* Rule set */
 	uci.foreach(uciconfig, uciruleset, (cfg) => {
 		if (cfg.enabled !== '1')
 			return null;
@@ -1230,8 +1092,6 @@ if (!isEmpty(main_node)) {
 			rs_tag = [rs_tag];
 			for (let t in extra_tags)
 				push(rs_tag, 'cfg-' + t + '-rule');
-			/* sing-box 1.14: multi-tag requires a {tag} placeholder in the fetch source
-			   (remote: url and initial_path, local: path) */
 			const fetch_ref = (cfg.type === 'remote') ? (cfg.url || '') : (cfg.path || '');
 			if (!match(fetch_ref, /\{tag\}/))
 				warn(sprintf("homeproxy: rule-set '%s' uses extra tags but its %s source lacks a {tag} placeholder.", cfg['.name'], cfg.type));
@@ -1247,8 +1107,6 @@ if (!isEmpty(main_node)) {
 			url: cfg.url,
 			update_interval: cfg.update_interval
 		};
-		/* sing-box 1.14 downloads remote rule-sets through a top-level
-		   http_client; download_detour no longer exists. */
 		if (cfg.type === 'remote')
 			ruleset.http_client = http_client_for(get_outbound(cfg.outbound) || get_outbound(default_outbound));
 		if (cfg.type === 'remote' && !isEmpty(cfg.initial_path))
@@ -1257,28 +1115,12 @@ if (!isEmpty(main_node)) {
 	});
 }
 
-/*
- * Belt-and-braces for route.default_domain_resolver.
- *
- * sing-box 1.14 removed the legacy outbound DNS rules and refuses to start when
- * a dial-fields user has a domain to resolve without a resolver. The exemption
- * for "only one DNS server configured" never applies here: default-dns and
- * system-dns are emitted unconditionally, so every config has at least two.
- * That makes this a global requirement, not a per-mode one, so it must not
- * depend on which branch above ran. The branches already pick the right
- * resolver (the WAN resolver, or default_outbound_dns in custom mode); this
- * only covers the degenerate "not custom mode and no main node" case.
- */
 if (isEmpty(config.route.default_domain_resolver))
 	config.route.default_domain_resolver = { server: 'default-dns' };
 
-/* Remote rule-sets download through the http_clients collected while the
-   rule-sets were built (see http_client_for). */
 if (length(http_clients))
 	config.http_clients = http_clients;
-/* Routing rules end */
 
-/* Experimental start */
 if (routing_mode in ['bypass_mainland_china', 'custom']) {
 	config.experimental = {
 		cache_file: {
@@ -1288,7 +1130,6 @@ if (routing_mode in ['bypass_mainland_china', 'custom']) {
 		}
 	};
 }
-/* Experimental end */
 
 config['$schema'] = 'https://sing-box.sagernet.org/schema.json';
 
@@ -1300,7 +1141,4 @@ if (system('/usr/bin/sing-box check --config ' + client_tmp) !== 0) {
 	exit(1);
 }
 system('mv -f ' + client_tmp + ' ' + RUN_DIR + '/sing-box-c.json');
-/* The generated config carries every node credential (passwords, UUIDs,
-   private keys) and writefile() has no mode argument, so it lands with the
-   process umask; chmod it to the sing-box user only. */
 system('chmod 600 ' + RUN_DIR + '/sing-box-c.json');

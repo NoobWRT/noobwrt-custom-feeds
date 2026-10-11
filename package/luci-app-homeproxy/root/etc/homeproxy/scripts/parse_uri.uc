@@ -10,28 +10,13 @@ import { urldecode, urlencode } from 'luci.http';
 
 import { decodeBase64Str, parseURL, percentDecode, isEmpty, validation } from 'homeproxy';
 
-/*
- * Share-link parsers. Every protocol has its own parse_<scheme>_uri() so the
- * branches can be read, changed and unit-tested in isolation; parse_uri() only
- * dispatches on the scheme and applies the common address/port validation and
- * label fallback afterwards.
- *
- * `features` is the sing-box feature map (with_quic/with_utls/...), `log` is a
- * logging callback, both injected so the parsers stay free of ubus/uci.
- */
 
-/*
- * Transports sing-box accepts on a V2Ray-style outbound. Anything else
- * (xhttp, splithttp, ...) makes sing-box reject the whole generated config,
- * so such a node is dropped while importing instead of poisoning every node.
- */
 const SUPPORTED_TRANSPORTS = ['ws', 'http', 'grpc', 'httpupgrade', 'quic'];
 
 function unsupported_transport(config) {
 	return !isEmpty(config.transport) && !(config.transport in SUPPORTED_TRANSPORTS);
 }
 
-/* https://shadowsocks.org/guide/sip008.html */
 export function parse_sip008_uri(uri) {
 	return {
 		label: uri.remarks,
@@ -45,7 +30,6 @@ export function parse_sip008_uri(uri) {
 	};
 };
 
-/* https://github.com/anytls/anytls-go/blob/v0.0.8/docs/uri_scheme.md */
 export function parse_anytls_uri(uri) {
 	uri = split(trim(uri), '://');
 
@@ -80,7 +64,6 @@ export function parse_http_uri(uri) {
 	};
 };
 
-/* https://github.com/HyNetwork/hysteria/wiki/URI-Scheme */
 export function parse_hysteria_uri(uri, features, log) {
 	uri = split(trim(uri), '://');
 
@@ -113,7 +96,6 @@ export function parse_hysteria_uri(uri, features, log) {
 	};
 };
 
-/* https://v2.hysteria.network/docs/developers/URI-Scheme/ */
 export function parse_hysteria2_uri(uri, features, log) {
 	uri = split(trim(uri), '://');
 
@@ -142,7 +124,6 @@ export function parse_hysteria2_uri(uri, features, log) {
 	};
 };
 
-/* Surge Snell share link: snell://host:port?psk=..&obfs=http&obfs-host=..#name */
 export function parse_snell_uri(uri) {
 	uri = split(trim(uri), '://');
 
@@ -183,7 +164,6 @@ export function parse_socks_uri(uri) {
 export function parse_ss_uri(uri) {
 	uri = split(trim(uri), '://');
 
-	/* "Lovely" Shadowrocket format */
 	const ss_suri = split(uri[1], '#');
 	let ss_slabel = '';
 	if (length(ss_suri) <= 2) {
@@ -194,18 +174,13 @@ export function parse_ss_uri(uri) {
 			uri[1] = ss_decoded + ss_slabel;
 	}
 
-	/* Legacy format is not supported, it should be never appeared in modern subscriptions */
-	/* https://github.com/shadowsocks/shadowsocks-org/commit/78ca46cd6859a4e9475953ed34a2d301454f579e */
 
-	/* SIP002 format https://shadowsocks.org/guide/sip002.html */
 	const url = parseURL('http://' + uri[1]) || {};
 
 	let ss_userinfo = [];
 	if (url.username && url.password)
-		/* User info encoded with URIComponent; parseURL() already decoded it */
 		ss_userinfo = [url.username, url.password];
 	else if (url.username)
-		/* User info encoded with base64 (padding may have arrived as %3D) */
 		ss_userinfo = split(decodeBase64Str(url.username) ?? '', ':', 2);
 
 	let ss_plugin, ss_plugin_opts;
@@ -213,7 +188,6 @@ export function parse_ss_uri(uri) {
 		const ss_plugin_info = split(url.searchParams.plugin, ';', 2);
 		ss_plugin = ss_plugin_info[0];
 		if (ss_plugin === 'simple-obfs')
-			/* Fix non-standard plugin name */
 			ss_plugin = 'obfs-local';
 		ss_plugin_opts = ss_plugin_info[1];
 	}
@@ -230,7 +204,6 @@ export function parse_ss_uri(uri) {
 	};
 };
 
-/* https://p4gefau1t.github.io/trojan-go/developer/url/ */
 export function parse_trojan_uri(uri) {
 	uri = split(trim(uri), '://');
 
@@ -270,7 +243,6 @@ export function parse_trojan_uri(uri) {
 	return config;
 };
 
-/* https://github.com/daeuniverse/dae/discussions/182 */
 export function parse_tuic_uri(uri, features, log) {
 	uri = split(trim(uri), '://');
 
@@ -299,14 +271,12 @@ export function parse_tuic_uri(uri, features, log) {
 	};
 };
 
-/* https://github.com/XTLS/Xray-core/discussions/716 */
 export function parse_vless_uri(uri, features, log) {
 	uri = split(trim(uri), '://');
 
 	const url = parseURL('http://' + uri[1]) || {};
 	const params = url.searchParams || {};
 
-	/* Unsupported protocol */
 	if (params.type === 'kcp') {
 		log(sprintf('Skipping unsupported %s node: %s.', uri[0], urldecode(url.hash) || url.hostname));
 		return null;
@@ -332,10 +302,6 @@ export function parse_vless_uri(uri, features, log) {
 		tls_reality_public_key: params.pbk ? urldecode(params.pbk) : null,
 		tls_reality_short_id: params.sid,
 		tls_utls: features.with_utls ? params.fp : null,
-		/* sing-box rejects every other value ("unsupported flow") and a single
-		   rejected outbound makes the whole generated config fail, so only the
-		   supported value is imported (the common
-		   "xtls-rprx-vision-udp443" becomes "no flow" instead of breaking). */
 		vless_flow: (params.security in ['tls', 'reality'] && params.flow === 'xtls-rprx-vision') ? params.flow : null
 	};
 	switch (params.type) {
@@ -372,11 +338,9 @@ export function parse_vless_uri(uri, features, log) {
 	return config;
 };
 
-/* https://github.com/2dust/v2rayN/wiki/Description-of-VMess-share-link */
 export function parse_vmess_uri(uri, features, log) {
 	uri = split(trim(uri), '://');
 
-	/* "Lovely" shadowrocket format */
 	if (match(uri, /&/)) {
 		log(sprintf('Skipping unsupported %s format.', uri[0]));
 		return null;
@@ -393,7 +357,6 @@ export function parse_vmess_uri(uri, features, log) {
 	if (payload.v != '2') {
 		log(sprintf('Skipping unsupported %s format.', uri[0]));
 		return null;
-	/* Unsupported protocol */
 	} else if (payload.net === 'kcp') {
 		log(sprintf('Skipping unsupported %s node: %s.', uri[0], payload.ps || payload.add));
 		return null;
@@ -404,13 +367,6 @@ export function parse_vmess_uri(uri, features, log) {
 
 		return null;
 	}
-	/*
-	 * https://www.v2fly.org/config/protocols/vmess.html#vmess-md5-%E8%AE%A4%E8%AF%81%E4%BF%A1%E6%81%AF-%E6%B7%98%E6%B1%B0%E6%9C%BA%E5%88%B6
-	 * else if (payload.aid && int(payload.aid) !== 0) {
-	 * 	log(sprintf('Skipping unsupported %s node: %s.', uri[0], payload.ps || payload.add));
-	 * 	return null;
-	 * }
-	 */
 
 	const config = {
 		label: payload.ps ? urldecode(payload.ps) : null,

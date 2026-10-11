@@ -1,13 +1,5 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0-only
-#
-# The fw4 chain/set inventory in scripts/fw4_names.sh must stay in sync with
-# the objects declared by scripts/firewall_post.ut: the first drives the
-# cleanup in init.d/homeproxy, the second creates them. A drift means either a
-# leftover object or a delete of something that never existed (which used to
-# abort the whole cleanup batch).
-#
-# Usage: sh tests/ucode/test_fw4_names.sh <repo-root>
 
 ROOT="${1:-.}"
 ROOT="$(cd "$ROOT" && pwd)"
@@ -18,7 +10,6 @@ PRE="$ROOT/root/etc/homeproxy/scripts/firewall_pre.uc"
 
 FAILED=0
 
-# shellcheck source=/dev/null
 . "$NAMES"
 
 check_group() {
@@ -57,8 +48,6 @@ post_sets="$(grep -oE '^set homeproxy_[a-z0-9_]+' "$POST" | awk '{print $2}' | s
 check_group "chain" "$HP_FW4_CHAINS" "$post_chains"
 check_group "set" "$HP_FW4_SETS" "$post_sets"
 
-# firewall_pre.uc only writes forward/input accept rules; it must not own any
-# chain/set of its own.
 pre_refs="$(grep -oE 'homeproxy_[a-z0-9_]+' "$PRE" | sort -u)"
 if [ -n "$pre_refs" ]; then
 	echo "NOTE: firewall_pre.uc references fw4 objects:$pre_refs"

@@ -87,7 +87,6 @@ return view.extend({
 		let features = data[1],
 		    hosts = data[2]?.hosts;
 
-		/* Cache all configured proxy nodes, they will be called multiple times */
 		let proxy_nodes = {};
 		uci.sections(data[0], 'node', (res) => {
 			let nodeaddr = ((res.type === 'direct') ? res.override_address : res.address) || '',
@@ -352,8 +351,6 @@ return view.extend({
 		o.depends('proxy_mode', 'redirect_tun');
 		o.depends('proxy_mode', 'tun');
 
-		/* Custom routing settings start */
-		/* Routing settings start */
 		o = s.taboption('routing', form.SectionValue, '_routing', form.NamedSection, 'routing', 'homeproxy');
 		o.depends('routing_mode', 'custom');
 
@@ -443,9 +440,7 @@ return view.extend({
 		}
 		so.default = 'default-dns';
 		so.rmempty = false;
-		/* Routing settings end */
 
-		/* Routing nodes start */
 		s.tab('routing_node', _('Routing Nodes'));
 		o = s.taboption('routing_node', form.SectionValue, '_routing_node', form.GridSection, 'routing_node');
 		o.depends('routing_mode', 'custom');
@@ -614,9 +609,7 @@ return view.extend({
 			_('Interrupt existing connections when the selected outbound has changed.'));
 		so.depends('node', 'urltest');
 		so.modalonly = true;
-		/* Routing nodes end */
 
-		/* Routing rules start */
 		s.tab('routing_rule', _('Routing Rules'));
 		o = s.taboption('routing_rule', form.SectionValue, '_routing_rule', form.GridSection, 'routing_rule');
 		o.depends('routing_mode', 'custom');
@@ -958,9 +951,7 @@ return view.extend({
 		so = ss.taboption('fields_process', form.DynamicList, 'process_path_regex', _('Process path (regex)'),
 			_('Match process path using regular expression.'));
 		so.modalonly = true;
-		/* Routing rules end */
 
-		/* DNS settings start */
 		s.tab('dns', _('DNS Settings'));
 		o = s.taboption('dns', form.SectionValue, '_dns', form.NamedSection, 'dns', 'homeproxy');
 		o.depends('routing_mode', 'custom');
@@ -1015,9 +1006,7 @@ return view.extend({
 			_('Persist DNS cache across restarts (sing-box 1.14, replaces Store RDRC).'));
 		so.depends('disable_cache', '0');
 		so.rmempty = false;
-		/* DNS settings end */
 
-		/* DNS servers start */
 		s.tab('dns_server', _('DNS Servers'));
 		o = s.taboption('dns_server', form.SectionValue, '_dns_server', form.GridSection, 'dns_server');
 		o.depends('routing_mode', 'custom');
@@ -1138,9 +1127,7 @@ return view.extend({
 		so.default = 'direct-out';
 		so.rmempty = false;
 		so.editable = true;
-		/* DNS servers end */
 
-		/* DNS rules start */
 		s.tab('dns_rule', _('DNS Rules'));
 		o = s.taboption('dns_rule', form.SectionValue, '_dns_rule', form.GridSection, 'dns_rule');
 		o.depends('routing_mode', 'custom');
@@ -1470,10 +1457,7 @@ return view.extend({
 		so = ss.taboption('fields_process', form.DynamicList, 'process_path_regex', _('Process path (regex)'),
 			_('Match process path using regular expression.'));
 		so.modalonly = true;
-		/* DNS rules end */
-		/* Custom routing settings end */
 
-		/* Rule set settings start */
 		s.tab('ruleset', _('Rule Set'));
 		o = s.taboption('ruleset', form.SectionValue, '_ruleset', form.GridSection, 'ruleset');
 		o.depends('routing_mode', 'custom');
@@ -1584,15 +1568,12 @@ return view.extend({
 			_('Update interval of rule set.'));
 		so.placeholder = '1d';
 		so.depends('type', 'remote');
-		/* Rule set settings end */
 
-		/* ACL settings start */
 		s.tab('control', _('Access Control'));
 
 		o = s.taboption('control', form.SectionValue, '_control', form.NamedSection, 'control', 'homeproxy');
 		ss = o.subsection;
 
-		/* Interface control start */
 		ss.tab('interface', _('Interface Control'));
 
 		so = ss.taboption('interface', widgets.DeviceSelect, 'listen_interfaces', _('Listen interfaces'),
@@ -1604,9 +1585,7 @@ return view.extend({
 			_('Bind outbound traffic to specific interface. Leave empty to auto detect.'));
 		so.multiple = false;
 		so.noaliases = true;
-		/* Interface control end */
 
-		/* LAN IP policy start */
 		ss.tab('lan_ip_policy', _('LAN IP Policy'));
 
 		so = ss.taboption('lan_ip_policy', form.ListValue, 'lan_proxy_mode', _('Proxy filter mode'));
@@ -1649,9 +1628,7 @@ return view.extend({
 
 		so = fwtool.addMACOption(ss, 'lan_ip_policy', 'lan_global_proxy_mac_addrs', _('Global proxy MAC-s'), null, hosts);
 		so.depends({'homeproxy.config.routing_mode': 'custom', '!reverse': true});
-		/* LAN IP policy end */
 
-		/* WAN IP policy start */
 		ss.tab('wan_ip_policy', _('WAN IP Policy'));
 
 		so = ss.taboption('wan_ip_policy', form.DynamicList, 'wan_proxy_ipv4_ips', _('Proxy IPv4 IP-s'));
@@ -1667,9 +1644,7 @@ return view.extend({
 		so = ss.taboption('wan_ip_policy', form.DynamicList, 'wan_direct_ipv6_ips', _('Direct IPv6 IP-s'));
 		so.datatype = 'or(ip6addr, cidr6)';
 		so.depends('homeproxy.config.ipv6_support', '1');
-		/* WAN IP policy end */
 
-		/* Proxy domain list start */
 		ss.tab('proxy_domain_list', _('Proxy Domain List'));
 
 		so = ss.taboption('proxy_domain_list', form.TextValue, '_proxy_domain_list');
@@ -1699,9 +1674,7 @@ return view.extend({
 
 			return true;
 		}
-		/* Proxy domain list end */
 
-		/* Direct domain list start */
 		ss.tab('direct_domain_list', _('Direct Domain List'));
 
 		so = ss.taboption('direct_domain_list', form.TextValue, '_direct_domain_list');
@@ -1731,10 +1704,7 @@ return view.extend({
 
 			return true;
 		}
-		/* Direct domain list end */
-		/* ACL settings end */
 
-		/* DNS cache / timeout for preset routing modes (rightmost tab, stored in the dns section) */
 		s.tab('dns_cache', _('DNS Cache (1.14)'));
 		o = s.taboption('dns_cache', form.SectionValue, '_dns_cache', form.NamedSection, 'dns', 'homeproxy');
 		o.depends({'routing_mode': 'custom', '!reverse': true});

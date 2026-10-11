@@ -1,11 +1,5 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0-only
-#
-# Run the ucode-level tests: the parse_uri unit tests, the fw4 inventory check
-# and the generator regression fixtures. Requires ucode; sing-box is needed for
-# the generator cases (they validate the emitted config with `sing-box check`).
-#
-# Usage: sh tests/ucode/run.sh <repo-root> [work-dir]
 
 ROOT="${1:-.}"
 WORK="${2:-/tmp/hp-ucode-tests}"
@@ -16,8 +10,6 @@ FAILED=0
 echo "== ucode syntax check =="
 for file in "$ROOT"/root/etc/homeproxy/scripts/*.uc "$ROOT"/root/usr/share/rpcd/ucode/*; do
 	[ -f "$file" ] || continue
-	# Modules (with export statements) cannot be compiled as a program; they
-	# are loaded through `import` below instead.
 	case "$file" in
 	*homeproxy.uc|*parse_uri.uc) continue ;;
 	esac
@@ -82,10 +74,6 @@ else
 fi
 
 echo "== wget flavour selection =="
-# A stub /usr/bin/wget whose --version answer comes from the environment, so
-# both flavours can be exercised on a single host. The empty-answer/non-zero
-# case is uclient-fetch, whose getopt rejects --version just like it rejects
-# -nv before sending anything.
 rm -rf "$WORK/wget_flavor"
 mkdir -p "$WORK/wget_flavor"
 cat > "$WORK/wget_flavor/wget-stub" <<'STUB'
@@ -125,8 +113,6 @@ for flavor in gnu compat; do
 done
 
 echo "== real uclient-fetch compatibility =="
-# uclient-fetch is the default /usr/bin/wget on OpenWrt/ImmortalWrt, so a
-# GNU-only option anywhere in the generated command line has to fail here.
 if [ -x /bin/uclient-fetch ]; then
 	rm -rf "$WORK/uclient"
 	mkdir -p "$WORK/uclient"

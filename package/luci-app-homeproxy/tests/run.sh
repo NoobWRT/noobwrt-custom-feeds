@@ -1,16 +1,5 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0-only
-#
-# One-shot entry point for the test suite:
-#
-#   tests/run.sh
-#
-# Translation coverage and the LuCI form snapshots run locally (they only need
-# python3 / node). The ucode tests run locally when ucode and sing-box are
-# available, otherwise the checkout is copied to $HP_TEST_HOST and run there.
-#
-#   HP_TEST_HOST=root@192.168.1.1 tests/run.sh
-#   HP_TEST_DIR=/tmp/hp-tests      tests/run.sh
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 HOST="${HP_TEST_HOST:-root@192.168.1.1}"

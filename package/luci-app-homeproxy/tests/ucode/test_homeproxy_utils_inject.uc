@@ -3,11 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-only
  *
  * Copyright (C) 2025 ImmortalWrt.org
- *
- * Exceptional-path test for executeCommand(): the copy of homeproxy.uc staged
- * next to this file has its `system()` call replaced by `die()`, so every call
- * throws before the descriptors are read. ucode has no `finally`, so this
- * checks that the catch block still closes both descriptors.
  */
 
 'use strict';

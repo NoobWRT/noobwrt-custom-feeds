@@ -3,14 +3,6 @@
  * SPDX-License-Identifier: GPL-2.0-only
  *
  * Copyright (C) 2025 ImmortalWrt.org
- *
- * Dump the LuCI form definition of the homeproxy node/client/server views as
- * JSON, using a minimal mock of the LuCI client runtime. It is meant to be run
- * against two checkouts (e.g. HEAD and the working tree) and the resulting
- * snapshots diffed, so that a pure refactor can be proven not to change any
- * option name, dependency, default or label.
- *
- * Usage: node tests/luci-form-snapshot.js <repo-root> [node|client|server]
  */
 
 'use strict';
@@ -18,7 +10,6 @@
 const fs = require('fs');
 const path = require('path');
 
-/* --- LuCI runtime mock start ------------------------------------------- */
 
 String.prototype.format = function (...args) {
 	const values = args.length === 1 && Array.isArray(args[0]) ? args[0] : args;
@@ -171,8 +162,6 @@ const rpc = { declare: () => () => Promise.resolve({}) };
 const fsMock = { exec_direct: () => Promise.resolve(''), read: () => Promise.resolve(''), write: () => Promise.resolve() };
 const widgets = { DeviceSelect: class {} };
 
-/* tools.firewall is used by the client view for the LAN ACL lists; the mock
-   has to return an option object like the real addIPOption/addMACOption. */
 const fwtool = {
 	addIPOption: (section, _policy, name, title, _desc, _family, _hosts, _optional) => section.option(form.DynamicList, name, title),
 	addMACOption: (section, _policy, name, title, _desc, _hosts) => section.option(form.DynamicList, name, title)
@@ -186,7 +175,6 @@ const deps = {
 	'tools.firewall': fwtool
 };
 
-/* --- LuCI runtime mock end --------------------------------------------- */
 
 function loadLuciModule(file, extraDeps) {
 	let src = fs.readFileSync(file, 'utf8');
@@ -194,7 +182,6 @@ function loadLuciModule(file, extraDeps) {
 		(_m, mod, alias) => `const ${alias} = __deps[${JSON.stringify(mod)}];`);
 	src = src.replace(/^'require ([^']+)';$/gm,
 		(_m, mod) => `const ${mod.split('.').pop().replace(/[^\w]/g, '_')} = __deps[${JSON.stringify(mod)}];`);
-	/* eslint-disable-next-line no-new-func */
 	const factory = new Function('__deps', '_', 'E', 'L', src);
 	return factory(Object.assign({}, deps, extraDeps), _, E, L);
 }

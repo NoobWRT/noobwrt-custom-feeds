@@ -1,21 +1,6 @@
 # SPDX-License-Identifier: GPL-2.0-only
 #
 # Copyright (C) 2025 ImmortalWrt.org
-#
-# Single source of truth for every fw4 chain and set owned by homeproxy.
-#
-#   * root/etc/homeproxy/scripts/firewall_post.ut declares these objects and
-#     decides which of them actually exist for the current proxy mode.
-#   * root/etc/init.d/homeproxy flushes and deletes them on stop.
-#
-# When you add or remove a chain/set in firewall_post.ut, update this list in
-# the same commit -- tests/ucode/test_fw4_names.sh compares both sides and
-# fails when they drift.
-#
-# Each object is cleaned up independently: the cleanup loop deletes one at a
-# time so that a chain/set which does not exist in the current mode cannot
-# abort the whole batch. A single `nft -f` batch is atomic and would roll back
-# every preceding command in that case.
 
 HP_FW4_CHAINS="
 	homeproxy_output_redir

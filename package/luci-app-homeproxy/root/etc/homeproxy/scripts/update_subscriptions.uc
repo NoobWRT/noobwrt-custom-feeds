@@ -20,7 +20,6 @@ import {
 
 import { parse_uri } from 'parse_uri';
 
-/* UCI config start */
 const uci = cursor();
 
 const uciconfig = 'homeproxy';
@@ -44,9 +43,7 @@ if (routing_mode !== 'custom') {
 	main_node = uci.get(uciconfig, ucimain, 'main_node') || 'nil';
 	main_udp_node = uci.get(uciconfig, ucimain, 'main_udp_node') || 'nil';
 }
-/* UCI config end */
 
-/* String helper start */
 function filter_check(name) {
 	if (isEmpty(name) || filter_mode === 'disabled' || isEmpty(filter_keywords))
 		return false;
@@ -68,9 +65,7 @@ function filter_check(name) {
 
 	return ret;
 }
-/* String helper end */
 
-/* Common var start */
 const node_cache = {},
       node_result = [];
 
@@ -78,9 +73,7 @@ const ubus = connect();
 const sing_features = ubus.call('luci.homeproxy', 'singbox_get_features', {}) || {};
 if (isEmpty(sing_features))
 	log('Warning: Failed to query sing-box features via ubus, assuming defaults.');
-/* Common var end */
 
-/* Log */
 system(`mkdir -p ${RUN_DIR}`);
 function log(...args) {
 	const logfile = open(`${RUN_DIR}/homeproxy.log`, 'a');
@@ -88,20 +81,10 @@ function log(...args) {
 	logfile.close();
 }
 
-/*
- * Subscription URLs usually carry the provider token in the query string;
- * the log is surfaced in LuCI, so keep it out.
- */
 function redact(url) {
 	return replace(url, /[?#].*$/, '');
 }
 
-/*
- * mkdir is the lock: atomic everywhere this runs and no flock binding needed.
- * A lock older than LOCK_STALE is broken, so a killed run cannot block every
- * later update. Two concurrent runs (cron + the LuCI button) used to
- * interleave commits and service restarts.
- */
 const LOCK_DIR = RUN_DIR + '/update_subscriptions.lock';
 const LOCK_STALE = 600;
 
@@ -126,11 +109,6 @@ function release_lock() {
 	system(sprintf('rmdir %s 2>/dev/null', shellQuote(LOCK_DIR)));
 }
 
-/*
- * sing-box rejects the whole generated config over one malformed node, and the
- * generator keeps the old config when it fails, so a node that cannot possibly
- * work must not reach UCI. Returns the reason, or null when the node is usable.
- */
 function node_problem(cfg) {
 	if (isEmpty(cfg.address) || isEmpty(cfg.port))
 		return 'missing address or port';
@@ -199,12 +177,9 @@ function main() {
 		try {
 			nodes = json(res).servers || json(res);
 
-			/* Shadowsocks SIP008 format */
 			if (nodes[0].server && nodes[0].method)
 				map(nodes, (_, i) => nodes[i].nodetype = 'sip008');
 		} catch(e) {
-			/* Clash/mihomo subscriptions are YAML, not base64; say so instead
-			   of reporting a base64/JSON failure followed by "no valid node". */
 			if (match(res, /(^|\n)[ \t]*(proxies|proxy-groups)[ \t]*:/)) {
 				log(sprintf('Unsupported subscription format (Clash/mihomo YAML) at %s.', shown_url));
 				continue;
@@ -222,9 +197,6 @@ function main() {
 
 			const config = parse_uri(node, sing_features, log);
 			if (isEmpty(config)) {
-				/* No credentials in the log: only the scheme says whether a
-				   parser is missing or the entry is simply not a node. Only
-				   the first few are printed, the rest is summarized below. */
 				if (skipped < 5)
 					log(sprintf('Skipping unparsable entry (%s) from %s.',
 						type(node) === 'string' ? replace(node, /:.*$/, '') : type(node), shown_url));
@@ -288,11 +260,9 @@ function main() {
 
 	let added = 0, removed = 0, changed = false;
 	uci.foreach(uciconfig, ucinode, (cfg) => {
-		/* Nodes created by the user */
 		if (!cfg.grouphash)
 			return null;
 
-		/* Empty object - failed to fetch nodes, or subscription URL not yet processed */
 		if (!node_cache[cfg.grouphash] || length(node_cache[cfg.grouphash]) === 0)
 			return null;
 
@@ -304,14 +274,10 @@ function main() {
 			log(sprintf('Removing node: %s.', cfg.label || cfg['name']));
 		} else {
 			map(keys(cfg), (v) => {
-				/* skip the cursor's own metadata (.name/.type/...): deleting
-				   those is a no-op and would mark every run as changed */
 				if (substr(v, 0, 1) === '.')
 					return null;
 
 				if (v in node_cache[cfg.grouphash][cfg['.name']]) {
-					/* only write what actually differs, so an unchanged
-					   subscription does not fake a change below */
 					const fresh = node_cache[cfg.grouphash][cfg['.name']][v];
 					const current = uci.get(uciconfig, cfg['.name'], v);
 					if (type(fresh) === 'array' ? (sprintf('%J', uci.get_all(uciconfig, cfg['.name'], v) || []) !== sprintf('%J', fresh))
@@ -342,9 +308,6 @@ function main() {
 		});
 	uci.commit(uciconfig);
 
-	/* via_proxy keeps the service up during the fetch, but a configuration
-	   change still has to be applied - it used to be committed and then
-	   ignored until the next restart. */
 	let need_restart = (via_proxy !== '1') || changed;
 	if (!isEmpty(main_node)) {
 		const first_server = uci.get_first(uciconfig, ucinode);
@@ -410,7 +373,6 @@ function main() {
 		}
 	}
 
-	/* Scrub stale urltest member references in custom routing nodes */
 	uci.foreach(uciconfig, 'routing_node', (cfg) => {
 		if (cfg.node !== 'urltest' || isEmpty(cfg.urltest_nodes))
 			return null;

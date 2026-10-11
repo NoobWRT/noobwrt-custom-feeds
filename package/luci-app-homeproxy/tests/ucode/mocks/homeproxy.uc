@@ -2,14 +2,6 @@
  * SPDX-License-Identifier: GPL-2.0-only
  *
  * Copyright (C) 2025 ImmortalWrt.org
- *
- * Test double for root/etc/homeproxy/scripts/homeproxy.uc.
- *
- * Only `validation()` is stubbed: the real one shells out to
- * /sbin/validate_data, which does not exist outside OpenWrt. Everything else
- * (isEmpty, decodeBase64Str, parseURL) is a verbatim copy so the parser tests
- * exercise the same string handling as production. Keep these in sync when
- * homeproxy.uc changes.
  */
 
 import { urldecode_params } from 'luci.http';
@@ -33,7 +25,6 @@ export function decodeBase64Str(str) {
 	return b64dec(str);
 };
 
-/* Pure-ucode stand-in for /sbin/validate_data (host/port/ip4/ip6/hostname). */
 export function validation(datatype, data) {
 	if (!datatype || !data)
 		return null;
@@ -62,14 +53,6 @@ export function validation(datatype, data) {
 	}
 };
 
-/*
- * Decode %XX escapes without touching '+'. urldecode() maps '+' to a space,
- * which corrupts base64 userinfo ("+" is part of the alphabet), so share-link
- * userinfo is percent-decoded with this instead.
- */
-/*
- * ucode has no tolower(), so both hex cases are mapped by hand.
- */
 function hexValue(ch) {
 	const lower = index('0123456789abcdef', ch);
 	if (lower >= 0)
@@ -80,10 +63,6 @@ function hexValue(ch) {
 	return upper < 0 ? -1 : 10 + upper;
 }
 
-/*
- * ucode's regex engine rejects \x00 inside a character class ("Missing ']'"),
- * so control bytes are checked by hand.
- */
 function hasControlChar(str) {
 	for (let i = 0; i < length(str); i++) {
 		const code = ord(str, i);
@@ -160,7 +139,6 @@ export function parseURL(url) {
 		return null;
 
 	if (objurl.userinfo) {
-		/* keep in sync with the production parser (homeproxy.uc) */
 		let userinfo = percentDecode(objurl.userinfo);
 
 		userinfo = replace(userinfo, /:(.+)$/, (_, val) => {

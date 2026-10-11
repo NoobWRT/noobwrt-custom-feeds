@@ -7,13 +7,9 @@
 import { mkstemp } from 'fs';
 import { urldecode_params } from 'luci.http';
 
-/* Global variables start */
 export const HP_DIR = '/etc/homeproxy';
 export const RUN_DIR = '/var/run/homeproxy';
-/* Global variables end */
 
-/* Utilities start */
-/* Kanged from luci-app-commands */
 export function shellQuote(s) {
 	return `'${replace(s, "'", "'\\''")}'`;
 };
@@ -26,26 +22,15 @@ export function isBinary(str) {
 	return false;
 };
 
-/* Close a file descriptor, swallowing secondary errors (e.g. an already
-   closed fd). ucode has no `finally` clause, so both the normal and the
-   exceptional path of executeCommand() have to close explicitly. */
 function closeFD(fd) {
 	if (fd) {
 		try {
 			fd.close();
 		} catch (e) {
-			/* already closed */
 		}
 	}
 };
 
-/*
- * Read a descriptor to EOF. A single read(size) only returns up to `size`
- * bytes, so the previous one-shot read(512 KiB) silently truncated larger
- * responses - a subscription list above that size was cut mid-base64/mid-JSON
- * and only showed up as a parse failure. MAX_OUTPUT bounds what an oversized
- * or endless response can allocate.
- */
 const MAX_OUTPUT = 16 * 1024 * 1024;
 
 function readAll(fd) {
@@ -79,7 +64,6 @@ export function executeCommand(...args) {
 
 		const binary = isBinary(stdout);
 
-		/* mkstemp() returns delete-on-close files, so closing is enough */
 		closeFD(outfd);
 		closeFD(errfd);
 
@@ -91,8 +75,6 @@ export function executeCommand(...args) {
 			binary
 		};
 	} catch (e) {
-		/* Never leak the temporary descriptors on a failing run. ucode has
-		   no `finally` clause, so the exception is re-raised by hand. */
 		closeFD(outfd);
 		closeFD(errfd);
 
@@ -114,19 +96,6 @@ export function getTime(epoch) {
 
 };
 
-/*
- * GNU wget and OpenWrt's default /usr/bin/wget do not accept the same flags.
- * On OpenWrt/ImmortalWrt that path comes from the uclient-fetch package
- * (`ALTERNATIVES:=200:/usr/bin/wget:/bin/uclient-fetch`, `PROVIDES:=wget` in
- * package/libs/uclient) and busybox ships no wget applet, so the effective
- * wget is uclient-fetch unless wget-ssl happens to be installed on top of it.
- * GNU-only flags break the fetch outright: uclient-fetch's getopt rejects
- * `-nv` with "unrecognized option: n" before a single request is sent.
- *
- * The probe below tells the two apart. `-nv` (--no-verbose) is how GNU wget
- * mutes the progress meter while still printing the failure reason on stderr;
- * `-q` is the only meter switch uclient-fetch and busybox wget share.
- */
 export function classifyWgetFlavor(exitcode, stdout) {
 	if (exitcode !== 0 || !stdout)
 		return 'compat';
@@ -146,13 +115,6 @@ export function wgetFlavor() {
 	return wget_flavor;
 };
 
-/*
- * Fetch a URL and report both the body and, on failure, the reason. The
- * reason is wget's own stderr (whitespace collapsed, length-capped) so the
- * caller can tell a DNS failure from a timeout or a TLS handshake error.
- * Note that uclient-fetch's -q hides most failure messages, so on such a
- * target the reason is often empty and only the exit code is left.
- */
 export function wGETVerbose(url, ua) {
 	if (!url || type(url) !== 'string')
 		return { content: null, error: 'invalid URL' };
@@ -160,9 +122,6 @@ export function wGETVerbose(url, ua) {
 	if (!ua)
 		ua = 'Wget/1.21 (HomeProxy, like v2rayN)';
 
-	/* -U/-T are understood by GNU wget, uclient-fetch and busybox wget alike;
-	 * the long forms --user-agent/--timeout are not, busybox wget in
-	 * particular knows neither of them. */
 	const output = executeCommand(`/usr/bin/wget ${wgetFlavor() === 'gnu' ? '-nv' : '-q'} -O- -U ${shellQuote(ua)} -T 10 ${shellQuote(url)}`) || {};
 	if (output.exitcode !== 0) {
 		let reason = trim(output.stderr || '');
@@ -180,9 +139,7 @@ export function wGETVerbose(url, ua) {
 export function wGET(url, ua) {
 	return wGETVerbose(url, ua).content;
 };
-/* Utilities end */
 
-/* String helper start */
 export function isEmpty(res) {
 	return !res || res === 'nil' || (type(res) in ['array', 'object'] && length(res) === 0);
 };
@@ -199,16 +156,9 @@ export function strToTime(str) {
 	if (isEmpty(str))
 		return null;
 
-	/* Preserve values that already carry a time unit (e.g. "30s", "1m") */
 	return match(str, /[a-zA-Z]$/) ? str : (str + 's');
 };
 
-/*
- * Milliseconds variant of strToTime(). Used by options whose LuCI field is
- * documented and validated in milliseconds while sing-box expects a duration
- * (e.g. route rule tls_fragment_fallback_delay, whose default is 500ms);
- * strToTime() used to turn "500" into "500s".
- */
 export function strToMs(str) {
 	if (isEmpty(str))
 		return null;
@@ -255,20 +205,14 @@ export function validation(datatype, data) {
 	return (ret === 0);
 };
 
-/* Validate IP/CIDR format to prevent nftables template injection from resource files */
 export function isValidCIDR(addr, family) {
 	if (isEmpty(addr))
 		return false;
 
-	/* Strip leading/trailing whitespace */
 	addr = trim(addr);
 	if (!addr)
 		return false;
 
-	/* Split address and optional prefix. The prefix has to be validated as
-	   strictly as the address: `int()` accepts a leading number ("1.2.3.4/0 }
-	   ..." parses as 0), which would let a poisoned resource file inject
-	   statements into the nftables template this feeds. */
 	const parts = split(addr, '/');
 	const ip = parts[0];
 	const prefix = parts[1];
@@ -278,31 +222,24 @@ export function isValidCIDR(addr, family) {
 	if (length(parts) === 2 && !match(prefix, /^\d{1,3}$/))
 		return false;
 
-	/* Validate IP part */
 	if (family === 4) {
 		if (!match(ip, /^\d{1,3}\.\d{1,3}\.\d{1,3}\.\d{1,3}$/))
 			return false;
-		/* Validate octet ranges */
 		const octets = split(ip, '.');
 		for (let o in octets)
 			if (int(o) > 255)
 				return false;
-		/* Validate prefix if present */
 		if (prefix && int(prefix) > 32)
 			return false;
 	} else if (family === 6) {
-		/* Only hex digits and colons */
 		if (!match(ip, /^[0-9a-fA-F:]+$/))
 			return false;
 
-		/* At most one "::" */
 		if (match(ip, /::.*::/))
 			return false;
 
-		/* Validate group structure */
 		const dcolon = index(ip, '::');
 		if (dcolon === -1) {
-			/* Uncompressed form: exactly 8 groups of 1-4 hex digits */
 			const groups = split(ip, ':');
 			if (length(groups) !== 8)
 				return false;
@@ -310,7 +247,6 @@ export function isValidCIDR(addr, family) {
 				if (!match(g, /^[0-9a-fA-F]{1,4}$/))
 					return false;
 		} else {
-			/* Compressed form: "::" expands to at least one zero group */
 			let count = 0;
 			for (let part in [substr(ip, 0, dcolon), substr(ip, dcolon + 2)]) {
 				if (part === '')
@@ -333,9 +269,7 @@ export function isValidCIDR(addr, family) {
 
 	return true;
 };
-/* String helper end */
 
-/* String parser start */
 export function decodeBase64Str(str) {
 	if (isEmpty(str))
 		return null;
@@ -351,14 +285,6 @@ export function decodeBase64Str(str) {
 	return b64dec(str);
 };
 
-/*
- * Decode %XX escapes without touching '+'. urldecode() maps '+' to a space,
- * which corrupts base64 userinfo ("+" is part of the alphabet), so share-link
- * userinfo is percent-decoded with this instead.
- */
-/*
- * ucode has no tolower(), so both hex cases are mapped by hand.
- */
 function hexValue(ch) {
 	const lower = index('0123456789abcdef', ch);
 	if (lower >= 0)
@@ -369,10 +295,6 @@ function hexValue(ch) {
 	return upper < 0 ? -1 : 10 + upper;
 }
 
-/*
- * ucode's regex engine rejects \x00 inside a character class ("Missing ']'"),
- * so control bytes are checked by hand.
- */
 function hasControlChar(str) {
 	for (let i = 0; i < length(str); i++) {
 		const code = ord(str, i);
@@ -449,9 +371,6 @@ export function parseURL(url) {
 		return null;
 
 	if (objurl.userinfo) {
-		/* Percent-decode first: providers emit base64 userinfo with the
-		   padding escaped ("=" as "%3D"), which used to decode to nothing
-		   and silently dropped method/password. */
 		let userinfo = percentDecode(objurl.userinfo);
 
 		userinfo = replace(userinfo, /:(.+)$/, (_, val) => {
@@ -459,14 +378,6 @@ export function parseURL(url) {
 			return '';
 		});
 
-		/*
-		 * Keep anything without whitespace or control characters: real-world
-		 * userinfo carries base64 (with '=' or '+'), percent-encoded tokens
-		 * and passwords with punctuation. The previous class was written as
-		 * [A-Za-z0-9\+\-\_\.] but ucode's regex reads \+-\_ as the range
-		 * 0x2B-0x5F, so it accepted '=@:;[]\^<>,/' and rejected '!' - it
-		 * neither did what it documented nor covered real passwords.
-		 */
 		if (!match(userinfo, /\s/) && !hasControlChar(userinfo))
 			objurl.username = userinfo;
 		else
@@ -483,18 +394,7 @@ export function parseURL(url) {
 
 	return objurl;
 };
-/* String parser end */
 
-/* Config generator helper start */
-/*
- * Shared sing-box TLS object builder for the client outbound and the server
- * inbound. The property order below is significant: the generated JSON keeps
- * the insertion order of this object after removeBlankAttrs() drops the blank
- * attributes, and both generators used to emit the fields in exactly this
- * order. Keep client-only fields (insecure/handshake_timeout/utls) and
- * server-only fields (key_path/certificate_provider) at their current
- * positions when editing.
- */
 export function buildTLSObject(cfg, is_server) {
 	if (cfg.tls !== '1')
 		return null;
@@ -540,7 +440,6 @@ export function buildTLSObject(cfg, is_server) {
 		ech: is_server ? (cfg.tls_ech_key ? {
 			enabled: true,
 			key: split(cfg.tls_ech_key, '\n')
-			/* config: split(cfg.tls_ech_config, '\n') */
 		} : null) : ((cfg.tls_ech === '1') ? {
 			enabled: true,
 			config: cfg.tls_ech_config,
@@ -567,8 +466,6 @@ export function buildTLSObject(cfg, is_server) {
 	};
 };
 
-/* Shared sing-box transport object builder; the client transport additionally
-   supports the gRPC keepalive hint, the server one does not. */
 export function buildTransportObject(cfg, is_server) {
 	if (isEmpty(cfg.transport))
 		return null;
@@ -589,15 +486,7 @@ export function buildTransportObject(cfg, is_server) {
 		permit_without_stream: is_server ? null : strToBool(cfg.grpc_permit_without_stream)
 	};
 };
-/* Config generator helper end */
 
-/* PEM validation start */
-/*
- * Check that `content` is a PEM certificate (is_private_key = false) or an
- * RSA/EC private key (is_private_key = true): matching BEGIN/END boundaries
- * with a base64 body in between. Kanged from luci-proto-openconnect; used by
- * the rpcd certificate upload and available for future certificate features.
- */
 export function isValidPEM(content, is_private_key) {
 	if (isEmpty(content))
 		return false;
@@ -619,4 +508,3 @@ export function isValidPEM(content, is_private_key) {
 
 	return true;
 };
-/* PEM validation end */

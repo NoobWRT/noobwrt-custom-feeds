@@ -1,13 +1,5 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0-only
-#
-# Run generate_client.uc / generate_server.uc against the UCI fixtures and let
-# sing-box validate the result. The generators read /etc/config and write
-# /var/run, so this script materialises an isolated copy of them: homeproxy.uc
-# is rewritten to point HP_DIR/RUN_DIR at a scratch directory, and the uci
-# cursor is pointed at the fixture config.
-#
-# Usage: sh tests/ucode/test_generators.sh <repo-root> [work-dir]
 
 ROOT="${1:-.}"
 WORK="${2:-/tmp/hp-generator-test}"
@@ -29,8 +21,6 @@ run_case() {
 	: > "$dir/resources/proxy_list.txt"
 
 	if [ "$local_rs" = "1" ]; then
-		# with the .srs files that update_resources.sh downloads in place, the
-		# generator has to load them instead of the remote URLs
 		printf '%s' '{"version":1,"rules":[{"domain_suffix":["example.com"]}]}' > "$dir/rs-src.json"
 		if ! sing-box rule-set compile "$dir/rs-src.json" -o "$dir/resources/geoip_cn.srs" \
 			|| ! sing-box rule-set compile "$dir/rs-src.json" -o "$dir/resources/geosite_cn.srs"; then
@@ -41,7 +31,6 @@ run_case() {
 	fi
 
 	if grep -q "__RULESET_DIR__" "$fixture"; then
-		# The fixture needs a real local rule-set on disk.
 		printf '%s' '{"version":1,"rules":[{"domain_suffix":["example.com"]}]}' > "$dir/ruleset/src.json"
 		if ! sing-box rule-set compile "$dir/ruleset/src.json" -o "$dir/ruleset/test.srs"; then
 			echo "FAIL: $name: could not compile the local rule-set fixture"
@@ -83,10 +72,6 @@ run_case() {
 
 run_case client "$ROOT/tests/fixtures/generators/client.uci" generate_client.uc sing-box-c.json
 
-# Golden comparison for the client generator. `sing-box check` only proves the
-# config parses; this proves the generated config did not change silently (rule
-# order, DNS routing decisions, whether a field is emitted at all). The work
-# directory is normalized out of the paths before comparing.
 CLIENT_GOLDEN="$ROOT/tests/snapshots/client.generated.json"
 CLIENT_OUT="$WORK/client/run/sing-box-c.json"
 if [ ! -f "$CLIENT_GOLDEN" ]; then
@@ -103,10 +88,6 @@ else
 	FAILED=1
 fi
 
-# The preset remote rule-sets must be fetched through the node. A direct
-# download depends on the CDN staying reachable from mainland China and fails
-# intermittently under DNS pollution, which shows up as "open connection to
-# <ip>:443 using outbound/direct[direct]: i/o timeout" in sing-box-c.log.
 if grep -q '"detour": "direct-out"' "$WORK/client/run/sing-box-c.json"; then
 	echo "FAIL: client: a remote rule-set would still be downloaded directly"
 	FAILED=1
@@ -116,9 +97,6 @@ if ! grep -q '"detour": "main-out"' "$WORK/client/run/sing-box-c.json"; then
 	FAILED=1
 fi
 
-# Local rule-sets (downloaded by update_resources.sh) must be preferred over
-# the remote URLs, so a cold start does not depend on reaching the CDN through
-# the node.
 run_case client-local "$ROOT/tests/fixtures/generators/client.uci" generate_client.uc sing-box-c.json 1
 if grep -q '"type": "local"' "$WORK/client-local/run/sing-box-c.json" \
 	&& ! grep -q '"type": "remote"' "$WORK/client-local/run/sing-box-c.json"; then
@@ -129,12 +107,6 @@ else
 fi
 
 run_case custom "$ROOT/tests/fixtures/generators/custom.uci" generate_client.uc sing-box-c.json
-# Custom mode without a default outbound: the default shape of the custom UI.
-# `sing-box check` alone is not enough -- before the fix the generator emitted a
-# config with none of the user's DNS servers, nodes, rules or rule-sets, and
-# sing-box 1.14 then refused to start it for a missing
-# route.default_domain_resolver. Assert on the emitted config so a partial
-# regression cannot pass as green.
 run_case custom_no_default "$ROOT/tests/fixtures/generators/custom-no-default-outbound.uci" generate_client.uc sing-box-c.json
 
 CUSTOM_OUT="$WORK/custom_no_default/run/sing-box-c.json"
@@ -150,12 +122,8 @@ assert_json() {
 	fi
 }
 
-# sing-box always emits default-dns and system-dns, so more than one DNS server
-# is always present and 1.14 requires a global domain resolver.
 assert_json "custom/no-default: a global domain resolver is declared" '"default_domain_resolver"'
 assert_json "custom/no-default: the user DNS server survived" '"cfg-DNS_Server_Proxy-dns"'
-# A sing-box rule has no label field, so the UCI `option label` never reaches the
-# JSON. Match the marker the rule body actually carries.
 assert_json "custom/no-default: the user DNS rule survived" 'dns-rule-marker.example.com'
 assert_json "custom/no-default: the urltest group survived" '"cfg-Routing_Node_Proxy-out"'
 assert_json "custom/no-default: its member nodes survived" '"cfg-n_hk-out"'

@@ -104,7 +104,6 @@ function handleGenKey(option) {
 				password = hp.generateRand('hex', 16);
 				break;
 		}
-		/* AEAD */
 		((length) => {
 			if (length && length > 0)
 				password = hp.generateRand('base64', length);
@@ -242,19 +241,13 @@ return view.extend({
 		}
 		o.modalonly = true;
 
-		/* AnyTLS config */
 		o = s.option(form.DynamicList, 'anytls_padding_scheme', _('Padding scheme'),
 			_('AnyTLS padding scheme in array.'));
 		o.depends('type', 'anytls');
 		o.modalonly = true;
 
-		/* Hysteria (2) config start */
 		o = s.option(form.ListValue, 'hysteria_protocol', _('Protocol'));
 		o.value('udp');
-		/* WeChat-Video / FakeTCP are unsupported by sing-box currently
-		   o.value('wechat-video');
-		   o.value('faketcp');
-		*/
 		o.default = 'udp';
 		o.depends('type', 'hysteria');
 		o.rmempty = false;
@@ -323,9 +316,7 @@ return view.extend({
 			_('HTTP3 server behavior when authentication fails.<br/>A 404 page will be returned if empty.'));
 		o.depends('type', 'hysteria2');
 		o.modalonly = true;
-		/* Hysteria (2) config end */
 
-		/* Snell config start */
 		o = s.option(form.ListValue, 'snell_version', _('Snell version'),
 			_('The pre-shared key (password) above must be 12-255 bytes for v6.'));
 		o.value('5', _('v5'));
@@ -348,9 +339,7 @@ return view.extend({
 		o.value('unsafe-raw', _('unsafe-raw'));
 		o.depends({'type': 'snell', 'snell_version': '6'});
 		o.modalonly = true;
-		/* Snell config end */
 
-		/* Shadowsocks config */
 		o = s.option(form.ListValue, 'shadowsocks_encrypt_method', _('Encrypt method'));
 		for (let i of hp.shadowsocks_encrypt_methods)
 			o.value(i);
@@ -358,7 +347,6 @@ return view.extend({
 		o.depends('type', 'shadowsocks');
 		o.modalonly = true;
 
-		/* Tuic config start */
 		o = s.option(CBIGenValue, 'uuid', _('UUID'));
 		o.password = true;
 		o.depends('type', 'tuic');
@@ -395,9 +383,7 @@ return view.extend({
 		o.default = '10';
 		o.depends('type', 'tuic');
 		o.modalonly = true;
-		/* Tuic config end */
 
-		/* VLESS / VMess config start */
 		o = s.option(form.ListValue, 'vless_flow', _('Flow'));
 		o.value('', _('None'));
 		o.value('xtls-rprx-vision');
@@ -409,13 +395,9 @@ return view.extend({
 		o.datatype = 'uinteger';
 		o.depends('type', 'vmess');
 		o.modalonly = true;
-		/* VMess config end */
 
-		/* Transport config start */
 		hp.renderTransportOptions(s, { features: features, side: 'server' });
-		/* Transport config end */
 
-		/* Mux config start */
 		o = s.option(form.Flag, 'multiplex', _('Multiplex'));
 		o.depends('type', 'shadowsocks');
 		o.depends('type', 'trojan');
@@ -445,9 +427,7 @@ return view.extend({
 			o.depends('multiplex_brutal', '1');
 			o.modalonly = true;
 		}
-		/* Mux config end */
 
-		/* TLS config start */
 		hp.renderTlsOptions(s, {
 			side: 'server',
 			type_depends: [ 'anytls', 'http', 'hysteria', 'hysteria2', 'naive', 'trojan', 'tuic', 'vless', 'vmess' ],
@@ -725,9 +705,7 @@ return view.extend({
 		o.rows = 3;
 		o.depends('tls', '1');
 		o.modalonly = true;
-		/* TLS config end */
 
-		/* Extra settings start */
 		o = s.option(form.Flag, 'tcp_fast_open', _('TCP fast open'),
 			_('Enable tcp fast open for listener.'));
 		o.depends({'network': 'udp', '!reverse': true});
@@ -766,7 +744,6 @@ return view.extend({
 		o = s.option(form.Flag, 'reuse_addr', _('Reuse address'),
 			_('Reuse listener address.'));
 		o.modalonly = true;
-		/* Extra settings end */
 
 		return m.render();
 	}

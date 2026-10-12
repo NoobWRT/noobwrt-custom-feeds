@@ -17,6 +17,11 @@ permissions:
   contents: write
   actions: write
 
+# Never run two syncs at once, so they can't race on pushes or tag numbers
+concurrency:
+  group: sync-packages
+  cancel-in-progress: false
+
 jobs:
   sync:
     runs-on: ubuntu-latest
@@ -55,6 +60,12 @@ jobs:
         run: |
           git remote set-url origin https://x-access-token:${GITHUB_TOKEN}@github.com/nooblk-98/noobwrt-custom-feeds.git
           bash ${SCRIPTS_DIR}/commit-push.sh
+
+      - name: Tag & release
+        if: steps.check_changes.outputs.changes == 'true' || inputs.force_sync == true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: bash ${SCRIPTS_DIR}/create-release.sh
 
       - name: Cleanup
         if: always()

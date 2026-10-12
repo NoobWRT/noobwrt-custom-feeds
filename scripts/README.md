@@ -74,6 +74,30 @@ Actions:
 - Compiles every discovered package directory, including kernel module directories
 - Collects all generated `.ipk` files into `artifacts/ipk/`
 
+### 9. list-packages.sh
+**Purpose**: List every package in `feeds/` and `package/` with its current version
+
+Actions:
+- Reads package `Makefile`s from a git ref (default `HEAD`), so any tag or commit can be described
+- Resolves `PKG_NAME`, `PKG_VERSION` and `PKG_RELEASE`, including variables from relative includes such as QModem's `version.mk`
+- Outputs TSV: `source`, `package`, `version`, `path`
+
+### 10. generate-release-notes.sh
+**Purpose**: Build Markdown release notes for a ref, compared with the previous release
+
+Sections:
+- Updated packages (previous → current version), new and removed packages
+- Packages whose files changed without a version bump
+- Collapsible table of all packages and their current versions
+
+### 11. create-release.sh
+**Purpose**: Tag the synced commit and publish a GitHub release
+
+Actions:
+- Skips if `HEAD` already has a version tag
+- Increments the patch number of the latest `vX.Y.Z` tag (`v1.0.0` → `v1.0.1`), starting at `v1.0.0`
+- Publishes the release with notes from `generate-release-notes.sh` (needs `GH_TOKEN`)
+
 ## Environment Variables
 
 These variables are set by the Jenkinsfile and used by the scripts:
@@ -104,6 +128,12 @@ bash scripts/check-changes.sh
 
 # Commit and push
 bash scripts/commit-push.sh
+
+# Preview release notes against the latest tag
+bash scripts/generate-release-notes.sh HEAD "$(git tag -l 'v*' --sort=-v:refname | head -1)"
+
+# Tag and publish a release
+bash scripts/create-release.sh
 
 # Cleanup
 bash scripts/cleanup.sh

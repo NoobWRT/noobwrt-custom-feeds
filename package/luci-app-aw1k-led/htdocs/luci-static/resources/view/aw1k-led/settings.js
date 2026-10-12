@@ -85,8 +85,10 @@ return view.extend({
         o.datatype = 'range(5,300)'; o.placeholder = '20'; o.rmempty = false;
 
         o = s.taboption('general', form.Value, 'modem_port',
-            _('Modem AT port'), _('Serial port used for AT commands, e.g. /dev/ttyUSB2'));
-        o.placeholder = '/dev/ttyUSB2'; o.rmempty = false;
+            _('Modem AT port'), _('Serial port used for AT commands. Auto detect uses the port that answers; a fixed port that stops answering also falls back to it.'));
+        o.value('auto', _('Auto detect'));
+        o.value('/dev/ttyUSB2'); o.value('/dev/ttyUSB3');
+        o.default = 'auto'; o.rmempty = false;
 
         o = s.taboption('general', form.DummyValue, '_svc_ctrl', _('Service control'));
         o.rawhtml = true;

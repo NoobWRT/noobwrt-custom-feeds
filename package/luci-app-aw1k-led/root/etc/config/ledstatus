@@ -1,7 +1,7 @@
 config ledstatus 'settings'
 	option enabled '1'
 	option interval '20'
-	option modem_port '/dev/ttyUSB2'
+	option modem_port 'auto'
 
 	# 5G SINR thresholds
 	option sinr_excellent '25'

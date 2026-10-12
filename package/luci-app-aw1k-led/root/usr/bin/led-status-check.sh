@@ -49,8 +49,41 @@ set_color() {
 }
 
 # ─── Load UCI settings ────────────────────────────────────────────────────────
-COMM=$(uci get ledstatus.settings.modem_port 2>/dev/null)
-[ -z "$COMM" ] && COMM="/dev/ttyUSB2"
+PORT_CACHE="/tmp/led-at-port"
+PORT_CFG=$(uci get ledstatus.settings.modem_port 2>/dev/null)
+[ -z "$PORT_CFG" ] && PORT_CFG="auto"
+
+# The modem has more than one AT port (ttyUSB2/ttyUSB3 on the RG500Q) and
+# one can stop answering for a while, which left the 5G/signal LEDs dark
+# with a fixed port. Try the last port that answered first, then the
+# configured port, QModem's AT ports and every ttyUSB. The cache is keyed
+# on the setting so changing it takes effect on the next check.
+at_candidates() {
+    local cached_cfg cached_port
+    read -r cached_cfg cached_port 2>/dev/null < "$PORT_CACHE"
+    [ "$cached_cfg" = "$PORT_CFG" ] && echo "$cached_port"
+    [ "$PORT_CFG" != "auto" ] && echo "$PORT_CFG"
+    uci -q show qmodem | sed -n "s/.*\.\(at_port\|valid_at_ports\)=//p" | tr -d "'"
+    ls /dev/ttyUSB* 2>/dev/null
+}
+
+# at_cmd <command> <reply prefix>: print the reply from the first port that
+# answers with <reply prefix>; print nothing if none does.
+at_cmd() {
+    local port out seen=" "
+    for port in $(at_candidates); do
+        [ -c "$port" ] || continue
+        case "$seen" in *" $port "*) continue ;; esac
+        seen="$seen$port "
+        out=$(sms_tool -d "$port" at "$1" 2>/dev/null | tr -d '\r')
+        if echo "$out" | grep -qi "^$2"; then
+            echo "$PORT_CFG $port" > "$PORT_CACHE"
+            echo "$out"
+            return 0
+        fi
+    done
+    return 1
+}
 
 SINR_EXCELLENT=$(uci get ledstatus.settings.sinr_excellent 2>/dev/null); [ -z "$SINR_EXCELLENT" ] && SINR_EXCELLENT=25
 SINR_GOOD=$(uci get ledstatus.settings.sinr_good       2>/dev/null); [ -z "$SINR_GOOD"      ] && SINR_GOOD=15
@@ -75,7 +108,7 @@ CSIG_WEAK=$(uci get ledstatus.settings.color_sig_weak      2>/dev/null); [ -z "$
 CSIG_OFFLINE=$(uci get ledstatus.settings.color_sig_offline   2>/dev/null); [ -z "$CSIG_OFFLINE"   ] && CSIG_OFFLINE=magenta
 
 # ─── 5G SINR ─────────────────────────────────────────────────────────────────
-QENG_DATA=$(sms_tool -d "$COMM" at 'at+qeng="servingcell"' 2>/dev/null | tr -d '\r')
+QENG_DATA=$(at_cmd 'at+qeng="servingcell"' '+qeng:')
 QENG_LINE=$(echo "$QENG_DATA" | grep -E 'QENG: "NR5G' | head -n1)
 SINR=$(echo "$QENG_LINE" | awk -F',' '{print $6}' | grep -oE '[-0-9.]+')
 
@@ -140,10 +173,12 @@ else
 fi
 
 # ─── CSQ Signal ───────────────────────────────────────────────────────────────
-CSQ=$(sms_tool -d "$COMM" at 'at+csq' 2>/dev/null \
+CSQ=$(at_cmd 'at+csq' '+csq:' \
     | grep -oE '\+csq: [0-9]+,[0-9]+' \
     | awk -F'[:,]' '{print $2}' \
     | tr -d '\r\n ')
+# 99 = not known or not detectable
+[ "$CSQ" = "99" ] && CSQ=""
 
 set_color signal off
 

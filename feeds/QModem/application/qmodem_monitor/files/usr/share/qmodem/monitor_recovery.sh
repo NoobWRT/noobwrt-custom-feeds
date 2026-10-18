@@ -31,7 +31,7 @@ nm_config() {
     N=$(nm_get monitor_action_failures 3)
     AT_PORT=$(nm_get at_port '')
     Alias=$(nm_get alias "$Modem_ID"); [ "$Alias" = - ] && Alias=$Modem_ID
-    use_ubus_flag=''; [ "$(nm_get use_ubus 1)" = 1 ] && use_ubus_flag=-u
+    use_ubus_flag=''; [ "$(nm_get use_ubus 0)" = 1 ] && use_ubus_flag=-u
     nm_ip "$Primary" && { [ -z "$Backup" ] || { nm_ip "$Backup" && [ "$Backup" != "$Primary" ]; }; } &&
         nm_uint "$Timeout" 1 30 && nm_uint "$Packets" 1 10 &&
         nm_uint "$PacketInterval" 1 60 && nm_uint "$Interval" 5 3600 &&
@@ -116,6 +116,16 @@ nm_interface() {
     [ -e "/sys/class/net/$NetDev" ]
 }
 nm_sample() {
+    local external_rc
+    ExternalDeferred=0
+    if [ -x /usr/libexec/qmodem-uplink-health ]; then
+        /usr/libexec/qmodem-uplink-health "$Modem_ID"; external_rc=$?
+        case "$external_rc" in
+            0) nm_interface; PrimaryOK=true; BackupOK=null; return 0;;
+            1) PrimaryOK=false; BackupOK=null; Reason=uplink_manager_unreachable; return 1;;
+            3) PrimaryOK=null; BackupOK=null; Reason=uplink_manager_stale; ExternalDeferred=1; return 0;;
+        esac
+    fi
     PrimaryOK=null BackupOK=null
     if ! nm_interface; then Reason=interface_unavailable; return 1; fi
     PrimaryOK=false
@@ -209,7 +219,11 @@ nm_probe_round() {
     Failures=0
     while [ "$Failures" -lt "$Packets" ]; do
         nm_state probing ''
-        if nm_sample; then nm_result online; nm_state online probe_succeeded; return 0; fi
+        if nm_sample; then
+            if [ "$ExternalDeferred" = 1 ]; then Connectivity=unknown; nm_state waiting "$Reason"
+            else nm_result online; nm_state online probe_succeeded; fi
+            return 0
+        fi
         Failures=$((Failures+1)); Connectivity=offline
         nm_state probing "$Reason"
         [ "$Failures" -ge "$Packets" ] || nm_sleep "$PacketInterval"
@@ -237,7 +251,7 @@ nm_main() {
     trap nm_cleanup TERM INT
     # Restore radio functionality even if the newly saved probe config is bad.
     AT_PORT=$(nm_get at_port '')
-    use_ubus_flag=''; [ "$(nm_get use_ubus 1)" = 1 ] && use_ubus_flag=-u
+    use_ubus_flag=''; [ "$(nm_get use_ubus 0)" = 1 ] && use_ubus_flag=-u
     while ! nm_cfun_on; do nm_sleep 10; done
     while ! nm_config; do nm_state error invalid_configuration; nm_sleep 5; done
     while ! nm_cfun_on; do nm_sleep 10; done

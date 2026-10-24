@@ -55,17 +55,27 @@ there with scp) and install them:
 
 ```
 cd /tmp
-wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.4.0/kmod-aw1000-fxs-6.12.94.0.2.0-r1.apk
-wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.4.0/fxsd-0.4.0-r1.apk
-wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.4.0/luci-app-fxs-0.4.0-r1.apk
-apk add --allow-untrusted /tmp/kmod-aw1000-fxs-6.12.94.0.2.0-r1.apk /tmp/fxsd-0.4.0-r1.apk /tmp/luci-app-fxs-0.4.0-r1.apk
+wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.4.1/kmod-aw1000-fxs-6.12.94.0.2.0-r1.apk
+wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.4.1/fxsd-0.4.1-r1.apk
+wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.4.1/luci-app-fxs-0.4.1-r1.apk
+apk add --allow-untrusted /tmp/kmod-aw1000-fxs-6.12.94.0.2.0-r1.apk /tmp/fxsd-0.4.1-r1.apk /tmp/luci-app-fxs-0.4.1-r1.apk
 ```
 
-When updating, always update all three together (HD calling needs the 0.2.0 driver), then run
-`/etc/init.d/fxsd restart` and reload LuCI with Ctrl+F5.
+When updating, always update all three together (HD calling needs the 0.2.0 driver). The old
+kernel module stays loaded until it is removed, so stop fxsd and remove it before installing:
 
-Put the modem audio interface in slave mode. You only do this once, the modem remembers it.
-The modem restarts, so the internet drops for a minute.
+```
+/etc/init.d/fxsd stop
+rmmod aw1000_fxs
+apk add --allow-untrusted /tmp/kmod-aw1000-fxs-6.12.94.0.2.0-r1.apk /tmp/fxsd-0.4.1-r1.apk /tmp/luci-app-fxs-0.4.1-r1.apk
+/etc/init.d/fxsd start
+```
+
+Rebooting the router after installing does the same. Then reload LuCI with Ctrl+F5.
+
+The modem audio interface has to be in slave mode. fxsd checks this when it starts and sets it
+if needed, then restarts the modem, so the internet drops for a minute the first time. The
+modem remembers it. To set it by hand instead:
 
 ```
 ubus call at-daemon sendat '{"at_port":"/dev/ttyUSB2","at_cmd":"AT+QDAI=x,1,0,4,0,0,1,1","timeout":3}'
@@ -107,7 +117,7 @@ Call history, Settings, Speed dial and Blocked numbers. The same settings are in
 | `volume` | `5` | modem speaker volume (`AT+CLVL`) |
 | `modem_rx_gain` | `8192` | modem `AT+QRXGAIN` |
 | `channel` | `1` | SLIC channel, leave it at 1 |
-| `at_port` | `/dev/ttyUSB2` | modem AT port |
+| `at_port` | `auto` | modem AT port, `auto` finds it by itself |
 | `patch` | `/etc/fxs/si3226x_patch.bin` | patch file |
 | `ringback` | `1` | ringing tone while the other side rings |
 | `hd` | `0` | HD calling (16 kHz). Changing it restarts the modem, mobile data drops for about 30 seconds |
@@ -133,19 +143,37 @@ case it was the cause. Run `/etc/init.d/fxsd clear_guard` or press the button in
 ## Problems
 
 Calls fail straight away and the log shows `call failed`: check that the modem has voice calls
-turned on. Some modems come with `call_control` set to `1,1`, which blocks all calls. fxsd
-warns about this in the log and on the Status page.
+turned on. Some modems come with `call_control` set to `1,1`, which blocks all calls. The modem
+then answers every `ATD` with `NO CARRIER` in about 10 ms and `AT+CEER` gives no cause. fxsd
+warns about this in the log and on the Status page. Set it to `0,0`, it is saved in the modem:
 
 ```
 ubus call at-daemon sendat '{"at_port":"/dev/ttyUSB2","at_cmd":"AT+QCFG=\"call_control\"","timeout":3}'
 ubus call at-daemon sendat '{"at_port":"/dev/ttyUSB2","at_cmd":"AT+QCFG=\"call_control\",0,0","timeout":3}'
 ```
 
+If calls still fail, restart the modem with `AT+CFUN=1,1`. Two `+CLCC` entries with no number
+are normal on this firmware and fxsd ignores them.
+
+VoLTE never registers (`AT+QCFG="ims"` shows `1,0`) even though the SIM does VoLTE in a phone:
+check `sms_only` in the modem settings. Some units, like one that came from Australia, have it
+set to `01`. The modem then tells the network it only wants data and SMS, so it never starts
+VoLTE. A firmware flash does not reset it. Set it to `00`:
+
+```
+ubus call at-daemon sendat '{"at_port":"/dev/ttyUSB2","at_cmd":"AT+QNVFR=\"/nv/item_files/modem/mmode/sms_only\"","timeout":3}'
+ubus call at-daemon sendat '{"at_port":"/dev/ttyUSB2","at_cmd":"AT+QNVFW=\"/nv/item_files/modem/mmode/sms_only\",00","timeout":3}'
+ubus call at-daemon sendat '{"at_port":"/dev/ttyUSB2","at_cmd":"AT+CFUN=1,1","timeout":3}'
+```
+
+The modem restart moves the AT port off `ttyUSB2`, so reboot the router afterwards. After the
+reboot `AT+QCFG="ims"` should show `1,1`.
+
 On official OpenWrt, ModemManager also reads the modem AT port and takes the answers meant for
 fxsd. Stop it or remove it if calls are not picked up.
 
-The phone does not ring or LuCI says "Modem audio not set to slave mode": run the `AT+QDAI`
-step from Install again and restart the modem.
+The phone does not ring or LuCI says "Modem audio not set to slave mode": fxsd tried to set it
+and the modem did not keep it. Run the `AT+QDAI` step from Install by hand and restart the modem.
 
 Calls sound harsh or buzzy with HD calling on: the kernel driver is older than 0.2.0. Install
 the kmod package from the same release, or turn HD calling off.

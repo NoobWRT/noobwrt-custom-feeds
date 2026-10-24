@@ -4,7 +4,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=fxsd
-PKG_VERSION:=0.4.0
+PKG_VERSION:=0.4.1
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-2.0-only
 PKG_MAINTAINER:=perz3us
@@ -42,11 +42,12 @@ define Build/Compile
 endef
 
 define Package/fxsd/install
-	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config $(1)/etc/fxs
+	$(INSTALL_DIR) $(1)/usr/sbin $(1)/etc/init.d $(1)/etc/config $(1)/etc/fxs $(1)/etc/uci-defaults
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/fxsd/build/fxsd $(1)/usr/sbin/
 	$(INSTALL_BIN) $(PKG_BUILD_DIR)/fxsd/build/fxs-bringup $(1)/usr/sbin/
 	$(INSTALL_BIN) ./files/fxsd.init $(1)/etc/init.d/fxsd
 	$(INSTALL_CONF) ./files/fxs.config $(1)/etc/config/fxs
+	$(INSTALL_BIN) ./files/fxs.defaults $(1)/etc/uci-defaults/90-fxs-at-port
 endef
 
 $(eval $(call BuildPackage,fxsd))

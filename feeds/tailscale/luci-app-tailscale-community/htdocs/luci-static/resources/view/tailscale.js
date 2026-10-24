@@ -13,8 +13,41 @@ const callDoLogout = rpc.declare({ object: 'tailscale', method: 'do_logout' });
 const callGetSubroutes = rpc.declare({ object: 'tailscale', method: 'get_subroutes' });
 const callSetupFirewall = rpc.declare({ object: 'tailscale', method: 'setup_firewall' });
 const callGetLogs = rpc.declare({ object: 'tailscale', method: 'get_logs' });
+const callSetServiceEnabled = rpc.declare({ object: 'tailscale', method: 'set_service_enabled', params: ['enabled'] });
+const callGetFirewallStatus = rpc.declare({ object: 'tailscale', method: 'get_firewall_status' });
 let map;
 let lastDevicesStatus;
+
+// uci.changes() returns an object keyed by config name; count the entries so
+// the firewall button can warn about unsaved work.
+function countPending(changes) {
+	if (changes == null)
+		return 0;
+	if (Array.isArray(changes))
+		return changes.length;
+	let count = 0;
+	for (const key in changes)
+		count += Array.isArray(changes[key]) ? changes[key].length : 1;
+	return count;
+}
+
+// The ucode methods report business failures as { error: ... } in a *successful*
+// ubus reply, so rpc.declare's rejection never fires for them. Every consumer of
+// a write operation has to unwrap the reply itself; without this the UI happily
+// shows "applied" for a reply that only says { error: '...' }.
+function unwrapRpc(res, action) {
+	const what = action || _('Operation');
+	if (res == null)
+		throw new Error(_('Empty reply from server'));
+	if (res.error)
+		throw new Error(String(res.error));
+	if (res.success === false || res.ok === false) {
+		if (res.message)
+			throw new Error(String(res.message));
+		throw new Error(_('%s failed').format(what));
+	}
+	return res;
+}
 
 const tailscaleSettingsConf = [
 	[form.Flag, 'service_enabled', _('Enable Tailscale Service'), _('Enable or disable the Tailscale service. When disabled, the service will be stopped and the process will be killed.'), { rmempty: false }],
@@ -75,6 +108,94 @@ function defTabOpts(s, t, opts, params) {
 function getRunningStatus() {
 	return L.resolveDefault(callGetStatus(), { status: 'stopped', peers: {} }).then(function (res) {
 		return res;
+	});
+}
+
+// Poll the background firewall job until it finishes. A poll that fails
+// (network reloading, the connection dropped for a moment) is expected and is
+// simply retried on the next tick instead of being reported as an error.
+function pollFirewallJob(runId, timeoutSec) {
+	const deadline = Date.now() + (timeoutSec || 30) * 1000;
+
+	return new Promise(function(resolve, reject) {
+		let lastState = '';
+		let finished = false;
+
+		function stop() {
+			if (finished)
+				return false;
+			finished = true;
+			clearTimeout(timer);
+			L.Poll.remove(poll);
+			return true;
+		}
+
+		function giveUp(message) {
+			if (stop())
+				reject(new Error(message));
+		}
+
+		function check() {
+			if (finished)
+				return Promise.resolve();
+
+			if (Date.now() > deadline) {
+				giveUp(_('Timed out waiting for the firewall reload'));
+				return Promise.resolve();
+			}
+
+			return callGetFirewallStatus().then(function(res) {
+				if (finished)
+					return;
+
+				// a result from an earlier run is not this run's answer
+				if (runId && res?.run_id && res.run_id !== runId)
+					return;
+
+				const state = res?.state || 'unknown';
+
+				if (state === 'done') {
+					if (stop())
+						ui.addTimeLimitedNotification(null, [ E('p', _('Firewall configuration applied.')) ], 5000, 'info');
+					resolve(res);
+					return;
+				}
+
+				if (state === 'failed') {
+					giveUp(res?.message || _('Firewall reload failed'));
+					return;
+				}
+
+				if (state === 'busy') {
+					giveUp(res?.message || _('Another firewall reload is already running'));
+					return;
+				}
+
+				if (state !== lastState) {
+					lastState = state;
+					if (state === 'running' && res?.step === 'firewall')
+						ui.addTimeLimitedNotification(null, [ E('p', _('Reloading firewall...')) ], 3000, 'info');
+				}
+			});
+		}
+
+		function poll() {
+			if (finished)
+				return Promise.resolve();
+			// a dropped connection during the reload is expected: leave it to
+			// the next tick, the timer below still guarantees termination
+			return check().catch(function() {});
+		}
+
+		// L.Poll skips a tick while the previous call is still pending, so a
+		// request that never settles would stop the polling loop entirely.
+		// The timer is what actually ends the wait.
+		const timer = setTimeout(function() {
+			giveUp(_('Timed out waiting for the firewall reload'));
+		}, (timeoutSec || 30) * 1000);
+
+		L.Poll.add(poll, 2);
+		poll();
 	});
 }
 
@@ -522,21 +643,46 @@ return view.extend({
 
 		const fwBtn = s.taboption('general', form.Button, '_setup_firewall', _('Auto Configure Firewall'));
 		fwBtn.description = _('Essential configuration for Subnet Routing (Site-to-Site) and Exit Node features.')
-		+'<br>'+_('It automatically creates the tailscale interface, sets up firewall zones for LAN <-> Tailscale forwarding,')
-		+'<br>'+_('and enables Masquerading and MSS Clamping (MTU fix) to ensure stable connections.');
+		+'<br>'+_('It creates the tailscale interface, adds it to a firewall zone, and sets up forwarding between LAN and Tailscale, plus Tailscale to WAN.')
+		+'<br>'+_('The Tailscale to WAN forwarding is what lets clients send their internet traffic through this device as an Exit Node.')
+		+'<br>'+_('Masquerading and MSS Clamping (MTU fix) are enabled to keep connections stable.');
 		fwBtn.inputstyle = 'action';
 		fwBtn.onclick = function() {
-			return callSetupFirewall().then(function(res) {
-			const msg = res?.message || _('Firewall configuration applied.');
-			ui.addNotification(null, E('p', {}, msg), 'info');
-		}).catch(function(err) {
-			ui.addNotification(null, E('p', {}, _('Failed to configure firewall: %s').format(err?.message || err || 'Unknown error')), 'error');
-		}).then(function() {
-			return new Promise(function(resolve) {
-				window.setTimeout(resolve, 3000);
+			// The button writes network/firewall UCI directly, so staged changes
+			// in the form above would be left unapplied and the user would be
+			// comparing the firewall against an old config. Ask at click time
+			// rather than trusting a snapshot: uci.changes() is an RPC and the
+			// answer goes stale as soon as the page is saved once.
+			// This only warns; blocking would misfire whenever the answer is
+			// stale, and the apply below is harmless either way.
+			return L.resolveDefault(uci.changes(), {}).then(function(changes) {
+				if (countPending(changes) > 0) {
+					ui.addNotification(null, E('p', {}, _('You have unapplied changes. Save & Apply them first so the firewall matches the form.')), 'warning');
+				}
+				return runSetupFirewall();
+			}).catch(function() {
+				return runSetupFirewall();
 			});
-		});
-	};
+		};
+
+		// The reload runs in the background and can briefly interrupt the
+		// connection carrying this page, so the reply only confirms the commit;
+		// the outcome is polled separately.
+		function runSetupFirewall() {
+			return callSetupFirewall().then(function(res) {
+				unwrapRpc(res, _('Configuring firewall'));
+
+				if (!res.changed_network && !res.changed_firewall) {
+					ui.addNotification(null, E('p', {}, _('Firewall configuration already applied.')), 'info');
+					return null;
+				}
+
+				ui.addTimeLimitedNotification(null, [ E('p', _('Configuration committed, reloading network and firewall. This can take a moment.')) ], 5000, 'info');
+				return pollFirewallJob(res.run_id);
+			}).catch(function(err) {
+				ui.addNotification(null, E('p', {}, _('Failed to configure firewall: %s').format(err?.message || err?.error || err || _('Unknown error'))), 'error');
+			});
+		}
 
 		const helpTitle = s.taboption('general', form.DummyValue, '_help_title');
 		helpTitle.title = _('How to enable Site-to-Site?');
@@ -548,6 +694,29 @@ return view.extend({
 					_('2. In "Advertise Routes", select your local subnet (to allow remote devices to access this LAN).'), E('br'),
 					_('3. Click "Auto Configure Firewall" (to allow traffic forwarding).'), E('br'),
 					E('strong', { 'style': 'color: #d9534f;' }, _('[Important] Log in to the Tailscale admin console and manually enable "Subnet Routes" for this device.'))
+				])
+			]);
+		};
+
+		// Exit Node is a different feature with a different step that LuCI cannot
+		// complete on its own: the admin console approval happens in the user's
+		// Tailscale account. Without it a client reaches the LAN but gets no
+		// internet, which reads as "the firewall button did not work".
+		const exitHelp = s.taboption('general', form.DummyValue, '_exit_node_help');
+		exitHelp.title = _('How to enable Exit Node?');
+		exitHelp.render = function() {
+			return E('div', { 'class': 'cbi-value', 'style': 'margin-top: 1em; border-top: 1px font-weight: bold;' }, [
+				E('label', { 'class': 'cbi-value-title' }, this.title),
+				E('div', { 'class': 'cbi-value-field', 'style': 'line-height: 1.6em; font-size: 95%; color: #555;' }, [
+					_('1. Enable "Advertise Exit Node".'), E('br'),
+					_('2. Click "Auto Configure Firewall" (it forwards Tailscale traffic to WAN).'), E('br'),
+					_('3. In the Tailscale admin console, edit this device under the route settings and approve it as an Exit Node.'), E('br'),
+					// No quotes around the client's control on purpose: "Exit node"
+					// is a menu in the Tailscale client, not a field on this page,
+					// and quoting it would send the reader to the dropdown above,
+					// which selects the opposite direction.
+					_('4. On the client, set this device as its exit node.'), E('br'),
+					E('strong', { 'style': 'color: #d9534f;' }, _('[Important] Step 3 cannot be done here: it needs your Tailscale account.'))
 				])
 			]);
 		};
@@ -617,7 +786,7 @@ return view.extend({
 					doc.body.innerHTML =
 						'<h2>' + _('Error') + '</h2>' +
 						'<p>' + _('Failed to get login URL. You may close this tab.') + '</p>';
-					ui.addTimeLimitedNotification(null, [ E('p', _('Failed to get login URL: Invalid response from server.')) ], 7000, 'error');
+					ui.addTimeLimitedNotification(null, [ E('p', _('Failed to get login URL: %s').format(res?.error || _('Invalid response from server.'))) ], 7000, 'error');
 				}
 			}).catch(function(err) {
 				ui.hideModal();
@@ -643,6 +812,7 @@ return view.extend({
 							ui.showModal(_('Logging out...'), E('em', {}, _('Please wait.')));
 
 							return callDoLogout().then(function(res) {
+								unwrapRpc(res, _('Logout'));
 								ui.hideModal();
 								ui.addTimeLimitedNotification(null, [ E('p', _('Successfully logged out.')) ], 5000, 'info');
 							}).catch(function(err) {
@@ -680,6 +850,7 @@ return view.extend({
 				display.replaceChildren(E('em', {}, _('Collecting data ...')));
 			}
 			return callGetLogs().then(function(res) {
+				unwrapRpc(res, _('Loading logs'));
 				if (display) {
 					display.replaceChildren(renderLogs(res));
 				}
@@ -701,7 +872,26 @@ return view.extend({
 	// standard OpenWrt apply mechanism, which triggers /etc/init.d/tailscale-settings
 	// and provides automatic rollback protection if the device becomes unreachable.
 	handleSaveApply(ev, mode) {
+		// Read the submitted value before map.save() consumes the staged delta.
+		// uci.get() prefers the staged change over the saved value, and the
+		// staged delta is only populated once the form has been parsed, which
+		// map.save() guarantees here.
+		const wantEnabled = uci.get('tailscale', 'settings', 'service_enabled');
+
 		return map.save().then(function () {
+			// Only records the disable request; the reload handler performs
+			// the stop after the commit, so a LuCI rollback still finds a
+			// running daemon. One concurrency slot on purpose: an overlapping
+			// apply could let the trigger read a half-written request file.
+			// Fail-open on purpose: an install whose rpcd ACL cache predates
+			// this method would otherwise be unable to apply anything. The
+			// worst case is that the stop is skipped for this apply.
+			return callSetServiceEnabled({ enabled: wantEnabled === '0' ? '0' : '1' })
+				.catch(function(err) {
+					console.warn('set_service_enabled failed: %s', err);
+					return null;
+				});
+		}).then(function () {
 			return ui.changes.apply(mode == '0');
 		});
 	},

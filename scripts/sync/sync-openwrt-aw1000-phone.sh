@@ -1,5 +1,5 @@
 #!/bin/bash
-# Wrapper to sync luci-app-internet-detector using the generic sync-repo.sh
+# Wrapper to sync openwrt-aw1000-phone (AW1000 RJ11 phone port: kmod-aw1000-fxs, fxsd, luci-app-fxs) using the generic sync-repo.sh
 
 set -e
 

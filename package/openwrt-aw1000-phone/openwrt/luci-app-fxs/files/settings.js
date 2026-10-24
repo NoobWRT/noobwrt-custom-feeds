@@ -1,0 +1,99 @@
+'use strict';
+'require view';
+'require form';
+
+return view.extend({
+	render: function() {
+		var m, s, o;
+
+		m = new form.Map('fxs', _('Phone (RJ11)'), _('Settings for the RJ11 phone port.'));
+
+		s = m.section(form.NamedSection, 'main', 'fxs');
+		s.tab('general', _('General'));
+		s.tab('history', _('Call history'));
+		s.tab('led', _('LED'));
+		s.tab('advanced', _('Advanced'));
+
+		o = s.taboption('general', form.Value, 'own_number', _('My number'),
+			_('Shown on the Status page. Most prepaid SIMs do not store their own number, so enter it here.'));
+		o.placeholder = '0771234567';
+		o.validate = function(section_id, value) {
+			return !value || /^\+?[0-9]{3,20}$/.test(value) ? true : _('Enter a phone number');
+		};
+
+		o = s.taboption('general', form.ListValue, 'volume', _('Earpiece volume'),
+			_('Modem output volume (AT+CLVL).'));
+		[ '0', '1', '2', '3', '4', '5' ].forEach(function(v) { o.value(v); });
+
+		o = s.taboption('general', form.Value, 'tx_gain', _('Microphone gain (dB)'),
+			_('Level of your voice sent to the other side. Lower it if the other side hears distortion.'));
+		o.datatype = 'range(-20,6)';
+
+		o = s.taboption('general', form.Value, 'rx_gain', _('Earpiece gain (dB)'),
+			_('Extra level of the other side in the handset.'));
+		o.datatype = 'range(-20,6)';
+
+		o = s.taboption('general', form.Flag, 'ringback', _('Ringback tone'),
+			_('Play a ringing tone while the other phone rings. Turn it off if the network already sends one.'));
+		o.default = '1';
+		o.rmempty = false;
+
+		o = s.taboption('general', form.ListValue, 'callerid', _('Caller ID'),
+			_('Sends the caller\'s number to phones with a display. If your phone shows nothing, try another format or timing.'));
+		o.value('bellcore', _('FSK (Bellcore)'));
+		o.value('etsi', _('FSK (ETSI)'));
+		o.value('dtmf', _('DTMF'));
+		o.value('off', _('Off'));
+		o.default = 'bellcore';
+
+		o = s.taboption('general', form.ListValue, 'callerid_timing', _('Caller ID timing'),
+			_('Most phones in North America expect the number after the first ring. Most phones in Europe expect it before the first ring, usually with FSK (ETSI) or DTMF.'));
+		o.value('after', _('After the first ring'));
+		o.value('before', _('Before the first ring'));
+		o.default = 'after';
+		o.depends({ callerid: 'off', '!reverse': true });
+
+		o = s.taboption('history', form.Flag, 'history_autodelete', _('Delete old calls'),
+			_('Remove calls from the call history once they are older than the number of days below.'));
+		o.default = '0';
+		o.rmempty = false;
+
+		o = s.taboption('history', form.Value, 'history_days', _('Keep calls for (days)'));
+		o.datatype = 'range(1,3650)';
+		o.placeholder = '30';
+		o.default = '30';
+		o.depends('history_autodelete', '1');
+
+		o = s.taboption('advanced', form.Value, 'modem_rx_gain', _('Modem receive gain'),
+			_('AT+QRXGAIN value, 8192 is unity.'));
+		o.datatype = 'range(0,65535)';
+
+		[
+			[ 'led_ready', _('Line ready'), 'on' ],
+			[ 'led_ringing', _('Incoming call'), 'fast' ],
+			[ 'led_offhook', _('Handset off hook'), 'slow' ]
+		].forEach(function(l) {
+			o = s.taboption('led', form.ListValue, l[0], l[1]);
+			o.value('on', _('Solid'));
+			o.value('slow', _('Slow blink'));
+			o.value('fast', _('Fast blink'));
+			o.value('off', _('Off'));
+			o.default = l[2];
+		});
+
+		o = s.taboption('led', form.Value, 'led', _('LED'),
+			_('The AW1000 phone LED is green only. Leave empty to not use an LED. When the port is off the LED is off.'));
+		o.placeholder = 'green:phone';
+
+		o = s.taboption('advanced', form.ListValue, 'channel', _('SLIC channel'),
+			_('Only channel 1 is wired on the AW1000.'));
+		o.value('1');
+		o.value('0');
+
+		o = s.taboption('advanced', form.Value, 'at_port', _('Modem AT port'));
+
+		o = s.taboption('advanced', form.Value, 'patch', _('SLIC patch file'));
+
+		return m.render();
+	}
+});

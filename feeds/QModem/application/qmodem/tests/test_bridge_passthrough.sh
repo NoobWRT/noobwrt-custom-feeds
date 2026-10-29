@@ -4,11 +4,6 @@ set -eu
 
 QMODEM_PACKAGE_DIR="$(CDPATH= cd "$(dirname "$0")/.." && pwd)"
 dial_script="${QMODEM_PACKAGE_DIR}/files/usr/share/qmodem/modem_dial.sh"
-hook_dir="$(mktemp -d)"
-trap 'rm -rf "$hook_dir"' EXIT INT TERM
-SCRIPT_DIR="$hook_dir"
-printf '#!/bin/sh\nprintf "wwan0\\n"\n' > "$SCRIPT_DIR/modem_netdev.sh"
-chmod +x "$SCRIPT_DIR/modem_netdev.sh"
 
 extract_function()
 {
@@ -27,8 +22,10 @@ config_foreach() { :; }
 get_platform_suggest_pdp_index() { printf '1\n'; }
 get_driver() { printf 'qmi\n'; }
 update_sim_slot() { sim_slot=1; }
-find() { printf '/tmp/qmodem-test/net\n'; }
-ls() { printf 'wwan0\n'; }
+SCRIPT_DIR="$(mktemp -d)"
+trap 'rm -rf "$SCRIPT_DIR" "${hook_dir:-}"' EXIT INT TERM
+printf '#!/bin/sh\nprintf "wwan0\\n"\n' > "$SCRIPT_DIR/modem_netdev.sh"
+chmod +x "$SCRIPT_DIR/modem_netdev.sh"
 
 config_get()
 {
@@ -71,6 +68,7 @@ TEST_DONOT_NAT=1
 update_config
 [ "$bridge_enabled:$donot_nat" = '0:1' ]
 
+hook_dir="$(mktemp -d)"
 cat > "$hook_dir/hook" <<'EOF'
 #!/bin/sh
 printf '%s\n' "$*" > "$QMODEM_BRIDGE_MANAGER_CALL"
@@ -85,27 +83,6 @@ bridge_manager='misectel-interface-v1'
 bridge_management_ip='192.168.1.2/24'
 external_bridge_manager apply wwan0
 [ "$(cat "$hook_dir/call")" = 'apply modem0 wwan0 bmodem0 192.168.1.2/24' ]
-cat > "$hook_dir/hook" <<'EOF'
-#!/bin/sh
-printf '%s\n' "$*" > "$QMODEM_BRIDGE_MANAGER_CALL"
-printf '%s\n' '{"result":true,"bridge":"bqm-authority","lease":"generation:42"}'
-EOF
-jsonfilter() {
-	input=$(cat)
-	case "$2" in '@.bridge') echo bqm-authority;; '@.lease') echo generation:42;; esac
-}
-MODEM_RUNDIR="$hook_dir"
-mkdir "$hook_dir/modem0_dir"
-bridge_member_lease=''
-bridge_manager=misectel-interface-v2
-external_bridge_manager apply wwan0
-[ "$bridge_device_name" = bqm-authority ]
-[ "$(cat "$hook_dir/modem0_dir/bridge-lease")" = generation:42 ]
-# A new hangup process recovers the lease; the hook, not QModem, names the bridge.
-bridge_member_lease=''
-external_bridge_manager release ''
-[ "$(cat "$hook_dir/call")" = 'release modem0    generation:42' ]
-[ ! -e "$hook_dir/modem0_dir/bridge-lease" ]
 rm -f "$hook_dir/hook"
 if external_bridge_manager apply wwan0; then
 	exit 1

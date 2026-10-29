@@ -68,7 +68,7 @@ jobs:
         fi
 
         case "${GITHUB_REF#refs/heads/}:$version" in
-          main:*-[0-9a-zA-Z]*) ;;
+          main:*[_-][0-9a-zA-Z]*) ;;
           stable:[0-9]*.[0-9]*.[0-9]*) ;;
           *)
             echo "QMODEM_VERSION does not match its release branch: ${GITHUB_REF#refs/heads/}:$version" >&2
@@ -160,7 +160,7 @@ jobs:
             "refs/tags/${GITHUB_REF_NAME}:refs/tags/${GITHUB_REF_NAME}"
           tag_commit="$(git rev-list -n 1 "refs/tags/${GITHUB_REF_NAME}")"
           case "${GITHUB_REF_NAME}" in
-            *-rc.*|*-beta.*)
+            *-rc.*|*-beta.*|*_rc*|*_beta*)
               git merge-base --is-ancestor "$tag_commit" origin/main || {
                 echo "pre-release tags must point to main" >&2
                 exit 1
@@ -179,8 +179,7 @@ jobs:
           esac
 
       - name: Checkout
-        if: 
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           path: 'qmodem'
 
@@ -202,11 +201,11 @@ jobs:
     name: Build QModem
     needs: [job_prepare]
     if: ${{ always() && needs.job_prepare.result == 'success' }}
-    continue-on-error: true
     strategy:
       matrix:
         build_arch: ['arm64_ipk',"arm64_apk","x64_apk","x64_ipk","mmips_ipk","mmips_apk" ]
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     steps:
       - name: Install packages
         run: |
@@ -217,7 +216,7 @@ jobs:
 
       
       - name: Checkout
-        uses: actions/checkout@v2
+        uses: actions/checkout@v4
         with:
           path: 'qmodem'
 
@@ -256,7 +255,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: sdk
-          key: openwrt-sdk-${{ matrix.build_arch }}-${{ env.SDK_NAME }}${{ steps.resolve-sdk.outputs.sdk_name }}-uplink-v2
+          key: openwrt-sdk-${{ matrix.build_arch }}-${{ env.SDK_NAME }}${{ steps.resolve-sdk.outputs.sdk_name }}-${{ github.sha }}
 
       - name: Initialization environment
         if: steps.cache-sdk.outputs.cache-hit != 'true'
@@ -322,34 +321,33 @@ jobs:
       - name: Compile QModem
         id: compile
         run: |
+          set -euo pipefail
           cd sdk
           ./scripts/feeds update qmodem
           ./scripts/feeds install -a -p qmodem
           rm -rf feeds/base/package/kernel/gpio-button-hotplug
-          # Cached SDKs can predate new packages. Refresh their selections after
-          # installing current feed metadata instead of silently skipping builds.
-          sed -i '/^CONFIG_PACKAGE_qmodem-uplink-manager=/d; /^CONFIG_PACKAGE_luci-app-qmodem-uplink=/d' .config
-          printf '%s\n' 'CONFIG_PACKAGE_qmodem-uplink-manager=m' 'CONFIG_PACKAGE_luci-app-qmodem-uplink=m' >> .config
-          make defconfig
-          sed -i '/^CONFIG_PACKAGE_gpio-button-hotplug=/d; /^CONFIG_PACKAGE_libopenssl=/d; /^CONFIG_PACKAGE_openssl-util=/d' .config
-          printf '%s\n' 'CONFIG_PACKAGE_gpio-button-hotplug=n' 'CONFIG_PACKAGE_libopenssl=n' 'CONFIG_PACKAGE_openssl-util=n' >> .config
           generic_package=$(cat ../qmodem/.github/workflows/qmodem_package_generic)
           arch_package=$(cat ../qmodem/.github/workflows/qmodem_package_arch)
           for package in $generic_package; do
-            make package/$package/compile -j$(nproc) || true
+            make package/$package/compile -j$(nproc)
           done
           for package in $arch_package; do
-            make package/$package/compile -j$(nproc) || true
+            make package/$package/compile -j$(nproc)
           done
-          for package in qmodem-uplink-manager luci-app-qmodem-uplink; do
-            if ! find bin/packages/${{ env.SDK_ARCH }}/qmodem/ -type f \( -name "${package}_*.ipk" -o -name "${package}-*.apk" \) | grep -q .; then
-              echo "Missing required package: $package" >&2
+          package_dir="bin/packages/${{ env.SDK_ARCH }}/qmodem"
+          required_packages=(
+            qmodem qmodem-smsd sms-forwarder-next qmodem-uplink-manager luci-app-qmodem-uplink
+            luci-app-qmodem-next luci-i18n-qmodem-next-zh-cn
+          )
+          for package in "${required_packages[@]}"; do
+            compgen -G "$package_dir/${package}[-_]*" >/dev/null || {
+              echo "missing required release package: $package" >&2
               exit 1
-            fi
+            }
           done
-          ls bin/packages/${{ env.SDK_ARCH }}/qmodem/
+          ls "$package_dir"
           echo "status=success" >> $GITHUB_OUTPUT
-          echo "FIRMWARE=$(pwd)/bin/packages/${{ env.SDK_ARCH }}/qmodem/" >> $GITHUB_ENV
+          echo "FIRMWARE=$(pwd)/$package_dir/" >> $GITHUB_ENV
 
       - name: Upload QModem
         if: ${{ steps.compile.outputs.status == 'success' }}
@@ -363,11 +361,14 @@ jobs:
     name: Release Artifacts
     needs: [job_build_qmodem, job_prepare]
     runs-on: ubuntu-latest
-    if: ${{ needs.job_prepare.outputs.push_type == 'tag' }}
+    # job_prepare recognizes both direct tag pushes and tags created by
+    # job_auto_tag during a stable branch run.
+    if: ${{ always() && needs.job_prepare.result == 'success' && needs.job_build_qmodem.result == 'success' && needs.job_prepare.outputs.push_type == 'tag' }}
     steps:
       - name: Download all artifacts
         uses: actions/download-artifact@v4
         with:
+          pattern: QModem-*
           path: artifacts
         
       - name: Download Release Note
@@ -390,10 +391,10 @@ jobs:
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2.2.2
-        if: ${{ needs.job_prepare.outputs.push_type == 'tag' }}
+        if: ${{ always() && needs.job_prepare.outputs.push_type == 'tag' }}
         with:
           body_path: release_note/release_note.md
           generate_release_notes: true
           tag_name: ${{ needs.job_prepare.outputs.tag_name }}
-          prerelease: ${{ contains(needs.job_prepare.outputs.tag_name, '-beta') || contains(needs.job_prepare.outputs.tag_name, '-rc') }}
+          prerelease: ${{ contains(needs.job_prepare.outputs.tag_name, '-beta') || contains(needs.job_prepare.outputs.tag_name, '-rc') || contains(needs.job_prepare.outputs.tag_name, '_beta') || contains(needs.job_prepare.outputs.tag_name, '_rc') }}
           files: releases/*

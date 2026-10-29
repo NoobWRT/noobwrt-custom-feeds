@@ -36,6 +36,8 @@ jobs:
           sh -n application/qmodem/files/usr/share/qmodem/modem_util.sh
           sh -n application/qmodem/files/usr/sbin/qmodem_collect
           sh -n application/qmodem/tests/test_core_cmds.sh
+          sh -n application/qmodem/tests/test_sms_forwarder_conflicts.sh
+          sh -n application/qmodem/tests/test_sms_transport_modes.sh
           bash -n application/qmodem/tests/test_collect_encryption.sh
           bash -n application/qmodem/tests/test_fixture_profiles.sh
           sh -n application/qmodem/tests/test_vendor_cmds_boundary.sh
@@ -47,6 +49,9 @@ jobs:
         run: |
           application/qmodem/tests/test_vendor_cmds_boundary.sh
           application/qmodem/tests/test_core_cmds.sh
+          application/qmodem/tests/test_sms_forwarder_conflicts.sh
+          application/qmodem/tests/test_sms_transport_modes.sh
+          node luci/luci-app-qmodem-next/tests/test_sms_service.js
           application/qmodem/tests/test_fixture_collection_bytes.sh
           application/qmodem/tests/test_recognition_collection.sh
           application/qmodem/tests/test_recognition_fixtures.sh

@@ -6,6 +6,8 @@ include ../../version.mk
 PKG_NAME:=sms-forwarder-next
 PKG_RELEASE:=$(QMODEM_RELEASE)
 PKG_VERSION:=$(QMODEM_VERSION)
+PKG_CONFLICTS:=sms-forwarder
+PKG_RECOMMENDS:=+qmodem-sipd
 
 include $(INCLUDE_DIR)/package.mk
 
@@ -14,6 +16,7 @@ define Package/$(PKG_NAME)
   CATEGORY:=Utilities
   TITLE:=SMS Forward Service
   DEPENDS:=+tom_modem +jq +curl +ucode +ucode-mod-ubus +ucode-mod-uci
+  RECOMMENDS:=$(PKG_RECOMMENDS)
 endef
 
 define Package/$(PKG_NAME)/description
@@ -22,6 +25,7 @@ define Package/$(PKG_NAME)/description
   - ServerChan
   - Generic Webhook
   - Custom Script
+  - SIP MESSAGE
 endef
 
 

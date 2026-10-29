@@ -1,7 +1,7 @@
-luci-app-qmodem
-luci-app-qmodem-sms
 luci-app-qmodem-next
 qmodem
+qmodem_smsd
+sms_forwarder_next
 
 qmodem_uplink_manager
 luci-app-qmodem-uplink

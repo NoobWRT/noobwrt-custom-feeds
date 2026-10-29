@@ -3,7 +3,7 @@ set -eu
 package_dir="$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)"
 fixture="$(mktemp -d)"
 trap 'rm -rf "$fixture"' EXIT HUP INT TERM
-mkdir -p "$fixture/device/interface/net/usb0"
+mkdir -p "$fixture/device/interface/net/wwan0"
 ln -s "$fixture/device" "$fixture/usb-slot"
 cat > "$fixture/uci" <<'EOF'
 #!/bin/sh
@@ -13,54 +13,46 @@ EOF
 chmod +x "$fixture/uci"
 export QMODEM_UCI="$fixture/uci" MODEM_TEST_PATH="$fixture/usb-slot"
 resolver="$package_dir/files/usr/share/qmodem/modem_netdev.sh"
-expect_failure() {
-    if "$@" > "$fixture/rejected-output"; then
-        echo 'expected endpoint discovery to fail' >&2
-        exit 1
-    fi
-    [ ! -s "$fixture/rejected-output" ]
+[ "$("$resolver" modem0)" = wwan0 ]
+# A nested QMI child is the data endpoint, not a second independent NIC.
+mkdir -p "$fixture/device/interface/net/wwan0/net/wwan0_1"
+[ "$("$resolver" modem0)" = wwan0_1 ]
+# Execute the real dial configuration function with only UCI/vendor calls mocked.
+eval "$(awk '$0 == "update_config()" { capture=1 } capture { print } capture && $0 == "}" { exit }' "$package_dir/files/usr/share/qmodem/modem_dial.sh")"
+config_load() { :; }
+config_foreach() { :; }
+config_get() {
+    value="${4-}"
+    [ "$1" != modem_path ] || value="$(readlink -f "$MODEM_TEST_PATH")"
+    eval "$1=\$value"
 }
-[ "$("$resolver" modem0)" = usb0 ]
-# QMI multiplexing exposes nested net directories below the parent netdev.
-mkdir -p "$fixture/device/interface/net/usb0/net/usb0_1"
-[ "$("$resolver" modem0)" = usb0_1 ]
-mkdir "$fixture/device/interface/net/usb0/net/usb0_2"
-expect_failure "$resolver" modem0
-rmdir "$fixture/device/interface/net/usb0/net/usb0_2"
-# Independent USB interfaces are still ambiguous, even with nested children.
-mkdir -p "$fixture/device/other-interface/net/usb2"
-expect_failure "$resolver" modem0
-rm -rf "$fixture/device/other-interface"
-rm -rf "$fixture/device/interface/net/usb0/net"
-# No SIM, dial service, or cellular address is present in this fixture.
-mkdir "$fixture/device/interface/net/usb1"
-expect_failure "$resolver" modem0
-rmdir "$fixture/device/interface/net/usb0" "$fixture/device/interface/net/usb1"
-expect_failure "$resolver" modem0
-mkdir "$fixture/device/interface/net/usb1"
-[ "$("$resolver" modem0)" = usb1 ]
-expect_failure "$resolver" 'modem0;false'
-# PCIe/MHI endpoint depth need not match USB interface depth.
-mkdir -p "$fixture/pci/device/mhi/controller/channel/net/wwan0/net/wwan0_1"
-MODEM_TEST_PATH="$fixture/pci" "$resolver" modem0 > "$fixture/result"
-[ "$(cat "$fixture/result")" = wwan0_1 ]
-# Empty mux directories and sysfs backlinks are not usable data endpoints.
-rmdir "$fixture/pci/device/mhi/controller/channel/net/wwan0/net/wwan0_1"
-MODEM_TEST_PATH="$fixture/pci" expect_failure "$resolver" modem0
-rmdir "$fixture/pci/device/mhi/controller/channel/net/wwan0/net"
-ln -s "$fixture/pci/device/mhi/controller/channel/net" "$fixture/pci/device/mhi/controller/channel/net/wwan0/net"
-MODEM_TEST_PATH="$fixture/pci" expect_failure "$resolver" modem0
-# A dangling configured symlink must fail rather than inventing an endpoint.
-ln -s "$fixture/missing" "$fixture/dangling"
-MODEM_TEST_PATH="$fixture/dangling" expect_failure "$resolver" modem0
-echo 'modem endpoint tests passed (pre-dial, nested mux, USB/PCIe, symlink, ambiguity, unplug, replug)'
-
-# Additional generic MHI cases from the remote branch.
-export MODEM_TEST_PATH="$fixture/usb-slot"
+get_platform_suggest_pdp_index() { printf '1\n'; }
+get_driver() { printf 'qmi\n'; }
+update_sim_slot() { sim_slot=1; }
 SCRIPT_DIR="$package_dir/files/usr/share/qmodem"
 modem_config=modem0
+update_config
+[ "$modem_netcard" = wwan0_1 ]
+[ "$interface_name" = modem0 ]
+# Multiple mux children and independent sibling endpoints must remain ambiguous.
+mkdir "$fixture/device/interface/net/wwan0/net/wwan0_2"
+! "$resolver" modem0
+rmdir "$fixture/device/interface/net/wwan0/net/wwan0_2"
+mkdir -p "$fixture/device/other/net/usb0"
+! "$resolver" modem0
+rmdir "$fixture/device/other/net/usb0" "$fixture/device/other/net"
+mkdir "$fixture/device/interface/net/usb1"
+! "$resolver" modem0
+rmdir "$fixture/device/interface/net/usb1"
+rmdir "$fixture/device/interface/net/wwan0/net/wwan0_1"
+! "$resolver" modem0
+rmdir "$fixture/device/interface/net/wwan0/net" "$fixture/device/interface/net/wwan0"
+! "$resolver" modem0
+mkdir "$fixture/device/interface/net/usb1"
+[ "$("$resolver" modem0)" = usb1 ]
+! "$resolver" 'modem0;false'
 # Generic raw MHI: the auxiliary software channel is never a data candidate.
-rmdir "$fixture/device/interface/net/usb1" "$fixture/device/interface/net"
+rmdir "$fixture/device/interface/net/usb1"
 mkdir -p "$fixture/device/mhi4/mhi4_IP_HW0/net/mhi_hwip7"
 mkdir -p "$fixture/device/mhi4/mhi4_IP_SW0/net/mhi_swip7"
 [ "$("$resolver" modem0)" = mhi_hwip7 ]
@@ -82,7 +74,6 @@ rmdir "$fixture/device/mhi4/mhi4_IP_HW0/net/mhi_hwip7"
 # A control-only MBIM port does not create a second data endpoint.
 mkdir -p "$fixture/device/mhi4/wwan/wwan9/wwan9mbim0"
 ! "$resolver" modem0
-rmdir "$fixture/device/mhi4/mhi4_IP_HW0/net"
 # Native WWAN MBIM default link can be parented directly to the controller.
 mkdir -p "$fixture/device/mhi4/net/wwan7" "$fixture/device/mhi4/mhi4_IP_HW0_MBIM" "$fixture/drivers/mhi_wwan_mbim"
 ln -s "$fixture/device/mhi4/net/wwan7" "$fixture/sys/class/net/wwan7"

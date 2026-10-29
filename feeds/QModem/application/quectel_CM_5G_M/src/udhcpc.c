@@ -516,10 +516,9 @@ void udhcpc_start(PROFILE_T *profile) {
         ql_set_mtu(ifname, (profile->ipv4.Mtu));
     }
 
-    /* QMAP needs its physical parent up even when netifd owns child L3. */
-    if (strcmp(ifname, profile->usbnet_adapter)) {
+    if (!profile->managed_ipv4 && strcmp(ifname, profile->usbnet_adapter)) {
         ifc_set_state(profile->usbnet_adapter, 1);
-        if (!profile->managed_ipv4 && (ifc_get_flags(ifname)&IFF_UP)) {
+        if (ifc_get_flags(ifname)&IFF_UP) {
             ifc_set_state(ifname, 0);
         }
     }

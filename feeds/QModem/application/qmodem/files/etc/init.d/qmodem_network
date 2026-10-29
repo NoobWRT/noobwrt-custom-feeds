@@ -10,10 +10,10 @@ SCRIPT_DIR="/usr/share/qmodem"
 #运行目录
 MODEM_RUNDIR="/var/run/qmodem"
 
+extra_command "reconfigure" "<modem_cfg> apply settings while respecting dial enable state"
 extra_command "dial" "<modem_cfg> run dial script"
 extra_command "hang" "<modem_cfg> run hang script"
 extra_command "redial" "<modem_cfg> stop previous dial script. run hang script. and run dial script"
-extra_command "reconfigure" "<modem_cfg> apply settings while respecting dial enable state"
 extra_command "modem_status" "<modem_cfg> Check dial script status" 
 service_triggers()
 {
@@ -69,14 +69,14 @@ modem_status()
 redial()
 {
     qmodem_valid_instance "$1" || return 2
-    hang $1
-    dial $1
+    hang "$1" || return $?
+    dial "$1"
 }
 
 reconfigure()
 {
-    case "$1" in ''|*[!A-Za-z0-9_]*) return 1;; esac
-    hang "$1"
+    qmodem_valid_instance "$1" || return 2
+    hang "$1" || return $?
     force_stop=0
     config_load qmodem
     config_get g_enabled main enable_dial

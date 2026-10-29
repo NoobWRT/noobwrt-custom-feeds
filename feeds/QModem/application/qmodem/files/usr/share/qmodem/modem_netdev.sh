@@ -6,20 +6,21 @@ case "$instance" in ''|*[!A-Za-z0-9_]*) exit 2;; esac
 path="$("${QMODEM_UCI:-uci}" -q get "qmodem.$instance.path")" || exit 1
 path="$(readlink -f "$path")" || exit 1
 [ -d "$path" ] && [ "$path" != / ] || exit 1
-# Find independent USB/PCIe endpoint directories without counting mux children.
-netdir="$(find "$path" -type d -name net ! -path "*/mhi*_IP_SW*/net" -print -prune 2>/dev/null)"
-[ "$(printf '%s\n' "$netdir" | wc -l)" = 1 ] || exit 1
-[ -n "$netdir" ] || exit 1
-while :; do
-    set -- "$netdir"/*
-    # Every level must identify one data interface, including QMI mux children.
-    [ "$#" = 1 ] && [ -d "$1" ] && [ ! -L "$1" ] || exit 1
-    endpoint="${1##*/}"
-    case "$endpoint" in ''|*[!A-Za-z0-9_.:-]*|lo|br-*|bqm*) exit 1;; esac
-    # Do not follow sysfs backlinks or accept a malformed nested endpoint.
-    [ ! -L "$1/net" ] || exit 1
-    [ -e "$1/net" ] || break
-    [ -d "$1/net" ] || exit 1
-    netdir="$1/net"
-done
+endpoints="$(find "$path" -name net -type d 2>/dev/null |
+    while IFS= read -r netdir; do
+        for entry in "$netdir"/*; do
+            [ -e "$entry" ] || continue
+            # QMI mux devices expose net/wwan0/net/wwan0_1. Use the
+            # child data interface instead of counting its parent twice.
+            [ ! -d "$entry/net" ] || continue
+            # Generic MHI exposes an auxiliary software path beside IP_HW0.
+            case "$entry" in */mhi*_IP_SW*/net/*) continue;; esac
+            printf '%s\n' "${entry##*/}"
+        done
+    done)"
+# Independent endpoints remain ambiguous; never select by find order.
+[ -n "$endpoints" ] || exit 1
+[ "$(printf '%s\n' "$endpoints" | wc -l)" = 1 ] || exit 1
+endpoint="$endpoints"
+case "$endpoint" in ''|*[!A-Za-z0-9_.:-]*|lo|br-*|bqm*) exit 1;; esac
 printf '%s\n' "$endpoint"

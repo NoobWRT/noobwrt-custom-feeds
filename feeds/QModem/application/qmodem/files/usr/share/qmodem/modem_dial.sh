@@ -12,7 +12,6 @@ log_file="${MODEM_RUNDIR}/${modem_config}_dir/dial_log"
 debug_subject="modem_dial"
 source "${SCRIPT_DIR}/generic.sh"
 source "${SCRIPT_DIR}/cmds/modem_dial.sh"
-. "${SCRIPT_DIR}/bridge_port_policy.sh"
 touch $log_file
 
 exec_pre_dial()
@@ -53,28 +52,10 @@ external_bridge_manager()
     local endpoint="$2"
     local hook="${QMODEM_BRIDGE_MANAGER_HOOK:-/usr/libexec/qmodem-bridge-manager}"
 
-    case "$bridge_manager" in misectel-interface-v1|misectel-interface-v2) :;; *) return 2;; esac
+    [ "$bridge_manager" = "misectel-interface-v1" ] || return 2
     if [ ! -x "$hook" ]; then
         m_debug "configured bridge manager hook is unavailable: $hook"
         return 1
-    fi
-    if [ "$bridge_manager" = "misectel-interface-v2" ]; then
-        local response lease_file="${MODEM_RUNDIR}/${modem_config}_dir/bridge-lease"
-        if [ "$action" = release ] && [ -z "$bridge_member_lease" ]; then
-            bridge_member_lease=$(cat "$lease_file" 2>/dev/null)
-            [ -n "$bridge_member_lease" ] || return 0
-        fi
-        response=$("$hook" "$action" "$modem_config" "$endpoint" "" "" "$bridge_member_lease") || return 1
-        bridge_device_name=$(printf '%s\n' "$response" | jsonfilter -e '@.bridge')
-        if [ "$action" = apply ]; then
-            bridge_member_lease=$(printf '%s\n' "$response" | jsonfilter -e '@.lease')
-            [ -n "$bridge_device_name" ] && [ -n "$bridge_member_lease" ] || return 1
-            printf '%s\n' "$bridge_member_lease" > "$lease_file"
-        else
-            rm -f "$lease_file"
-            bridge_member_lease=''
-        fi
-        return 0
     fi
     bridge_device_name=$(resolve_bridge_device_name) || return 1
     if ! "$hook" "$action" "$modem_config" "$endpoint" "$bridge_device_name" "$bridge_management_ip" >/dev/null; then
@@ -261,15 +242,6 @@ ensure_bridge_device()
     local current_type
     local current_name
     local current_ports
-    local confirmed_ethernet=''
-
-    if [ -n "$wwan_port" ]; then
-        if [ -n "${ethernet_check:-}" ] && [ "$wwan_port" = "${ethernet_5g:-}" ]; then
-            confirmed_ethernet="$wwan_port"
-        fi
-        qmodem_bridge_port_apply "$modem_config" "$wwan_port" "$modem_path" "$confirmed_ethernet" || return 1
-        [ "$QMODEM_BRIDGE_PORT_CHANGED" != 1 ] || bridge_network_dirty=1
-    fi
 
     bridge_section=$(get_bridge_device_section)
     bridge_device_section="$bridge_section"
@@ -403,9 +375,6 @@ cleanup_bridge_passthrough()
     bridge_network_dirty=0
     bridge_qmodem_dirty=0
 
-    qmodem_bridge_port_restore "$modem_config" || return 1
-    [ "$QMODEM_BRIDGE_PORT_CHANGED" != 1 ] || bridge_network_dirty=1
-
     config_load qmodem
     config_foreach restore_bridge_port_backup bridge-port-backup
 
@@ -524,7 +493,7 @@ update_config()
     config_get at_port $modem_config at_port
     config_get manufacturer $modem_config manufacturer
     config_get platform $modem_config platform
-    config_get use_ubus $modem_config use_ubus
+    config_get use_ubus $modem_config use_ubus 1
     config_get force_set_apn $modem_config force_set_apn
     config_get pdp_index $modem_config pdp_index
     [ -n "$pdp_index" ] && userset_pdp_index="1" || userset_pdp_index="0"
@@ -715,27 +684,27 @@ check_ip()
 
 append_to_fw_zone()
 {
-    local fw_zone=$1 if_name=$2 fw_zone_path origin_line network retained=""
-    # UCI represents a legacy space-separated scalar as one quoted list item
-    # after add_list. Normalize it before mixing modem and wired memberships.
-    case "$if_name" in ''|*[!A-Za-z0-9_-]*) return 2;; esac
-    case "$fw_zone" in
-        ''|*[!0-9]*) fw_zone_path="firewall.${fw_zone}";;
-        *) fw_zone_path="firewall.@zone[${fw_zone}]";;
-    esac
-    origin_line=$(uci -q get "${fw_zone_path}.network" | tr -d '\047\134')
-    for network in $origin_line "$if_name"; do
-        case "$network" in ''|*[!A-Za-z0-9_-]*) continue;; esac
-        case " $retained " in *" $network "*) continue;; esac
-        retained="${retained:+$retained }$network"
-    done
-    . /etc/os-release
+    local fw_zone=$1
+    local if_name=$2
+    local fw_zone_path
+    source /etc/os-release
     local os_version=${VERSION_ID:0:2}
-    if [ "$os_version" -le 21 ]; then
-        uci set "${fw_zone_path}.network=$retained"
+    case "$fw_zone" in
+        ''|*[!0-9]*) fw_zone_path="firewall.${fw_zone}" ;;
+        *) fw_zone_path="firewall.@zone[${fw_zone}]" ;;
+    esac
+    origin_line=$(uci -q get ${fw_zone_path}.network)
+    for i in $origin_line; do
+        [ "$i" = "$if_name" ] && return
+    done
+    if [ "$os_version" -le 21 ];then
+        if [ -n "$origin_line" ];then
+            uci set ${fw_zone_path}.network="${origin_line} ${if_name}"
+        elif [ -z "$origin_line" ];then
+            uci set ${fw_zone_path}.network="${if_name}"
+        fi
     else
-        uci -q delete "${fw_zone_path}.network"
-        for network in $retained; do uci -q add_list "${fw_zone_path}.network=$network"; done
+        uci add_list ${fw_zone_path}.network=${if_name}
     fi
 }
 
@@ -753,7 +722,7 @@ remove_from_fw_zone()
         ''|*[!0-9]*) fw_zone_path="firewall.${fw_zone}" ;;
         *) fw_zone_path="firewall.@zone[${fw_zone}]" ;;
     esac
-    origin_line=$(uci -q get "${fw_zone_path}.network" | tr -d '\047\134')
+    origin_line=$(uci -q get ${fw_zone_path}.network)
     for network in $origin_line; do
         if [ "$network" = "$if_name" ]; then
             found=1
@@ -938,7 +907,7 @@ set_if()
     if [ -n "$ethernet_check" ] && [ -n "/sys/class/net/$ethernet_5g" ] && [ -n "$ethernet_5g" ];then
         set_modem_netcard=$ethernet_5g
     fi
-    if [ "$bridge_manager" = "misectel-interface-v1" ] || [ "$bridge_manager" = "misectel-interface-v2" ]; then
+    if [ "$bridge_manager" = "misectel-interface-v1" ]; then
         if [ "$bridge_enabled" = "1" ]; then
             if ! external_bridge_manager apply "$set_modem_netcard"; then
                 ifdown "${interface_name}" >/dev/null 2>&1
@@ -1003,13 +972,6 @@ set_if()
     if [ "$network_reload_flag" -eq 1 ] || [ "$interface_update_flag" -eq 1 ] || [ "$bridge_network_dirty" -eq 1 ]; then
         if [ "$bridge_network_dirty" -eq 1 ]; then /etc/init.d/network restart
         else ifup "$interface_name"; [ "$env6" != 1 ] || ifup "$interface6_name"; fi
-    elif [ "$proto" = qmodem_runtime ] && [ "$env4" = 1 ]; then
-        # A redial may leave unchanged UCI settings but a torn-down protocol.
-        # Rearm setup/replay before CM publishes this generation's IPv4 event.
-        ifup "$interface_name"
-    fi
-    if [ "$bridge_enabled" = 1 ] && [ -n "$set_modem_netcard" ]; then
-        qmodem_bridge_port_activate "$set_modem_netcard" || { ifdown "$interface_name"; return 1; }
     fi
     [ "$firewall_reload_flag" -eq 0 ] || /etc/init.d/firewall restart
     [ "$dhcp_reload_flag" -eq 0 ] || /etc/init.d/dhcp restart
@@ -1025,7 +987,7 @@ flush_if()
     config_load network
     remove_target="$modem_config"
     config_foreach flush_ip_cb "interface"
-    if [ "$bridge_manager" = "misectel-interface-v1" ] || [ "$bridge_manager" = "misectel-interface-v2" ]; then
+    if [ "$bridge_manager" = "misectel-interface-v1" ]; then
         external_bridge_manager release "" || m_debug "managed bridge release failed during flush"
     else
         cleanup_bridge_passthrough || { qmodem_config_unlock; return 1; }

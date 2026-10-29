@@ -4,6 +4,8 @@
 'require uci';
 'require rpc';
 'require poll';
+'require bandix.geoip as geoip';
+'require bandix.flows as flowSearch';
 
 var BANDIX_MODAL_BG_OPENWRT2020_LIGHT = '#ffffff';
 var BANDIX_MODAL_BG_OPENWRT2020_DARK = '#2a2a2a';
@@ -127,7 +129,7 @@ function getThemeColors() {
 
 function formatSize(bytes) {
     if (!bytes || bytes === 0) return '0 B';
-    var units = ['B', 'KB', 'MB', 'GB', 'TB', 'PB'];
+    var units = ['B', 'KiB', 'MiB', 'GiB', 'TiB', 'PiB'];
     var i = Math.floor(Math.log(bytes) / Math.log(1024));
     return parseFloat((bytes / Math.pow(1024, i)).toFixed(2)) + ' ' + units[i];
 }
@@ -136,15 +138,24 @@ function formatSize(bytes) {
 // IPv6 地址按 RFC 3986 用方括号包起来，一是避免 '2600:...:8000::' + ':' + '80' 拼出
 // ':::80' 这种分不清边界的写法，二是选中复制出来就是 [addr]:port，可以直接粘去用。
 // 地址和端口是行内元素，复制时不会被拆成两行；端口自身 nowrap，不会被折断
-function flowEndpointCell(addr, port) {
+function flowEndpointCell(addr, port, information) {
     var text = addr || '-';
     if (text.indexOf(':') >= 0) {
         text = '[' + text + ']';
     }
-    return E('td', { 'class': 'flows-addr-cell' }, [
+    var description = geoip.describe(information);
+    var children = [E('div', {}, [
         E('span', { 'class': 'flows-addr' }, text),
         E('span', { 'class': 'flows-port' }, port ? ':' + port : '')
-    ]);
+    ])];
+    if (description) {
+        var location = [E('div', {}, description.location || description.summary)];
+        if (description.organization) location.push(E('div', { 'class': 'flows-geoip-network' }, description.organization));
+        children.push(E('div', {
+            'class': 'flows-geoip', title: description.details
+        }, location));
+    }
+    return E('td', { 'class': 'flows-addr-cell' }, children);
 }
 
 function formatDeviceName(device) {
@@ -638,8 +649,8 @@ return view.extend({
 
             .flows-modal-overlay .flows-modal-content {
                 margin: 16px;
-                width: 95vw;
-                max-width: 1200px;
+                width: calc(100vw - 32px);
+                max-width: 1680px;
                 max-height: 85vh;
                 display: flex;
                 flex-direction: column;
@@ -703,6 +714,7 @@ return view.extend({
             }
 
             .flows-modal-content .flows-filters select,
+            .flows-modal-content .flows-filters input[type="search"],
             .flows-modal-content .flows-footer select {
                 padding: 6px 10px;
                 border-radius: 4px;
@@ -711,10 +723,28 @@ return view.extend({
             }
 
             .flows-modal-content.theme-dark .flows-filters select,
+            .flows-modal-content.theme-dark .flows-filters input[type="search"],
             .flows-modal-content.theme-dark .flows-footer select {
                 background-color: #3a3a3a;
                 border-color: rgba(255,255,255,0.2);
                 color: #e5e5e5;
+            }
+
+            .flows-modal-content .flows-search {
+                display: flex;
+                align-items: center;
+                gap: 8px;
+                flex: 1 1 320px;
+                min-width: 0;
+                max-width: 100%;
+                margin: 0;
+            }
+
+            .flows-modal-content .flows-search input {
+                flex: 1;
+                min-width: 0;
+                width: 100%;
+                box-sizing: border-box;
             }
 
             .flows-modal-content .flows-table-wrap {
@@ -725,6 +755,7 @@ return view.extend({
 
             .flows-modal-content .flows-table {
                 width: 100%;
+                min-width: 1200px;
                 table-layout: fixed;
                 border-collapse: collapse;
                 font-size: 0.85rem;
@@ -750,6 +781,10 @@ return view.extend({
             .flows-modal-content .flows-table td:nth-child(9) { width: 8%; }
 
             /* IPv6 没有 NAT，回复方向恒为源方向的镜像，隐藏后地址列能放下整条 IPv6 地址 */
+            .flows-modal-content .flows-table.hide-repl {
+                min-width: 900px;
+            }
+
             .flows-modal-content .flows-table.hide-repl th:nth-child(6),
             .flows-modal-content .flows-table.hide-repl td:nth-child(6),
             .flows-modal-content .flows-table.hide-repl th:nth-child(7),
@@ -797,6 +832,21 @@ return view.extend({
             .flows-modal-content .flows-addr-cell .flows-port {
                 opacity: 0.6;
                 white-space: nowrap;
+            }
+
+            .flows-modal-content .flows-geoip {
+                margin-top: 6px;
+                font-family: sans-serif;
+                font-size: 0.8rem;
+                line-height: 1.5;
+                opacity: 0.75;
+                white-space: normal;
+                word-break: normal;
+                overflow-wrap: anywhere;
+            }
+
+            .flows-modal-content .flows-geoip-network {
+                margin-top: 2px;
             }
 
             /* ESTABLISHED 是单个长单词，宽度不够时必须允许断开，否则会压到相邻列上 */
@@ -1129,6 +1179,15 @@ return view.extend({
             var totalPages = 1;
             var totalItems = 0;
             var currentPageSize = 100;
+            var cachedPage = null;
+            var searchIndex = [];
+            var matchedItems = 0;
+            var requestVersion = 0;
+            var searchInput = E('input', {
+                type: 'search', id: 'flows-search', 'class': 'cbi-input-text',
+                placeholder: _('Search this page: protocol, IP, port, location, ASN…'),
+                'aria-label': _('Search connections on this page'), autocomplete: 'off'
+            });
 
             var protocolSelect = E('select', { 'class': 'cbi-input-select', 'id': 'flows-protocol' }, [
                 E('option', { 'value': '' }, _('All')),
@@ -1179,6 +1238,9 @@ return view.extend({
             function updatePaginationUi() {
                 if (pageInfo) {
                     pageInfo.textContent = _('Page') + ' ' + currentPage + '/' + totalPages + ' · ' + _('Total') + ': ' + totalItems;
+                    if (cachedPage && searchInput.value.trim()) {
+                        pageInfo.textContent += ' · ' + _('Matches on this page') + ': ' + matchedItems + '/' + cachedPage.items.length;
+                    }
                 }
                 if (prevPageBtn) {
                     prevPageBtn.disabled = currentPage <= 1;
@@ -1190,7 +1252,7 @@ return view.extend({
 
             function normalizeFlowsResponse(res) {
                 if (!res || res.status !== 'success') {
-                    return { items: [], total: 0, page: currentPage, page_size: currentPageSize, total_pages: 1 };
+                    throw new Error(res && (res.message || res.error) || _('Failed to load'));
                 }
 
                 if (Array.isArray(res.data)) {
@@ -1211,14 +1273,56 @@ return view.extend({
                         total: res.data.total || 0,
                         page: res.data.page || currentPage,
                         page_size: res.data.page_size || currentPageSize,
-                        total_pages: res.data.total_pages || 1
+                        total_pages: res.data.total_pages || 1,
+                        geoip: res.data.geoip || {}
                     };
                 }
 
-                return { items: [], total: 0, page: currentPage, page_size: currentPageSize, total_pages: 1 };
+                throw new Error(_('Failed to load'));
+            }
+
+            function renderFlows() {
+                if (!cachedPage) return;
+                var flows = flowSearch.filter(searchIndex, searchInput.value);
+                var information = cachedPage.geoip || {};
+                matchedItems = flows.length;
+                updatePaginationUi();
+                tableBody.innerHTML = '';
+                if (!flows.length) {
+                    tableBody.appendChild(E('tr', {}, [
+                        E('td', { 'colspan': 9, 'class': 'loading-state' }, cachedPage.items.length && searchInput.value.trim() ? _('No matching connections on this page') : _('No connections'))
+                    ]));
+                    return;
+                }
+                flows.forEach(function (f) {
+                    var stateCls = '';
+                    if (f.state) {
+                        if (f.state.indexOf('ESTABLISHED') >= 0) stateCls = 'flows-state-est';
+                        else if (f.state.indexOf('TIME_WAIT') >= 0) stateCls = 'flows-state-wait';
+                        else if (f.state.indexOf('CLOSE') >= 0) stateCls = 'flows-state-close';
+                    }
+                    var sendStr = (f.orig_packets || 0) + ' ' + _('pkts') + ' / ' + formatSize(f.orig_bytes || 0);
+                    var replyStr = (f.repl_packets || 0) + ' ' + _('pkts') + ' / ' + formatSize(f.repl_bytes || 0);
+                    var flagsStr = (f.flags && f.flags.length) ? f.flags.join(' ') : '-';
+                    var protoCls = (f.protocol || '').toLowerCase() === 'tcp' ? 'flows-protocol-tcp' : 'flows-protocol-udp';
+                    tableBody.appendChild(E('tr', {}, [
+                        E('td', { 'class': protoCls }, (f.protocol || '-').toUpperCase()),
+                        E('td', { 'class': 'flows-state-cell ' + stateCls }, f.state || '-'),
+                        flowEndpointCell(f.orig && f.orig.src, f.orig && f.orig.sport, information[f.orig && f.orig.src]),
+                        flowEndpointCell(f.orig && f.orig.dst, f.orig && f.orig.dport, information[f.orig && f.orig.dst]),
+                        E('td', {}, sendStr),
+                        flowEndpointCell(f.repl && f.repl.src, f.repl && f.repl.sport, information[f.repl && f.repl.src]),
+                        flowEndpointCell(f.repl && f.repl.dst, f.repl && f.repl.dport, information[f.repl && f.repl.dst]),
+                        E('td', {}, replyStr),
+                        E('td', { 'style': 'font-size: 0.8rem;' }, flagsStr)
+                    ]));
+                });
             }
 
             function loadFlows(resetPage) {
+                var version = ++requestVersion;
+                cachedPage = null;
+                searchIndex = [];
                 if (resetPage) {
                     currentPage = 1;
                 }
@@ -1230,44 +1334,18 @@ return view.extend({
                     E('td', { 'colspan': 9, 'class': 'loading-state' }, _('Loading…'))
                 ]));
                 return callGetConnectionFlows(deviceIp, protocol || null, state || null, currentPage, currentPageSize).then(function (res) {
-                    tableBody.innerHTML = '';
+                    if (version !== requestVersion) return;
                     var normalized = normalizeFlowsResponse(res);
-                    var flows = normalized.items;
                     totalItems = normalized.total;
                     currentPage = normalized.page;
                     totalPages = Math.max(1, normalized.total_pages);
-                    updatePaginationUi();
-
-                    if (!flows || flows.length === 0) {
-                        tableBody.appendChild(E('tr', {}, [
-                            E('td', { 'colspan': 9, 'class': 'loading-state' }, _('No connections'))
-                        ]));
-                        return;
-                    }
-                    flows.forEach(function (f) {
-                        var stateCls = '';
-                        if (f.state) {
-                            if (f.state.indexOf('ESTABLISHED') >= 0) stateCls = 'flows-state-est';
-                            else if (f.state.indexOf('TIME_WAIT') >= 0) stateCls = 'flows-state-wait';
-                            else if (f.state.indexOf('CLOSE') >= 0) stateCls = 'flows-state-close';
-                        }
-                        var sendStr = (f.orig_packets || 0) + ' ' + _('pkts') + ' / ' + formatSize(f.orig_bytes || 0);
-                        var replyStr = (f.repl_packets || 0) + ' ' + _('pkts') + ' / ' + formatSize(f.repl_bytes || 0);
-                        var flagsStr = (f.flags && f.flags.length) ? f.flags.join(' ') : '-';
-                        var protoCls = (f.protocol || '').toLowerCase() === 'tcp' ? 'flows-protocol-tcp' : 'flows-protocol-udp';
-                        tableBody.appendChild(E('tr', {}, [
-                            E('td', { 'class': protoCls }, (f.protocol || '-').toUpperCase()),
-                            E('td', { 'class': 'flows-state-cell ' + stateCls }, f.state || '-'),
-                            flowEndpointCell(f.orig && f.orig.src, f.orig && f.orig.sport),
-                            flowEndpointCell(f.orig && f.orig.dst, f.orig && f.orig.dport),
-                            E('td', {}, sendStr),
-                            flowEndpointCell(f.repl && f.repl.src, f.repl && f.repl.sport),
-                            flowEndpointCell(f.repl && f.repl.dst, f.repl && f.repl.dport),
-                            E('td', {}, replyStr),
-                            E('td', { 'style': 'font-size: 0.8rem;' }, flagsStr)
-                        ]));
-                    });
+                    searchIndex = flowSearch.index(normalized.items, normalized.geoip);
+                    cachedPage = normalized;
+                    renderFlows();
                 }).catch(function (err) {
+                    if (version !== requestVersion) return;
+                    cachedPage = null;
+                    searchIndex = [];
                     totalItems = 0;
                     totalPages = 1;
                     currentPage = 1;
@@ -1284,6 +1362,7 @@ return view.extend({
             }
 
             function hideFlowsModal() {
+                requestVersion++;
                 var overlay = document.getElementById('flows-modal-overlay');
                 if (overlay) overlay.classList.remove('show');
             }
@@ -1303,6 +1382,7 @@ return view.extend({
             pageSizeSelect.addEventListener('change', function () {
                 loadFlows(true);
             });
+            searchInput.addEventListener('input', renderFlows);
 
             var modalContent = E('div', { 'class': 'flows-modal-content theme-' + currentTheme }, [
                 E('div', { 'class': 'flows-modal-header' }, [
@@ -1310,6 +1390,9 @@ return view.extend({
                     E('div', { 'class': 'flows-modal-subtitle' }, (deviceInfo.ip4 || '') + (deviceInfo.mac ? ' · ' + deviceInfo.mac : ''))
                 ]),
                 E('div', { 'class': 'flows-filters' }, [
+                    E('label', { 'class': 'flows-search', 'for': 'flows-search' }, [
+                        E('span', {}, _('Search')), searchInput
+                    ]),
                     E('label', {}, _('Protocol') + ':'),
                     protocolSelect,
                     E('label', {}, _('State') + ':'),

@@ -78,7 +78,13 @@ record() {
 }
 
 # stubs
-config_load() { :; }
+# CONFIG_STRICT=1 mimics a fresh rc.common shell: config_get only answers with
+# its default until config_load tailscale has run, like the real CONFIG_*
+# variables. Off by default, so the tests that call the handlers directly keep
+# reading the sandbox config without a config_load.
+CONFIG_STRICT=0
+CONFIG_LOADED=0
+config_load() { [ "$1" = tailscale ] && CONFIG_LOADED=1; return 0; }
 
 uci_value() {
 	# last assignment wins, like a real uci commit
@@ -86,15 +92,19 @@ uci_value() {
 }
 
 config_get() {
-	local var="$1" section="$2" option="$3" def="${4-}" val
-	val=$(uci_value "$section.$option")
+	local var="$1" section="$2" option="$3" def="${4-}" val=''
+	if [ "$CONFIG_STRICT" -ne 1 ] || [ "$CONFIG_LOADED" -eq 1 ]; then
+		val=$(uci_value "$section.$option")
+	fi
 	[ -n "$val" ] || val="$def"
 	eval "$var=\$val"
 }
 
 config_get_bool() {
-	local var="$1" section="$2" option="$3" def="${4-0}" val
-	val=$(uci_value "$section.$option")
+	local var="$1" section="$2" option="$3" def="${4-0}" val=''
+	if [ "$CONFIG_STRICT" -ne 1 ] || [ "$CONFIG_LOADED" -eq 1 ]; then
+		val=$(uci_value "$section.$option")
+	fi
 	[ -n "$val" ] || val="$def"
 	eval "$var=\$val"
 }
@@ -433,6 +443,70 @@ test_enable_path_keeps_the_running_probe() {
 	assert_call_count "tailscale restart" 0
 }
 
+# rc.common runs every action in a fresh shell, so when procd's config.change
+# trigger calls reload_service nothing has read /etc/config/tailscale yet. The
+# handler reads service_enabled and the daemon options itself, so
+# reload_service has to load the config first. The tests above call
+# handle_service_state directly and cannot see a missing config_load.
+fresh_boot() { ( CONFIG_STRICT=1; CONFIG_LOADED=0; start_service ); }
+fresh_reload() { ( CONFIG_STRICT=1; CONFIG_LOADED=0; reload_service ); }
+
+# The UI disables the service: request armed, config committed, then reload.
+test_reload_service_stops_a_disabled_service() {
+	setup
+	echo 1 > "$DAEMON_RUNNING"
+	set_option service_enabled 1
+	fresh_boot
+	: > "$CALLS"
+
+	touch "$DISABLE_REQUEST_FILE"
+	set_option service_enabled 0
+	fresh_reload
+	assert_call "tailscale stop"
+}
+
+# A service that is disabled and down must stay that way when an unrelated
+# option is saved.
+test_reload_service_keeps_a_disabled_service_down() {
+	setup
+	echo 0 > "$DAEMON_RUNNING"
+	set_option service_enabled 0
+	fresh_boot
+	: > "$CALLS"
+
+	set_option hostname lab
+	fresh_reload
+	assert_call_count "tailscale start" 0
+	assert_call_count "tailscale enable" 0
+}
+
+# A daemon option that is not at its default must not look like a change.
+test_reload_service_nondefault_daemon_option_no_restart() {
+	setup
+	echo 1 > "$DAEMON_RUNNING"
+	set_option service_enabled 1
+	set_option port 12345
+	fresh_boot
+	: > "$CALLS"
+
+	set_option hostname lab
+	fresh_reload
+	assert_call_count "tailscale restart" 0
+}
+
+# ...and a real change of it has to be noticed.
+test_reload_service_restarts_on_daemon_option_change() {
+	setup
+	echo 1 > "$DAEMON_RUNNING"
+	set_option service_enabled 1
+	fresh_boot
+	: > "$CALLS"
+
+	set_option port 23456
+	fresh_reload
+	assert_call_count "tailscale restart" 1
+}
+
 test_missing_tailscale_init_is_tolerated() {
 	setup
 	TAILSCALE_INIT="$SANDBOX/does-not-exist"
@@ -466,6 +540,261 @@ test_dns_forward_survives_switch_to_disabled() {
 	assert_call_count "uci del_list" 0
 }
 
+# --- run_tailscale_set -----------------------------------------------------
+#
+# A daemon built without auto-update support (ts_omit_clientupdate) rejects
+# every 'tailscale set' while the saved prefs have AutoUpdate.Apply=true. The
+# helper resets that flag once and retries, and must leave every other failure
+# alone.
+#
+# The fake CLI answers from a queue, one "<exit code>|<stderr text>" line per
+# invocation, and records every call. An invocation beyond the queue fails
+# with exit code 99, so an unbounded retry shows up as extra calls instead of
+# hanging the suite.
+UNSUPPORTED_MSG='Error: Auto-update support is disabled in this build'
+
+mk_fake_tailscale() {
+	TS_FAKE="$SANDBOX/tailscale"
+	TS_REPLIES="$SANDBOX/ts-replies"
+	TS_STDERR="$SANDBOX/ts-stderr"
+	: > "$TS_REPLIES"
+	cat > "$TS_FAKE" <<EOF
+#!/bin/sh
+echo "tailscale \$*" >> "$CALLS"
+reply=\$(head -n1 "$TS_REPLIES")
+[ -n "\$reply" ] || reply='99|unexpected extra tailscale call'
+tail -n +2 "$TS_REPLIES" > "$TS_REPLIES.next"
+mv "$TS_REPLIES.next" "$TS_REPLIES"
+msg=\${reply#*|}
+[ -z "\$msg" ] || echo "\$msg" >&2
+exit "\${reply%%|*}"
+EOF
+	chmod +x "$TS_FAKE"
+}
+
+ts_reply() {
+	echo "$1|$2" >> "$TS_REPLIES"
+}
+
+# Sets rc; whatever the helper writes to stderr ends up in $TS_STDERR.
+run_set() {
+	run_tailscale_set "$TS_FAKE" set --accept-routes=true 2> "$TS_STDERR"
+	rc=$?
+}
+
+assert_rc() {
+	if [ "$rc" = "$1" ]; then
+		pass
+	else
+		fail "exit code: want $1, got $rc"
+	fi
+}
+
+assert_ts_calls() {
+	local want="$1" got
+	got=$(calls | grep '^tailscale ')
+	if [ "$got" = "$want" ]; then
+		pass
+	else
+		fail "tailscale calls: want [$(printf '%s' "$want" | tr '\n' ';')], got [$(printf '%s' "$got" | tr '\n' ';')]"
+	fi
+}
+
+assert_stderr_has() {
+	if grep -qF -- "$1" "$TS_STDERR"; then
+		pass
+	else
+		fail "stderr lacks '$1', got: $(tr '\n' ';' < "$TS_STDERR")"
+	fi
+}
+
+assert_stderr_lacks() {
+	if grep -qF -- "$1" "$TS_STDERR"; then
+		fail "stderr unexpectedly has '$1'"
+	else
+		pass
+	fi
+}
+
+test_set_success_runs_once_without_reset() {
+	setup
+	mk_fake_tailscale
+	ts_reply 0 ''
+
+	run_set
+	assert_rc 0
+	assert_ts_calls "tailscale set --accept-routes=true"
+	assert_no_call "logger"
+}
+
+# The reported bug: reset the flag, then apply the very same arguments again.
+test_set_unsupported_auto_update_resets_and_retries() {
+	setup
+	mk_fake_tailscale
+	ts_reply 1 "$UNSUPPORTED_MSG"
+	ts_reply 0 ''
+	ts_reply 0 ''
+
+	run_set
+	assert_rc 0
+	assert_ts_calls "tailscale set --accept-routes=true
+tailscale set --auto-update=false
+tailscale set --accept-routes=true"
+	assert_call "logger .*resetting it"
+	# the first attempt was recovered from, so its error must not leak out
+	assert_stderr_lacks "Auto-update support is disabled"
+}
+
+# Any other failure is not ours to fix: no reset, same exit code, same message.
+test_set_other_failure_is_left_alone() {
+	setup
+	mk_fake_tailscale
+	ts_reply 7 'failed to connect to local tailscaled'
+
+	run_set
+	assert_rc 7
+	assert_ts_calls "tailscale set --accept-routes=true"
+	assert_stderr_has "failed to connect to local tailscaled"
+}
+
+# When the reset itself fails there is nothing to retry: report the original error.
+test_set_failed_reset_skips_retry() {
+	setup
+	mk_fake_tailscale
+	ts_reply 1 "$UNSUPPORTED_MSG"
+	ts_reply 1 'reset failed'
+
+	run_set
+	assert_rc 1
+	assert_ts_calls "tailscale set --accept-routes=true
+tailscale set --auto-update=false"
+	assert_stderr_has "Auto-update support is disabled in this build"
+	assert_call "logger .*Failed to reset auto-update"
+}
+
+# One retry only: a second rejection is returned as is, never reset in a loop.
+test_set_retry_is_bounded() {
+	setup
+	mk_fake_tailscale
+	ts_reply 1 "$UNSUPPORTED_MSG"
+	ts_reply 0 ''
+	ts_reply 1 "$UNSUPPORTED_MSG"
+
+	run_set
+	assert_rc 1
+	assert_ts_calls "tailscale set --accept-routes=true
+tailscale set --auto-update=false
+tailscale set --accept-routes=true"
+	assert_stderr_has "Auto-update support is disabled in this build"
+}
+
+# The message alone is not enough, the command has to have failed.
+test_set_message_on_success_is_ignored() {
+	setup
+	mk_fake_tailscale
+	ts_reply 0 "$UNSUPPORTED_MSG"
+
+	run_set
+	assert_rc 0
+	assert_ts_calls "tailscale set --accept-routes=true"
+}
+
+# The caller gets the exit code and message of the retry, not of the first try.
+test_set_reports_the_retry_result() {
+	setup
+	mk_fake_tailscale
+	ts_reply 1 "$UNSUPPORTED_MSG"
+	ts_reply 0 ''
+	ts_reply 3 'some other error'
+
+	run_set
+	assert_rc 3
+	assert_stderr_has "some other error"
+	assert_stderr_lacks "Auto-update support is disabled"
+}
+
+# --- apply_settings and a daemon that is not running -----------------------
+#
+# apply_settings resolves the CLI from fixed paths, so it is run from a copy of
+# the script whose CLI paths point at the fake CLI.
+load_apply_settings() {
+	sed -e "s|/usr/sbin/tailscale|$TS_FAKE|g" \
+	    -e "s|/usr/bin/tailscale|$TS_FAKE|g" "$INIT_SCRIPT" > "$SANDBOX/init-fake-cli"
+	# shellcheck disable=SC1090,SC1091
+	. "$SANDBOX/init-fake-cli"
+	# sourcing put the production defaults back
+	STATE_DIR="$SANDBOX/state"
+	DAEMON_SIG_FILE="$STATE_DIR/daemon"
+	ENABLED_FILE="$STATE_DIR/enabled"
+	DISABLE_REQUEST_FILE="$STATE_DIR/disable-requested"
+	DNS_MODE_FILE="$STATE_DIR/dns_mode"
+	TAILSCALE_INIT="$SANDBOX/tailscale.init"
+}
+
+# Boot with the service disabled: the autostart link is gone, the daemon is not
+# running and `tailscale set` could only wait and fail.
+test_apply_settings_skips_set_when_daemon_not_running() {
+	setup
+	mk_fake_tailscale
+	load_apply_settings
+	echo 0 > "$DAEMON_RUNNING"
+
+	apply_settings
+	rc=$?
+	assert_rc 0
+	# positive anchor: the daemon really was probed
+	assert_call "tailscale running"
+	assert_no_call "tailscale set"
+	assert_call "logger .*skip applying settings"
+}
+
+# The normal case: the daemon is up, so the settings are applied as before.
+test_apply_settings_runs_set_when_daemon_running() {
+	setup
+	mk_fake_tailscale
+	load_apply_settings
+	echo 1 > "$DAEMON_RUNNING"
+	ts_reply 0 ''
+	ts_reply 0 ''
+
+	apply_settings
+	rc=$?
+	assert_rc 0
+	assert_call "tailscale set"
+	assert_no_call "skip applying settings"
+}
+
+# Without the init script the daemon cannot be probed, so keep applying.
+test_apply_settings_runs_set_without_init_script() {
+	setup
+	mk_fake_tailscale
+	load_apply_settings
+	TAILSCALE_INIT="$SANDBOX/does-not-exist"
+	ts_reply 0 ''
+	ts_reply 0 ''
+
+	apply_settings
+	rc=$?
+	assert_rc 0
+	assert_call "tailscale set"
+}
+
+# apply_settings resolves the CLI from fixed paths, so the call site cannot be
+# exercised from here. Guard it at source level instead.
+test_source_apply_settings_uses_the_helper() {
+	if grep -qE '^[[:space:]]*run_tailscale_set "\$ts_bin" "\$@"' "$INIT_SCRIPT"; then
+		pass
+	else
+		fail "apply_settings does not call run_tailscale_set"
+	fi
+
+	if grep -qE '^[[:space:]]*"\$ts_bin" "\$@"' "$INIT_SCRIPT"; then
+		fail "a bare tailscale call bypasses run_tailscale_set"
+	else
+		pass
+	fi
+}
+
 # Some older versions call /etc/init.d/tailscale by absolute path and cannot
 # be observed. Those are skipped in negative-control mode so a red test always
 # means "the suite caught something", never "the harness could not see it".
@@ -483,14 +812,53 @@ for t in \
 	test_manual_disable_then_enabled_config_starts \
 	test_boot_keeps_existing_state_record \
 	test_enable_does_not_start_a_running_daemon \
+	test_reload_service_stops_a_disabled_service \
+	test_reload_service_keeps_a_disabled_service_down \
+	test_reload_service_nondefault_daemon_option_no_restart \
+	test_reload_service_restarts_on_daemon_option_change \
 	test_missing_tailscale_init_is_tolerated \
 	test_dns_forward_only_on_transition \
-	test_dns_forward_survives_switch_to_disabled
+	test_dns_forward_survives_switch_to_disabled \
+	test_set_success_runs_once_without_reset \
+	test_set_unsupported_auto_update_resets_and_retries \
+	test_set_other_failure_is_left_alone \
+	test_set_failed_reset_skips_retry \
+	test_set_retry_is_bounded \
+	test_set_message_on_success_is_ignored \
+	test_set_reports_the_retry_result \
+	test_apply_settings_skips_set_when_daemon_not_running \
+	test_apply_settings_runs_set_when_daemon_running \
+	test_apply_settings_runs_set_without_init_script \
+	test_source_apply_settings_uses_the_helper
 do
 	if [ -n "${SETTINGS_INIT:-}" ] && [ "$t" = "test_enable_after_disable_starts" ] && [ "$abs_observable" -eq 0 ]; then
 		echo "skip: $t (absolute init path not observable here)"
 		skipped=$((skipped + 1))
 		continue
+	fi
+	# The frozen pre-fix script predates run_tailscale_set, so these tests would
+	# fail there for a reason unrelated to issue #80.
+	# It also loads the config inside handle_service_state and calls the daemon
+	# init by absolute path, so the reload_service tests cannot be evaluated
+	# against it.
+	if [ "$NEGATIVE" -eq 1 ]; then
+		case "$t" in
+			test_apply_settings_*)
+				echo "skip: $t (not about issue #80)"
+				skipped=$((skipped + 1))
+				continue
+				;;
+			test_set_*|test_source_apply_settings_uses_the_helper)
+				echo "skip: $t (the pre-fix script predates run_tailscale_set)"
+				skipped=$((skipped + 1))
+				continue
+				;;
+			test_reload_service_*)
+				echo "skip: $t (the pre-fix script loads the config itself and is not observable here)"
+				skipped=$((skipped + 1))
+				continue
+				;;
+		esac
 	fi
 	current_test="$t"
 	echo "test: $t"

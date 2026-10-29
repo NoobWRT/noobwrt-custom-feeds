@@ -69,14 +69,14 @@ modem_status()
 redial()
 {
     qmodem_valid_instance "$1" || return 2
-    hang "$1" || return $?
-    dial "$1"
+    hang $1
+    dial $1
 }
 
 reconfigure()
 {
-    qmodem_valid_instance "$1" || return 2
-    hang "$1" || return $?
+    case "$1" in ''|*[!A-Za-z0-9_]*) return 1;; esac
+    hang "$1"
     force_stop=0
     config_load qmodem
     config_get g_enabled main enable_dial

@@ -27,7 +27,8 @@
 					"getTrafficUsageRanking",
 					"getTrafficUsageIncrements",
 					"getRateLimitWhitelist",
-					"getTrafficQuotas"
+					"getTrafficQuotas",
+					"getGeoipStatus"
 				]
 			},
 			"uci": [
@@ -46,6 +47,7 @@
 					"getConnectionFlows",
 					"setHostname",
 					"deleteDevice",
+					"deleteDevices",
 					"getDnsQueries",
 					"getDnsStats",
 					"getScheduleLimits",
@@ -68,12 +70,21 @@
 					"updateScheduleLimit",
 					"getTrafficQuotas",
 					"setTrafficQuota",
-					"deleteTrafficQuota"
+					"setDirectionalTrafficQuota",
+					"setTrafficQuotaConfig",
+					"deleteTrafficQuota",
+					"getGeoipStatus",
+					"manageGeoip"
 				]
 			},
 			"uci": [
 				"bandix"
-			]
+			],
+			"file": {
+				"/tmp/bandix-geoip-upload.mmdb": [
+					"write"
+				]
+			}
 		}
 	}
 }

@@ -221,12 +221,6 @@ msgstr "WAN アップロード済み"
 msgid "WAN Downloaded"
 msgstr "WAN ダウンロード済み"
 
-msgid "Total Upload"
-msgstr "総アップロード速度"
-
-msgid "Total Download"
-msgstr "総ダウンロード速度"
-
 msgid "LAN Upload"
 msgstr "LAN アップロード速度"
 
@@ -422,17 +416,11 @@ msgstr "ページ"
 msgid "of"
 msgstr "の"
 
-msgid "Total"
-msgstr "合計"
-
 msgid "records"
 msgstr "件の記録"
 
 msgid "Per Page"
 msgstr "ページあたり"
-
-msgid ""
-msgstr "件"
 
 msgid "Total Queries"
 msgstr "総クエリ数"
@@ -665,11 +653,11 @@ msgstr "速度単位"
 msgid "Select the speed display unit format"
 msgstr "速度表示の単位形式を選択"
 
-msgid "Bytes Units (B/s, KB/s, MB/s)"
-msgstr "バイト単位 (B/s, KB/s, MB/s)"
+msgid "Bytes Units (B/s, KiB/s, MiB/s)"
+msgstr "バイト単位 (B/s, KiB/s, MiB/s)"
 
-msgid "Bits Units (bps, Kbps, Mbps)"
-msgstr "ビット単位 (bps, Kbps, Mbps)"
+msgid "Bits Units (bps, kbps, Mbps)"
+msgstr "ビット単位 (bps, kbps, Mbps)"
 
 msgid "Interface Theme"
 msgstr "インターフェーステーマ"
@@ -704,8 +692,8 @@ msgstr "デバイスのオフライン検出のタイムアウトを設定（秒
 msgid "Realtime Traffic Period"
 msgstr "リアルタイムトラフィック周期"
 
-msgid "10 minutes interval uses about 60 KB per device"
-msgstr "10分間隔でデバイスあたり約60KBを使用"
+msgid "10 minutes interval uses about 60 KiB per device"
+msgstr "10分間隔でデバイスあたり約60 KiBを使用"
 
 msgid "Data Flush Interval"
 msgstr "データフラッシュ間隔"
@@ -938,18 +926,6 @@ msgstr "最大"
 msgid "Minimum"
 msgstr "最小"
 
-msgid "WAN Upload"
-msgstr "WAN アップロード"
-
-msgid "WAN Download"
-msgstr "WAN ダウンロード"
-
-msgid "WAN Uploaded"
-msgstr "WAN アップロード量"
-
-msgid "WAN Downloaded"
-msgstr "WAN ダウンロード量"
-
 msgid "Clear Traffic Data"
 msgstr "トラフィックデータを削除"
 
@@ -1082,17 +1058,11 @@ msgstr "ダウンロードしてインストール"
 msgid "Manual Download"
 msgstr "手動ダウンロード"
 
-msgid "Close"
-msgstr "閉じる"
-
 msgid "Starting installation... The page will refresh automatically in 30 seconds."
 msgstr "インストールを開始しています... ページは30秒後に自動的に更新されます。"
 
 msgid "Please clear your browser cache manually after updating."
 msgstr "更新後、ブラウザのキャッシュを手動でクリアしてください。"
-
-msgid "Traffic Statistics"
-msgstr "トラフィック統計"
 
 msgid "Traffic Statistics"
 msgstr "トラフィック統計"
@@ -1351,3 +1321,260 @@ msgstr "利用不可"
 
 msgid "Show reply direction"
 msgstr "応答方向を表示"
+
+msgid "Available space"
+msgstr "空き容量"
+
+msgid "Cannot prepare storage. Check free space and directory permissions."
+msgstr "保存先を準備できません。空き容量と権限を確認してください。"
+
+msgid "Checking database version…"
+msgstr "データベースのバージョンを確認中…"
+
+msgid "Checking storage…"
+msgstr "空き容量を確認中…"
+
+msgid "Choose an uncompressed .mmdb file within the upload size limit."
+msgstr "上限サイズ以内の未圧縮 .mmdb ファイルを選択してください。"
+
+msgid "Country/region + network organization — approximately 12 MiB"
+msgstr "国・地域 + ネットワーク組織 · 約 12 MiB"
+
+msgid "Country/region — approximately 3.3 MiB"
+msgstr "国・地域 · 約 3.3 MiB"
+
+msgid "Data source"
+msgstr "データ提供元"
+
+msgid "Data terms"
+msgstr "データ利用規約"
+
+msgid "Database contents"
+msgstr "データベースの内容"
+
+msgid "Database directory"
+msgstr "データベース保存先"
+
+msgid "Database enabled"
+msgstr "データベースを有効にしました"
+
+msgid "Database is up to date"
+msgstr "データベースは最新です"
+
+msgid "Database operation failed"
+msgstr "データベース操作に失敗しました"
+
+msgid "Database operation failed. Retry or upload a local database."
+msgstr "操作に失敗しました。再試行するかローカルのデータベースをアップロードしてください。"
+
+msgid "Database upload failed"
+msgstr "データベースのアップロードに失敗しました"
+
+msgid "Database validation failed. The previous database is unchanged."
+msgstr "検証に失敗しました。既存のデータベースは保持されています。"
+
+msgid "Delete"
+msgstr "削除"
+
+msgid "Delete GeoIP databases"
+msgstr "GeoIP データベースを削除"
+
+msgid "Disabled"
+msgstr "無効"
+
+msgid "Documentation address"
+msgstr "文書用アドレス"
+
+msgid "Download and enable"
+msgstr "ダウンロードして有効化"
+
+msgid "Download cancelled"
+msgstr "ダウンロードを中止しました"
+
+msgid "Downloading database…"
+msgstr "データベースをダウンロード中…"
+
+msgid "Enable IP location lookup"
+msgstr "IP 位置情報の検索を有効化"
+
+msgid "Enabled"
+msgstr "有効"
+
+msgid "GeoIP service is unavailable. Enable connection monitoring and apply settings, or update Bandix."
+msgstr "GeoIP を利用できません。接続監視を有効にして設定を適用するか、Bandix を更新してください。"
+
+msgid "IP location database"
+msgstr "IP 位置情報データベース"
+
+msgid "Importing database…"
+msgstr "データベースをインポート中…"
+
+msgid "Link-local address"
+msgstr "リンクローカルアドレス"
+
+msgid "Loading database…"
+msgstr "データベースを読み込み中…"
+
+msgid "Local network"
+msgstr "ローカルネットワーク"
+
+msgid "Loopback"
+msgstr "ループバック"
+
+msgid "Maximum upload size"
+msgstr "最大アップロードサイズ"
+
+msgid "Multicast"
+msgstr "マルチキャスト"
+
+msgid "Not installed"
+msgstr "未インストール"
+
+msgid "Private address"
+msgstr "プライベートアドレス"
+
+msgid "Province/city (uploaded database)"
+msgstr "都道府県・都市（アップロード済み）"
+
+msgid "Province/city + network organization — approximately 57 MiB"
+msgstr "都道府県・都市 + ネットワーク組織 · 約 57 MiB"
+
+msgid "Remove installed databases and disable IP location lookup?"
+msgstr "データベースを削除し、IP 位置情報の検索を無効にしますか？"
+
+msgid "Reserved address"
+msgstr "予約済みアドレス"
+
+msgid "Shared address (CGNAT)"
+msgstr "共有アドレス（CGNAT）"
+
+msgid "Storage used"
+msgstr "使用容量"
+
+msgid "The installed database could not be loaded. Download or upload it again."
+msgstr "データベースを読み込めません。再度ダウンロードまたはアップロードしてください。"
+
+msgid "Unknown"
+msgstr "不明"
+
+msgid "Unknown location"
+msgstr "位置情報不明"
+
+msgid "Unspecified address"
+msgstr "未指定アドレス"
+
+msgid "Update database"
+msgstr "データベースを更新"
+
+msgid "Upload an uncompressed Country, City or ASN .mmdb file. To add ASN, install a Country or City database first."
+msgstr "未圧縮の Country、City、ASN の .mmdb ファイルをアップロードできます。ASN の追加前に Country または City をインストールしてください。"
+
+msgid "Upload and enable"
+msgstr "アップロードして有効化"
+
+msgid "Upload database"
+msgstr "データベースをアップロード"
+
+msgid "Uploading database…"
+msgstr "データベースをアップロード中…"
+
+msgid "Use persistent storage or an external drive. Save and apply directory changes before downloading."
+msgstr "永続ストレージまたは外付けドライブを使用してください。保存先の変更を保存・適用してからダウンロードしてください。"
+
+msgid "Verifying database…"
+msgstr "データベースを検証中…"
+
+msgid "Version"
+msgstr "バージョン"
+
+msgid "Country/region"
+msgstr "国・地域"
+
+msgid "Province/city"
+msgstr "都道府県・都市"
+
+msgid "Network organization"
+msgstr "ネットワーク組織"
+
+msgid "Not enough free space for this database."
+msgstr "このデータベースを保存する空き容量が不足しています。"
+
+msgid "Required space"
+msgstr "必要な容量"
+
+msgid "Database ready"
+msgstr "データベースの準備完了"
+
+msgid "Listen Address"
+msgstr "待ち受けアドレス"
+
+msgid "IP address for Bandix to listen on. Use 127.0.0.1 for local access or 0.0.0.0 / :: for all interfaces."
+msgstr "Bandix が待ち受ける IP アドレス。ローカルアクセスには 127.0.0.1、すべてのインターフェースには 0.0.0.0 / :: を指定します。"
+
+msgid "ASN / network organization"
+msgstr "ASN / ネットワーク組織"
+
+msgid "Country/region + province/city"
+msgstr "国・地域 + 都道府県・市区町村"
+
+msgid "Database build dates"
+msgstr "データベースの作成日"
+
+msgid "Download contents"
+msgstr "ダウンロード内容"
+
+msgid "Installed data source"
+msgstr "インストール済みデータの提供元"
+
+msgid "Installed databases"
+msgstr "インストール済みデータベース"
+
+msgid "Release version"
+msgstr "リリースバージョン"
+
+msgid "Location and ASN databases work together."
+msgstr "位置情報と ASN のデータベースは併用されます。"
+
+msgid "Database details"
+msgstr "データベースの詳細"
+
+msgid "Apply directory changes before downloading."
+msgstr "ダウンロードする前にディレクトリの変更を適用してください。"
+
+msgid "Batch deletion is unavailable. Update the Bandix service."
+msgstr "一括削除を利用できません。Bandix サービスを更新してください。"
+
+#, c-format
+msgid "Delete selected devices (%d)? Their traffic history, hostname bindings, rate limits and quotas will also be removed. Online devices may reappear."
+msgstr "選択したデバイス（%d 台）を削除しますか？通信履歴、ホスト名の割り当て、速度制限、通信量の上限設定も削除されます。オンラインのデバイスは再表示されることがあります。"
+
+msgid "Delete selected"
+msgstr "選択したデバイスを削除"
+
+#, c-format
+msgid "Deleted: %d; not found: %d; failed: %d."
+msgstr "削除済み: %d、未検出: %d、失敗: %d。"
+
+msgid "Failed to delete devices"
+msgstr "デバイスの削除に失敗しました"
+
+msgid "Invalid batch deletion response"
+msgstr "一括削除の応答が無効です"
+
+msgid "Select all"
+msgstr "すべて選択"
+
+msgid "Select device"
+msgstr "デバイスを選択"
+
+msgid "Search this page: protocol, IP, port, location, ASN…"
+msgstr "このページを検索: プロトコル、IP、ポート、位置、ASN…"
+
+msgid "Search connections on this page"
+msgstr "このページの接続を検索"
+
+msgid "Matches on this page"
+msgstr "このページの一致件数"
+
+msgid "No matching connections on this page"
+msgstr "このページに一致する接続はありません"

@@ -12,6 +12,7 @@ log_file="${MODEM_RUNDIR}/${modem_config}_dir/dial_log"
 debug_subject="modem_dial"
 source "${SCRIPT_DIR}/generic.sh"
 source "${SCRIPT_DIR}/cmds/modem_dial.sh"
+. "${SCRIPT_DIR}/bridge_port_policy.sh"
 touch $log_file
 
 exec_pre_dial()
@@ -260,6 +261,15 @@ ensure_bridge_device()
     local current_type
     local current_name
     local current_ports
+    local confirmed_ethernet=''
+
+    if [ -n "$wwan_port" ]; then
+        if [ -n "${ethernet_check:-}" ] && [ "$wwan_port" = "${ethernet_5g:-}" ]; then
+            confirmed_ethernet="$wwan_port"
+        fi
+        qmodem_bridge_port_apply "$modem_config" "$wwan_port" "$modem_path" "$confirmed_ethernet" || return 1
+        [ "$QMODEM_BRIDGE_PORT_CHANGED" != 1 ] || bridge_network_dirty=1
+    fi
 
     bridge_section=$(get_bridge_device_section)
     bridge_device_section="$bridge_section"
@@ -392,6 +402,9 @@ cleanup_bridge_passthrough()
 
     bridge_network_dirty=0
     bridge_qmodem_dirty=0
+
+    qmodem_bridge_port_restore "$modem_config" || return 1
+    [ "$QMODEM_BRIDGE_PORT_CHANGED" != 1 ] || bridge_network_dirty=1
 
     config_load qmodem
     config_foreach restore_bridge_port_backup bridge-port-backup
@@ -702,27 +715,27 @@ check_ip()
 
 append_to_fw_zone()
 {
-    local fw_zone=$1
-    local if_name=$2
-    local fw_zone_path
-    source /etc/os-release
-    local os_version=${VERSION_ID:0:2}
+    local fw_zone=$1 if_name=$2 fw_zone_path origin_line network retained=""
+    # UCI represents a legacy space-separated scalar as one quoted list item
+    # after add_list. Normalize it before mixing modem and wired memberships.
+    case "$if_name" in ''|*[!A-Za-z0-9_-]*) return 2;; esac
     case "$fw_zone" in
-        ''|*[!0-9]*) fw_zone_path="firewall.${fw_zone}" ;;
-        *) fw_zone_path="firewall.@zone[${fw_zone}]" ;;
+        ''|*[!0-9]*) fw_zone_path="firewall.${fw_zone}";;
+        *) fw_zone_path="firewall.@zone[${fw_zone}]";;
     esac
-    origin_line=$(uci -q get ${fw_zone_path}.network)
-    for i in $origin_line; do
-        [ "$i" = "$if_name" ] && return
+    origin_line=$(uci -q get "${fw_zone_path}.network" | tr -d '\047\134')
+    for network in $origin_line "$if_name"; do
+        case "$network" in ''|*[!A-Za-z0-9_-]*) continue;; esac
+        case " $retained " in *" $network "*) continue;; esac
+        retained="${retained:+$retained }$network"
     done
-    if [ "$os_version" -le 21 ];then
-        if [ -n "$origin_line" ];then
-            uci set ${fw_zone_path}.network="${origin_line} ${if_name}"
-        elif [ -z "$origin_line" ];then
-            uci set ${fw_zone_path}.network="${if_name}"
-        fi
+    . /etc/os-release
+    local os_version=${VERSION_ID:0:2}
+    if [ "$os_version" -le 21 ]; then
+        uci set "${fw_zone_path}.network=$retained"
     else
-        uci add_list ${fw_zone_path}.network=${if_name}
+        uci -q delete "${fw_zone_path}.network"
+        for network in $retained; do uci -q add_list "${fw_zone_path}.network=$network"; done
     fi
 }
 
@@ -740,7 +753,7 @@ remove_from_fw_zone()
         ''|*[!0-9]*) fw_zone_path="firewall.${fw_zone}" ;;
         *) fw_zone_path="firewall.@zone[${fw_zone}]" ;;
     esac
-    origin_line=$(uci -q get ${fw_zone_path}.network)
+    origin_line=$(uci -q get "${fw_zone_path}.network" | tr -d '\047\134')
     for network in $origin_line; do
         if [ "$network" = "$if_name" ]; then
             found=1
@@ -990,6 +1003,13 @@ set_if()
     if [ "$network_reload_flag" -eq 1 ] || [ "$interface_update_flag" -eq 1 ] || [ "$bridge_network_dirty" -eq 1 ]; then
         if [ "$bridge_network_dirty" -eq 1 ]; then /etc/init.d/network restart
         else ifup "$interface_name"; [ "$env6" != 1 ] || ifup "$interface6_name"; fi
+    elif [ "$proto" = qmodem_runtime ] && [ "$env4" = 1 ]; then
+        # A redial may leave unchanged UCI settings but a torn-down protocol.
+        # Rearm setup/replay before CM publishes this generation's IPv4 event.
+        ifup "$interface_name"
+    fi
+    if [ "$bridge_enabled" = 1 ] && [ -n "$set_modem_netcard" ]; then
+        qmodem_bridge_port_activate "$set_modem_netcard" || { ifdown "$interface_name"; return 1; }
     fi
     [ "$firewall_reload_flag" -eq 0 ] || /etc/init.d/firewall restart
     [ "$dhcp_reload_flag" -eq 0 ] || /etc/init.d/dhcp restart

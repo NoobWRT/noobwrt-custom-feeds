@@ -4,6 +4,7 @@
 'require ui';
 'require uci';
 'require rpc';
+'require bandix.geoip as geoip';
 'require tools.widgets as widgets';
 
 
@@ -230,6 +231,13 @@ return view.extend({
 		s = m.section(form.NamedSection, 'general', 'general', _('Basic Settings'));
 		s.description = _('Configure basic parameters for Bandix service');
 		s.addremove = false;
+
+		o = s.option(form.Value, 'host', _('Listen Address'),
+			_('IP address for Bandix to listen on. Use 127.0.0.1 for local access or 0.0.0.0 / :: for all interfaces.'));
+		o.default = '127.0.0.1';
+		o.datatype = 'ipaddr("nomask")';
+		o.placeholder = '127.0.0.1';
+		o.rmempty = false;
 
 		// 添加端口设置选项
 		o = s.option(form.Value, 'port', _('Port'),
@@ -686,8 +694,8 @@ return view.extend({
 		// 添加网速单位选择选项
 		o = s.option(form.ListValue, 'speed_unit', _('Speed Units'),
 			_('Select the speed display unit format'));
-		o.value('bytes', _('Bytes Units (B/s, KB/s, MB/s)'));
-		o.value('bits', _('Bits Units (bps, Kbps, Mbps)'));
+		o.value('bytes', _('Bytes Units (B/s, KiB/s, MiB/s)'));
+		o.value('bits', _('Bits Units (bps, kbps, Mbps)'));
 		o.default = 'bytes';
 		o.rmempty = false;
 
@@ -783,6 +791,15 @@ return view.extend({
 		o = s.option(form.Flag, 'enabled', _('Enable Connection Monitoring'),
 			_('Enable Bandix connection monitoring'));
 		o.default = '0';
+		o.rmempty = false;
+
+		o = s.option(form.DummyValue, '_geoip_manager', _('IP location database'));
+		o.renderWidget = function () { return geoip.render(); };
+
+		o = s.option(form.Value, 'geoip_dir', _('Database directory'));
+		o.default = '/usr/share/bandix-geoip';
+		o.placeholder = '/usr/share/bandix-geoip';
+		o.datatype = 'directory';
 		o.rmempty = false;
 
 		// 4. DNS监控设置部分 (dns)

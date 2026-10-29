@@ -221,12 +221,6 @@ msgstr "WAN 已上传"
 msgid "WAN Downloaded"
 msgstr "WAN 已下载"
 
-msgid "Total Upload"
-msgstr "总上传速率"
-
-msgid "Total Download"
-msgstr "总下载速率"
-
 msgid "LAN Upload"
 msgstr "LAN 上传速率"
 
@@ -419,17 +413,11 @@ msgstr "第"
 msgid "of"
 msgstr "页，共"
 
-msgid "Total"
-msgstr "全部"
-
 msgid "records"
 msgstr "条记录"
 
 msgid "Per Page"
 msgstr "每页显示"
-
-msgid ""
-msgstr "条"
 
 msgid "Total Queries"
 msgstr "总查询数"
@@ -662,11 +650,11 @@ msgstr "网速单位"
 msgid "Select the speed display unit format"
 msgstr "选择网速显示的单位格式"
 
-msgid "Bytes Units (B/s, KB/s, MB/s)"
-msgstr "字节单位 (B/s, KB/s, MB/s)"
+msgid "Bytes Units (B/s, KiB/s, MiB/s)"
+msgstr "字节单位 (B/s, KiB/s, MiB/s)"
 
-msgid "Bits Units (bps, Kbps, Mbps)"
-msgstr "比特单位 (bps, Kbps, Mbps)"
+msgid "Bits Units (bps, kbps, Mbps)"
+msgstr "比特单位 (bps, kbps, Mbps)"
 
 msgid "Interface Theme"
 msgstr "界面主题"
@@ -701,8 +689,8 @@ msgstr "设置设备离线判断的超时时间（秒）。超过此时间未活
 msgid "Realtime Traffic Period"
 msgstr "实时流量周期"
 
-msgid "10 minutes interval uses about 60 KB per device"
-msgstr "10分钟历史周期，每个设备占用 60KB"
+msgid "10 minutes interval uses about 60 KiB per device"
+msgstr "10分钟历史周期，每个设备占用 60 KiB"
 
 msgid "Data Flush Interval"
 msgstr "数据 flush 间隔"
@@ -852,7 +840,7 @@ msgid "Please select at least one day"
 msgstr "请至少选择一天"
 
 msgid "No scheduled rules yet, click \"Add Rule\" to start setting"
-msgstr "还没有定时限速规则，点击"添加规则"开始设置"
+msgstr "还没有定时限速规则，点击\"添加规则\"开始设置"
 
 msgid "Loading..."
 msgstr "加载中..."
@@ -934,18 +922,6 @@ msgstr "最大值"
 
 msgid "Minimum"
 msgstr "最小值"
-
-msgid "WAN Upload"
-msgstr "WAN 上传"
-
-msgid "WAN Download"
-msgstr "WAN 下载"
-
-msgid "WAN Uploaded"
-msgstr "WAN 上传量"
-
-msgid "WAN Downloaded"
-msgstr "WAN 下载量"
 
 msgid "Clear Traffic Data"
 msgstr "删除流量数据"
@@ -1079,9 +1055,6 @@ msgstr "下载并安装"
 msgid "Manual Download"
 msgstr "手动下载"
 
-msgid "Close"
-msgstr "关闭"
-
 msgid "Starting installation... The page will refresh automatically in 30 seconds."
 msgstr "开始安装... 页面将在30秒后自动刷新。"
 
@@ -1093,9 +1066,6 @@ msgstr "有更新"
 
 msgid "Update available, click to go to settings"
 msgstr "有更新，点击前往设置"
-
-msgid "Traffic Statistics"
-msgstr "流量统计"
 
 msgid "Traffic Statistics"
 msgstr "流量统计"
@@ -1378,3 +1348,401 @@ msgstr "每分钟"
 
 msgid "Show reply direction"
 msgstr "显示回复方向"
+
+msgid "Available space"
+msgstr "可用空间"
+
+msgid "Cannot prepare storage. Check free space and directory permissions."
+msgstr "无法准备存储，请检查剩余空间和目录权限。"
+
+msgid "Checking database version…"
+msgstr "正在检查数据库版本…"
+
+msgid "Checking storage…"
+msgstr "正在检查存储空间…"
+
+msgid "Choose an uncompressed .mmdb file within the upload size limit."
+msgstr "请选择未压缩且未超过上传大小限制的 .mmdb 文件。"
+
+msgid "Country/region + network organization — approximately 12 MiB"
+msgstr "国家/地区 + 网络组织 · 约 12 MiB"
+
+msgid "Country/region — approximately 3.3 MiB"
+msgstr "国家/地区 · 约 3.3 MiB"
+
+msgid "Data source"
+msgstr "数据来源"
+
+msgid "Data terms"
+msgstr "数据使用条款"
+
+msgid "Database contents"
+msgstr "数据库内容"
+
+msgid "Database directory"
+msgstr "数据库目录"
+
+msgid "Database enabled"
+msgstr "数据库已启用"
+
+msgid "Database is up to date"
+msgstr "数据库已是最新版本"
+
+msgid "Database operation failed"
+msgstr "数据库操作失败"
+
+msgid "Database operation failed. Retry or upload a local database."
+msgstr "数据库操作失败，请重试或上传本地数据库。"
+
+msgid "Database upload failed"
+msgstr "数据库上传失败"
+
+msgid "Database validation failed. The previous database is unchanged."
+msgstr "数据库校验失败，原数据库未更改。"
+
+msgid "Delete"
+msgstr "删除"
+
+msgid "Delete GeoIP databases"
+msgstr "删除 IP 归属地数据库"
+
+msgid "Disabled"
+msgstr "已停用"
+
+msgid "Documentation address"
+msgstr "文档示例地址"
+
+msgid "Download and enable"
+msgstr "下载并启用"
+
+msgid "Download cancelled"
+msgstr "下载已取消"
+
+msgid "Downloading database…"
+msgstr "正在下载数据库…"
+
+msgid "Enable IP location lookup"
+msgstr "启用 IP 归属地查询"
+
+msgid "Enabled"
+msgstr "已启用"
+
+msgid "GeoIP service is unavailable. Enable connection monitoring and apply settings, or update Bandix."
+msgstr "IP 归属地服务不可用，请启用连接监控并应用设置，或更新 Bandix。"
+
+msgid "IP location database"
+msgstr "IP 归属地数据库"
+
+msgid "Importing database…"
+msgstr "正在导入数据库…"
+
+msgid "Link-local address"
+msgstr "链路本地地址"
+
+msgid "Loading database…"
+msgstr "正在加载数据库…"
+
+msgid "Local network"
+msgstr "局域网"
+
+msgid "Loopback"
+msgstr "回环地址"
+
+msgid "Maximum upload size"
+msgstr "上传大小上限"
+
+msgid "Multicast"
+msgstr "组播地址"
+
+msgid "Not installed"
+msgstr "未安装"
+
+msgid "Private address"
+msgstr "私有地址"
+
+msgid "Province/city (uploaded database)"
+msgstr "省市（已上传的数据库）"
+
+msgid "Province/city + network organization — approximately 57 MiB"
+msgstr "省市 + 网络组织 · 约 57 MiB"
+
+msgid "Remove installed databases and disable IP location lookup?"
+msgstr "删除已安装的数据库并停用 IP 归属地查询？"
+
+msgid "Reserved address"
+msgstr "保留地址"
+
+msgid "Shared address (CGNAT)"
+msgstr "共享地址（CGNAT）"
+
+msgid "Storage used"
+msgstr "存储占用"
+
+msgid "The installed database could not be loaded. Download or upload it again."
+msgstr "无法加载已安装的数据库，请重新下载或上传。"
+
+msgid "Unknown"
+msgstr "未知"
+
+msgid "Unknown location"
+msgstr "归属地未知"
+
+msgid "Unspecified address"
+msgstr "未指定地址"
+
+msgid "Update database"
+msgstr "更新数据库"
+
+msgid "Upload an uncompressed Country, City or ASN .mmdb file. To add ASN, install a Country or City database first."
+msgstr "可上传未压缩的 Country、City 或 ASN .mmdb 文件。添加 ASN 前，请先安装 Country 或 City 数据库。"
+
+msgid "Upload and enable"
+msgstr "上传并启用"
+
+msgid "Upload database"
+msgstr "上传数据库"
+
+msgid "Uploading database…"
+msgstr "正在上传数据库…"
+
+msgid "Use persistent storage or an external drive. Save and apply directory changes before downloading."
+msgstr "请使用持久存储或外接磁盘。更改目录后，请先保存并应用，再下载数据库。"
+
+msgid "Verifying database…"
+msgstr "正在校验数据库…"
+
+msgid "Version"
+msgstr "版本"
+
+msgid "Country/region"
+msgstr "国家/地区"
+
+msgid "Province/city"
+msgstr "省市"
+
+msgid "Network organization"
+msgstr "网络组织"
+
+msgid "Not enough free space for this database."
+msgstr "没有足够空间安装此数据库。"
+
+msgid "Required space"
+msgstr "所需空间"
+
+msgid "Database ready"
+msgstr "数据库已就绪"
+
+msgid "Listen Address"
+msgstr "监听地址"
+
+msgid "IP address for Bandix to listen on. Use 127.0.0.1 for local access or 0.0.0.0 / :: for all interfaces."
+msgstr "Bandix 监听的 IP 地址。127.0.0.1 仅供本机访问，0.0.0.0 / :: 监听所有接口。"
+
+msgid "ASN / network organization"
+msgstr "ASN / 网络组织"
+
+msgid "Country/region + province/city"
+msgstr "国家/地区 + 省市"
+
+msgid "Database build dates"
+msgstr "数据库构建日期"
+
+msgid "Download contents"
+msgstr "待下载内容"
+
+msgid "Installed data source"
+msgstr "已安装数据来源"
+
+msgid "Installed databases"
+msgstr "已安装数据库"
+
+msgid "Release version"
+msgstr "发布版本"
+
+msgid "Location and ASN databases work together."
+msgstr "位置库与 ASN 库共同生效。"
+
+msgid "Database details"
+msgstr "数据库详情"
+
+msgid "Apply directory changes before downloading."
+msgstr "更改目录后，请先保存并应用，再下载。"
+
+msgid "Batch deletion is unavailable. Update the Bandix service."
+msgstr "批量删除不可用，请更新 Bandix 服务端。"
+
+#, c-format
+msgid "Delete selected devices (%d)? Their traffic history, hostname bindings, rate limits and quotas will also be removed. Online devices may reappear."
+msgstr "删除所选的 %d 台设备？流量历史、主机名绑定、限速规则及配额也将被清除。在线设备可能重新出现。"
+
+msgid "Delete selected"
+msgstr "删除所选设备"
+
+#, c-format
+msgid "Deleted: %d; not found: %d; failed: %d."
+msgstr "已删除：%d；不存在：%d；失败：%d。"
+
+msgid "Failed to delete devices"
+msgstr "删除设备失败"
+
+msgid "Invalid batch deletion response"
+msgstr "批量删除响应无效"
+
+msgid "Select all"
+msgstr "全选"
+
+msgid "Select device"
+msgstr "选择设备"
+
+msgid "Search this page: protocol, IP, port, location, ASN…"
+msgstr "搜索本页：协议、IP、端口、归属地、ASN…"
+
+msgid "Search connections on this page"
+msgstr "搜索本页连接"
+
+msgid "Matches on this page"
+msgstr "本页匹配"
+
+msgid "No matching connections on this page"
+msgstr "本页没有匹配的连接"
+
+msgid "Upload"
+msgstr "上传"
+
+msgid "Download"
+msgstr "下载"
+
+msgid "Used"
+msgstr "已用"
+
+msgid "Unit"
+msgstr "单位"
+
+msgid "Combined"
+msgstr "合计"
+
+msgid "Upload Quota"
+msgstr "上传配额"
+
+msgid "Download Quota"
+msgstr "下载配额"
+
+msgid "Upload blocked"
+msgstr "上传已阻断"
+
+msgid "Download blocked"
+msgstr "下载已阻断"
+
+msgid "Upload and download blocked"
+msgstr "上传、下载已阻断"
+
+msgid "Clear combined limits"
+msgstr "清除合计限制"
+
+msgid "Combined quota (upload + download)"
+msgstr "合计配额（上传 + 下载）"
+
+msgid "A combined limit blocks both directions when reached. Set it to 0 to remove that limit."
+msgstr "达到合计上限会同时阻断上传和下载；设为 0 可取消该限制。"
+
+msgid "WAN upload and download have separate quotas. Only the exhausted direction is blocked. Enter 0 for unlimited."
+msgstr "WAN 上传、下载分别计量，超额只阻断对应方向；输入 0 表示不限量。"
+
+msgid "Update the Bandix service to configure separate upload and download quotas."
+msgstr "请更新 Bandix 服务端，以设置独立的上传、下载配额。"
+
+msgid "Add"
+msgstr "添加"
+
+msgid "Combined quota"
+msgstr "合计配额"
+
+msgid "Edit"
+msgstr "编辑"
+
+msgid "Edit Schedule Rule"
+msgstr "编辑定时规则"
+
+msgid "Failed"
+msgstr "失败"
+
+msgid "Failed to connect to Bandix service"
+msgstr "无法连接 Bandix 服务"
+
+msgid "Failed to load data"
+msgstr "加载数据失败"
+
+msgid "Failed to load whitelist"
+msgstr "加载白名单失败"
+
+msgid "Failed to save schedule rule: "
+msgstr "保存定时规则失败： "
+
+msgid "Interface"
+msgstr "接口"
+
+msgid "Invalid MAC address"
+msgstr "MAC 地址无效"
+
+msgid "Invalid value"
+msgstr "输入值无效"
+
+msgid "Multiple time slots"
+msgstr "多个时间段"
+
+msgid "No data"
+msgstr "暂无数据"
+
+msgid "Not saved"
+msgstr "未保存"
+
+msgid "Only the selected mode takes effect. Switching modes preserves usage and clears the other limits when saved."
+msgstr "仅选中的模式生效。切换模式后保存，会保留已用流量并清除另一模式的上限。"
+
+msgid "Please select both start and end dates"
+msgstr "请选择开始和结束日期"
+
+msgid "Quota mode"
+msgstr "配额模式"
+
+msgid "Router"
+msgstr "路由器"
+
+msgid "Separate upload / download"
+msgstr "独立上传／下载配额"
+
+msgid "Show All"
+msgstr "显示全部"
+
+msgid "Show Top %d"
+msgstr "显示前 %d 台"
+
+msgid "Showing all %d devices"
+msgstr "显示全部 %d 台设备"
+
+msgid "Showing top %d of %d devices"
+msgstr "显示前 %d 台，共 %d 台设备"
+
+msgid "Start date must be earlier than end date"
+msgstr "开始日期必须早于结束日期"
+
+msgid "This service supports combined quotas only. Update Bandix to use separate quotas."
+msgstr "此服务端仅支持合计配额。升级 Bandix 后可使用独立配额。"
+
+msgid "Try using filters or smaller page size"
+msgstr "请尝试使用筛选或减少每页条数"
+
+msgid "WiFi Channel"
+msgstr "WiFi 信道"
+
+msgid "days"
+msgstr "天"
+
+msgid "hours"
+msgstr "小时"
+
+msgid "seconds"
+msgstr "秒"
+
+msgid "weeks"
+msgstr "周"

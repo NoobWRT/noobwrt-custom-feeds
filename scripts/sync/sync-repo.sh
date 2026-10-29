@@ -36,6 +36,23 @@ SYNC_BRANCH="${SYNC_BRANCH:-}"
 SYNC_REMOTE_PATH="${SYNC_REMOTE_PATH#/}"
 DEST_PARENT_DIR="$(dirname "${SYNC_DEST_DIR}")"
 
+# Check-only mode (set by check-upstream.sh): append the upstream commit this
+# sync would pull to SYNC_CHECK_OUTPUT, without cloning or touching the destination
+if [ -n "${SYNC_CHECK_OUTPUT:-}" ]; then
+    if [ -n "${SYNC_BRANCH}" ]; then
+        REFS=("refs/heads/${SYNC_BRANCH}" "refs/tags/${SYNC_BRANCH}")
+    else
+        REFS=(HEAD)
+    fi
+    if ! HEADS=$(git ls-remote "${SYNC_REPO_URL}" "${REFS[@]}"); then
+        echo "ERROR: Failed to query ${SYNC_REPO_URL} (branch: ${SYNC_BRANCH:-<default>})"
+        exit 1
+    fi
+    printf '%s\n' "${HEADS}" | sed "s|^|${SYNC_REPO_URL} ${SYNC_REMOTE_PATH} ${SYNC_DEST_DIR} |" >> "${SYNC_CHECK_OUTPUT}"
+    echo "Upstream: ${SYNC_REPO_URL} -> $(printf '%s' "${HEADS}" | head -1 | cut -f1)"
+    exit 0
+fi
+
 echo "Syncing from: ${SYNC_REPO_URL}"
 echo "Branch: ${SYNC_BRANCH:-<default>}"
 echo "Remote path: ${SYNC_REMOTE_PATH}"

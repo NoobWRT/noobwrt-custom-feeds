@@ -98,6 +98,14 @@ Actions:
 - Increments the patch number of the latest `vX.Y.Z` tag (`v1.0.0` → `v1.0.1`), starting at `v1.0.0`
 - Publishes the release with notes from `generate-release-notes.sh` (needs `GH_TOKEN`)
 
+### 12. check-upstream.sh
+**Purpose**: Detect whether any upstream repo moved, without cloning anything
+
+Actions:
+- Runs every sync wrapper in check-only mode (`SYNC_CHECK_OUTPUT`), so `sync-repo.sh` only does a `git ls-remote` of the configured branch
+- Writes the sorted upstream commits plus the sync scripts' checksums to `STATE_FILE` (default `.upstream-state`)
+- CI hashes that file every 6 hours and runs the full sync only when no earlier successful sync has seen the same hash
+
 ## Environment Variables
 
 These variables are set by the Jenkinsfile and used by the scripts:

@@ -2,7 +2,8 @@ name: Sync packages
 
 on:
   schedule:
-    - cron: '0 2 * * 0'  # weekly, Sunday 02:00 UTC
+    # Every 6 hours: a cheap ls-remote check; the full sync only runs when an upstream moved
+    - cron: '0 */6 * * *'
   push:
     branches:
       - main
@@ -23,7 +24,38 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      state_hash: ${{ steps.upstream.outputs.hash }}
+      needed: ${{ github.event_name != 'schedule' || steps.last_sync.outputs.cache-hit != 'true' }}
+    env:
+      SCRIPTS_DIR: ./scripts
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Check upstream commits
+        id: upstream
+        env:
+          STATE_FILE: ${{ runner.temp }}/upstream-state
+        run: |
+          bash ${SCRIPTS_DIR}/check-upstream.sh
+          echo "hash=$(sha256sum "${STATE_FILE}" | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      # A cache entry keyed by the state hash exists only if a sync already succeeded at this state
+      - name: Look up last synced state
+        id: last_sync
+        uses: actions/cache/restore@v4
+        with:
+          path: ${{ runner.temp }}/upstream-state
+          key: upstream-state-${{ steps.upstream.outputs.hash }}
+          lookup-only: true
+
   sync:
+    needs: check
+    if: needs.check.outputs.needed == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 60
     env:
@@ -66,6 +98,15 @@ jobs:
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: bash ${SCRIPTS_DIR}/create-release.sh
+
+      - name: Record synced upstream state
+        run: echo "${{ needs.check.outputs.state_hash }}" > "${{ runner.temp }}/upstream-state"
+
+      - name: Save synced upstream state
+        uses: actions/cache/save@v4
+        with:
+          path: ${{ runner.temp }}/upstream-state
+          key: upstream-state-${{ needs.check.outputs.state_hash }}
 
       - name: Cleanup
         if: always()

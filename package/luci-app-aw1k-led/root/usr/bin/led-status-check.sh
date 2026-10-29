@@ -162,10 +162,14 @@ fi
 
 # ─── Phone ───────────────────────────────────────────────────────────────────
 # The phone service (aw1000-rj11) sets the phone LED on every line change;
-# re-sync it here in case something else touched it. Off without the phone.
+# re-sync it here in case something else touched it. fxsd (openwrt-aw1000-phone)
+# drives the LED itself and re-asserts it, so leave it alone while fxsd runs.
+# Off without a phone service.
 if [ -x /usr/sbin/rj11_led ]; then
     /usr/sbin/rj11_led
     echo "Phone: LED follows the phone line"
+elif pidof fxsd >/dev/null 2>&1; then
+    echo "Phone: LED driven by fxsd"
 else
     echo none > /sys/class/leds/green:phone/trigger
     echo 0    > /sys/class/leds/green:phone/brightness

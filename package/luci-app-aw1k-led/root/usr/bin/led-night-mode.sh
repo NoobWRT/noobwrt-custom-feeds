@@ -71,7 +71,8 @@ _stop_blink() {
 
 # Phone LED belongs to the phone service (aw1000-rj11) when it is installed:
 # rj11_led shows the line state and keeps the LED dark during night mode
-# except while a call is ringing. Without it the phone LED stays off.
+# except while a call is ringing. Without it the phone LED stays off; fxsd
+# (openwrt-aw1000-phone) leaves the LED alone while the night flag exists.
 _phone_led() {
     if [ -x /usr/sbin/rj11_led ]; then
         /usr/sbin/rj11_led

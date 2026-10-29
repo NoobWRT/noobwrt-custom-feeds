@@ -103,12 +103,12 @@ A procd service (`ledstatus`) runs a loop that calls `led-status-check.sh` every
 | RGB | `{red,green,blue}:signal` | Mobile signal (CSQ) |
 | Green | `green:internet` | Internet connected |
 | Green | `green:wifi` | Wi-Fi enabled |
-| Green | `green:phone` | Phone line, set by aw1000-rj11's `rj11_led` |
+| Green | `green:phone` | Phone line, set by aw1000-rj11's `rj11_led` or by `fxsd` |
 | Green | `green:power` | Power, or the Night Mode beacon |
 
 ### Phone LED
 
-When [aw1000-rj11](https://github.com/nooblk-98/aw1000-rj11) is installed, the phone service controls this LED:
+When a phone service is installed ([aw1000-rj11](https://github.com/nooblk-98/aw1000-rj11), or `fxsd` from [openwrt-aw1000-phone](https://github.com/Perz3us/openwrt-aw1000-phone)), it controls this LED and the status loop leaves it alone:
 
 | State | LED |
 |-------|-----|

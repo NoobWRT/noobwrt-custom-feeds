@@ -56,15 +56,22 @@ PORT_CFG=$(uci get ledstatus.settings.modem_port 2>/dev/null)
 # The modem has more than one AT port (ttyUSB2/ttyUSB3 on the RG500Q) and
 # one can stop answering for a while, which left the 5G/signal LEDs dark
 # with a fixed port. Try the last port that answered first, then the
-# configured port, QModem's AT ports and every ttyUSB. The cache is keyed
-# on the setting so changing it takes effect on the next check.
+# configured port and QModem's AT ports. Every ttyUSB is only tried when
+# QModem lists none: the others (DIAG, NMEA) never answer and each one
+# costs a 5 s sms_tool timeout, which held the LEDs on stale colors.
+# The cache is keyed on the setting so changing it takes effect on the
+# next check.
 at_candidates() {
-    local cached_cfg cached_port
+    local cached_cfg cached_port qmodem_ports
     read -r cached_cfg cached_port 2>/dev/null < "$PORT_CACHE"
     [ "$cached_cfg" = "$PORT_CFG" ] && echo "$cached_port"
     [ "$PORT_CFG" != "auto" ] && echo "$PORT_CFG"
-    uci -q show qmodem | sed -n "s/.*\.\(at_port\|valid_at_ports\)=//p" | tr -d "'"
-    ls /dev/ttyUSB* 2>/dev/null
+    qmodem_ports=$(uci -q show qmodem | sed -n "s/.*\.\(at_port\|valid_at_ports\)=//p" | tr -d "'")
+    if [ -n "$qmodem_ports" ]; then
+        echo "$qmodem_ports"
+    else
+        ls /dev/ttyUSB* 2>/dev/null
+    fi
 }
 
 # at_cmd <command> <reply prefix>: print the reply from the first port that
@@ -135,9 +142,11 @@ else
 fi
 
 # ─── Internet connection ──────────────────────────────────────────────────────
+# Any default route counts, whatever the modem's network device is called
+# (wwan0, wwan0_1, rmnet_mhi0, qmimux0, ...): QModem names it per modem and
+# per release, and a fixed name left the internet LED blinking for good.
 found=0
-ip link show wwan0_1 >/dev/null 2>&1 && ip route show dev wwan0_1 | grep -q '^default' && found=1
-ip link show wwan0   >/dev/null 2>&1 && ip route show dev wwan0   | grep -q '^default' && found=1
+{ ip -4 route show default; ip -6 route show default; } 2>/dev/null | grep -q '^default' && found=1
 
 if [ "$found" -eq 1 ]; then
     echo none > /sys/class/leds/green:internet/trigger
@@ -149,15 +158,24 @@ else
 fi
 
 # ─── WiFi ─────────────────────────────────────────────────────────────────────
-WIFI_DISABLED=$(uci get wireless.@wifi-device[0].disabled 2>/dev/null)
-if [ "$WIFI_DISABLED" = "1" ]; then
+# Follow what netifd reports for the radios, not just the config: a radio
+# that is enabled but failed to come up (e.g. a broken /etc/board.json)
+# used to show solid on. On = a radio is up, blink = enabled but none is
+# up, off = all radios disabled.
+WIFI_STATUS=$(ubus call network.wireless status 2>/dev/null)
+WIFI_UP=$(echo "$WIFI_STATUS" | jsonfilter -e '@.*.up' 2>/dev/null | grep -c true)
+WIFI_ENABLED=$(echo "$WIFI_STATUS" | jsonfilter -e '@.*.disabled' 2>/dev/null | grep -c false)
+if [ "$WIFI_UP" -gt 0 ]; then
+    echo none > /sys/class/leds/green:wifi/trigger
+    echo 1    > /sys/class/leds/green:wifi/brightness
+    echo "WiFi: Up"
+elif [ "$WIFI_ENABLED" -gt 0 ]; then
+    echo heartbeat > /sys/class/leds/green:wifi/trigger
+    echo "WiFi: Enabled but not up"
+else
     echo none > /sys/class/leds/green:wifi/trigger
     echo 0    > /sys/class/leds/green:wifi/brightness
     echo "WiFi: Disabled"
-else
-    echo none > /sys/class/leds/green:wifi/trigger
-    echo 1    > /sys/class/leds/green:wifi/brightness
-    echo "WiFi: Enabled"
 fi
 
 # ─── Phone ───────────────────────────────────────────────────────────────────

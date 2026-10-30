@@ -137,10 +137,8 @@ function makeHarness(responses, opts) {
 	const ui = {
 		addNotification: function(t, node, c) {
 			notifications.push({ text: textOf(node), cls: c || 'info' });
-			return {};
-		},
-		addTimeLimitedNotification: function(t, nodes, ms, c) {
-			notifications.push({ text: (nodes || []).map(textOf).join(' '), cls: c || 'info' });
+			// the 23.05 shim fades the node out itself, so hand back a node
+			return { classList: { add: function() {}, remove: function() {} }, parentNode: null };
 		},
 		showModal: function(title, content) {
 			modals.push(content);
@@ -148,6 +146,13 @@ function makeHarness(responses, opts) {
 		hideModal: function() {},
 		changes: { apply: function() { return Promise.resolve(); } }
 	};
+
+	// opts.legacyUi models OpenWrt 23.05, whose ui.js only has addNotification.
+	if (!opts.legacyUi) {
+		ui.addTimeLimitedNotification = function(t, nodes, ms, c) {
+			notifications.push({ text: (nodes || []).map(textOf).join(' '), cls: c || 'info' });
+		};
+	}
 
 	const L = {
 		resolveDefault: function(p, d) { return Promise.resolve(p).catch(function() { return d; }); },
@@ -183,7 +188,7 @@ function makeHarness(responses, opts) {
 		formStub, rpc, ui, uci, E,
 		function(s) { return s; },
 		L,
-		{ getElementById: function(id) { return elements[id] || null; }, createElement: function() { return {}; } },
+		{ getElementById: function(id) { return elements[id] || null; }, createElement: function() { return {}; }, getElementsByClassName: function() { return []; } },
 		{
 			setTimeout: function(fn, ms) { return setTimeout(fn, opts.realTimers ? ms : Math.min(ms, 5)); },
 			open: function() { return null; }
@@ -464,6 +469,45 @@ async function run() {
 	const on = h15.calls.filter(function(c) { return c.method === 'set_service_enabled'; });
 	check('it is sent the submitted value 1 as a plain string',
 		on.length === 1 && on[0].wire.enabled === '1', JSON.stringify(on));
+
+	console.log('test: the timed notification falls back on a LuCI without addTimeLimitedNotification');
+	// OpenWrt 23.05's ui.js only has addNotification. Before the shim every
+	// notify call threw a TypeError there, including the firewall button.
+	const h16 = makeHarness({ setup_firewall: { success: true, changed_network: true, changed_firewall: true, job: 'running', run_id: 7 },
+		get_firewall_status: { success: true, state: 'done', step: 'done', message: '', run_id: 7 } },
+		{ legacyUi: true });
+	await h16.start();
+	let legacyErr = null;
+	try {
+		await h16.button('_setup_firewall')();
+		await settle();
+	} catch (e) {
+		legacyErr = e;
+	}
+	check('a legacy ui does not throw', legacyErr === null, String(legacyErr && legacyErr.message));
+	check('the notice is still shown',
+		h16.notifications.some(function(n) { return n.text.indexOf('Reloading') !== -1 || n.text.indexOf('committed') !== -1; }),
+		JSON.stringify(h16.notifications));
+
+	console.log('test: repeated renders keep a single status poller');
+	// Map.save() re-renders the form, so render() used to add a fresh 10 second
+	// get_status loop on every save and never remove the old ones.
+	const h17 = makeHarness({ get_status: { status: 'running', peers: {} } });
+	await h17.start();
+	check('the first render registers one poller', h17.pollers().length === 1,
+		String(h17.pollers().length));
+	await h17.obj.render([ {}, {}, { routes: [] } ]);
+	await h17.obj.render([ {}, {}, { routes: [] } ]);
+	check('two more renders do not add pollers', h17.pollers().length === 1,
+		String(h17.pollers().length));
+	let pollErr = null;
+	try {
+		await h17.pollers()[0]();
+	} catch (e) {
+		pollErr = e;
+	}
+	check('the poller tolerates missing DOM nodes', pollErr === null,
+		String(pollErr && pollErr.message));
 
 	console.log('');
 	console.log('passed: ' + passes + '  failed: ' + failures);

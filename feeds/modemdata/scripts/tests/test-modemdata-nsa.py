@@ -10,8 +10,8 @@ import shutil
 import subprocess
 import tempfile
 
-ROOT = Path(__file__).resolve().parents[2]
-HANDLER = ROOT / 'feeds/modemdata/modemdata/files/usr/share/modemdata/addon/usb/2c7c0800'
+ROOT = Path(os.environ['MODEMDATA_SOURCE_ROOT'])
+HANDLER = ROOT / 'modemdata/files/usr/share/modemdata/addon/usb/2c7c0800'
 BUSYBOX = shutil.which('busybox')
 if not BUSYBOX:
     raise SystemExit('BusyBox is required (no host-shell substitute)')

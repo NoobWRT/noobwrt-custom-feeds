@@ -30,7 +30,7 @@ python3 scripts/tests/test-modemdata-nsa.py
 bash -n scripts/sync/sync-modemdata.sh
 ```
 
-The 14 transport tests cover daemon/direct routing, failure without unsafe
+The 15 transport tests cover daemon/direct routing, failure without unsafe
 fallback, identity response filtering, and concurrent collectors. The 57 parser
 cases source the actual handler under BusyBox ash with synthetic AT fixtures.
 These do not establish cellular payload throughput or network attach success.

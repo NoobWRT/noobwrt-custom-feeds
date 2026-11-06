@@ -42,7 +42,9 @@ md_identity() (
 		/^[+^#]/ { next }
 		{
 			gsub(/"/, "")
-			if (kind != "text" && $0 !~ /^[0-9]+$/) next
+			# ICCIDs may have a trailing hexadecimal F padding nibble.
+			if (kind == "iccid" && $0 !~ /^[0-9]+[Ff]?$/) next
+			if (kind != "text" && kind != "iccid" && $0 !~ /^[0-9]+$/) next
 			if (kind == "imei" && (length < 15 || length > 16)) next
 			if (kind == "imsi" && (length < 5 || length > 15)) next
 			if (kind == "iccid" && (length < 18 || length > 22)) next

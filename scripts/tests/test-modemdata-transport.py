@@ -118,6 +118,11 @@ printf '\r\n+CEREG: 1\r\nAT+CGMI\r\nQuectel\r\nOK\r\n' ''')
         result = self.run_at('DEVICE="$PORT"; md_identity "AT+CGMM" "+CGMM:"')
         self.assertEqual(result.stdout, 'RG500Q-EA\n')
 
+    def test_iccid_accepts_padding_nibble(self):
+        self.stub('tom_modem', "printf '+QCCID: 8900000000000000000F\\r\\nOK\\r\\n'")
+        result = self.run_at('DEVICE="$PORT"; md_identity "AT+QCCID" "+QCCID:" iccid')
+        self.assertEqual(result.stdout, '8900000000000000000F\n')
+
     def test_identity_error_is_not_a_value(self):
         self.stub('tom_modem', "printf '\\r\\n+CME ERROR: 10\\r\\nERROR\\r\\n'")
         self.assertEqual(self.run_at('DEVICE="$PORT"; md_identity "AT+CIMI" "+CIMI:"').stdout, '')

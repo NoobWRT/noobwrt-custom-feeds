@@ -1,0 +1,34 @@
+name: Modemdata reporting tests
+
+on:
+  pull_request:
+    paths:
+      - 'feeds/modemdata/modemdata/**'
+      - 'scripts/patches/modemdata-reporting.patch'
+      - 'scripts/tests/test-modemdata-*'
+      - 'scripts/sync/sync-modemdata.sh'
+      - '.github/workflows/test-modemdata.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  regression:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install BusyBox for OpenWrt shell compatibility
+        run: sudo apt-get update && sudo apt-get install -y busybox
+      - name: AT transport and NSA parser regressions
+        run: |
+          python3 scripts/tests/test-modemdata-transport.py
+          python3 scripts/tests/test-modemdata-nsa.py
+      - name: Check shell syntax and persistent patch
+        run: |
+          bash -n scripts/sync/sync-modemdata.sh
+          busybox ash -n feeds/modemdata/modemdata/files/usr/share/modemdata/libs/at.sh
+          busybox ash -n feeds/modemdata/modemdata/files/usr/share/modemdata/params.sh
+          busybox ash -n feeds/modemdata/modemdata/files/usr/share/modemdata/addon/usb/2c7c0800
+          git apply --reverse --check --directory=feeds/modemdata scripts/patches/modemdata-reporting.patch
+          git diff --check

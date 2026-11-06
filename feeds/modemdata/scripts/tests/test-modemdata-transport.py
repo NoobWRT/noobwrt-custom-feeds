@@ -8,8 +8,8 @@ import subprocess
 import tempfile
 import unittest
 
-ROOT = Path(__file__).resolve().parents[2]
-LIB = ROOT / 'feeds/modemdata/modemdata/files/usr/share/modemdata/libs/at.sh'
+ROOT = Path(os.environ['MODEMDATA_SOURCE_ROOT'])
+LIB = ROOT / 'modemdata/files/usr/share/modemdata/libs/at.sh'
 
 class TransportTests(unittest.TestCase):
     def setUp(self):

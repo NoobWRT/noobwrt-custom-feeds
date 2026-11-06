@@ -4,7 +4,8 @@ on:
   pull_request:
     paths:
       - 'feeds/modemdata/modemdata/**'
-      - 'scripts/patches/modemdata-reporting.patch'
+      - 'feeds/modemdata/patches/modemdata/**'
+      - 'feeds/modemdata/scripts/**'
       - 'scripts/tests/test-modemdata-*'
       - 'scripts/sync/sync-modemdata.sh'
       - '.github/workflows/test-modemdata.yml'
@@ -22,13 +23,15 @@ jobs:
         run: sudo apt-get update && sudo apt-get install -y busybox
       - name: AT transport and NSA parser regressions
         run: |
-          python3 scripts/tests/test-modemdata-transport.py
-          python3 scripts/tests/test-modemdata-nsa.py
+          export MODEMDATA_SOURCE_ROOT="$PWD/feeds/modemdata"
+          python3 feeds/modemdata/scripts/tests/test-modemdata-transport.py
+          python3 feeds/modemdata/scripts/tests/test-modemdata-nsa.py
+          python3 scripts/tests/test-modemdata-sync.py
       - name: Check shell syntax and persistent patch
         run: |
           bash -n scripts/sync/sync-modemdata.sh
           busybox ash -n feeds/modemdata/modemdata/files/usr/share/modemdata/libs/at.sh
           busybox ash -n feeds/modemdata/modemdata/files/usr/share/modemdata/params.sh
           busybox ash -n feeds/modemdata/modemdata/files/usr/share/modemdata/addon/usb/2c7c0800
-          git apply --reverse --check --directory=feeds/modemdata scripts/patches/modemdata-reporting.patch
+          git apply --reverse --check --directory=feeds/modemdata feeds/modemdata/patches/modemdata/0001-quectel-reporting.patch
           git diff --check

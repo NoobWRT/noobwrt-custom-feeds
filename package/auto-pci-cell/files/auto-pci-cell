@@ -1,0 +1,991 @@
+#!/bin/sh
+
+NAME=auto-pci-cell
+RUN=${APC_RUN:-/var/run/auto-pci-cell}
+DATA=${APC_DATA:-/etc/auto-pci-cell}
+UPTIME=${APC_UPTIME:-/proc/uptime}
+FXS_STATE=${APC_FXS_STATE:-/var/run/fxsd.state}
+RJ11_STATE=${APC_RJ11_STATE:-/var/run/aw1000-rj11d.state}
+ORIG=$DATA/original
+STATUS=$RUN/status
+HISTORY=$RUN/history
+MAX_CELLS=5
+MAX_HOLD=900
+STABLE_SECS=600
+NL='
+'
+
+N=0
+PORT=
+TARGET=0
+RECOVERY=1
+STATE=starting
+DETAIL=
+BAD_SINCE=
+MISMATCH_SINCE=
+LAST_PROBE=-100000
+LAST_NEIGH=0
+ON_TARGET_SINCE=0
+AT_FAILS=0
+PENDING=0
+PROT_UNTIL=0
+PROTECT=none
+PHONE=none
+SMS_LAST=
+SMS_UNTIL=0
+NEIGH_OK=0
+STARTED=0
+LIST=main
+LIST_NAME=
+LIST_CHANGE=0
+PREV_LOCK=
+PROBE_NEXT=1
+LAST_LIST_CHECK=0
+S_ST=err
+
+now() {
+	read -r NOW _ < "$UPTIME"
+	NOW=${NOW%%.*}
+}
+
+log() {
+	logger -t "$NAME" "$*"
+}
+
+opt_int() {
+	local v
+
+	v=$(uci -q get "$NAME.main.$2")
+	case "$v" in
+	''|*[!0-9]*) v=$3 ;;
+	esac
+	{ [ "$v" -lt "$4" ] || [ "$v" -gt "$5" ]; } && v=$3
+	eval "$1=$v"
+}
+
+add_cell() {
+	local pci=$1 ear=$2 j dup=0
+
+	[ "$N" -lt "$MAX_CELLS" ] || return 0
+	case "$pci" in ''|*[!0-9]*) return 0 ;; esac
+	case "$ear" in ''|*[!0-9]*) return 0 ;; esac
+	{ [ "$pci" -gt 503 ] || [ "$ear" -gt 262143 ]; } && return 0
+	j=1
+	while [ "$j" -le "$N" ]; do
+		eval "[ \"\$PCI_$j\" = $pci ] && [ \"\$EAR_$j\" = $ear ] && dup=1"
+		j=$((j + 1))
+	done
+	[ "$dup" = 1 ] && return 0
+	N=$((N + 1))
+	eval "PCI_$N=$pci EAR_$N=$ear FAILS_$N=0 HOLD_$N=0 SEEN_$N=0"
+}
+
+load_main_cells() {
+	local i=0 en
+
+	while uci -q get "$NAME.@cell[$i]" >/dev/null; do
+		en=$(uci -q get "$NAME.@cell[$i].enabled")
+		[ "$en" = 0 ] || add_cell "$(uci -q get "$NAME.@cell[$i].pci")" "$(uci -q get "$NAME.@cell[$i].earfcn")"
+		i=$((i + 1))
+	done
+}
+
+hhmm() {
+	local h m
+
+	case "$1" in
+	[0-2][0-9]:[0-5][0-9]) ;;
+	*) return 1 ;;
+	esac
+	h=${1%%:*}
+	m=${1##*:}
+	R=$(( ${h#0} * 60 + ${m#0} ))
+	[ "$R" -lt 1440 ]
+}
+
+pick_list() {
+	local i=0 from to cur
+
+	hhmm "$(date +%H:%M)" || R=0
+	cur=$R
+	while uci -q get "$NAME.@schedule[$i]" >/dev/null; do
+		if [ "$(uci -q get "$NAME.@schedule[$i].enabled")" != 0 ] &&
+		   hhmm "$(uci -q get "$NAME.@schedule[$i].from")"; then
+			from=$R
+			if hhmm "$(uci -q get "$NAME.@schedule[$i].to")"; then
+				to=$R
+				if { [ "$from" -lt "$to" ] && [ "$cur" -ge "$from" ] && [ "$cur" -lt "$to" ]; } ||
+				   { [ "$from" -gt "$to" ] && { [ "$cur" -ge "$from" ] || [ "$cur" -lt "$to" ]; }; }; then
+					R=$i
+					return 0
+				fi
+			fi
+		fi
+		i=$((i + 1))
+	done
+	R=main
+	[ "$(uci -q get "$NAME.main.main_list")" = 0 ] && R=none
+	return 0
+}
+
+load_cells() {
+	local c IFS=' '
+
+	N=0
+	LIST_NAME=
+	pick_list
+	LIST=$R
+	case "$LIST" in
+	none) ;;
+	main) load_main_cells ;;
+	*)
+		for c in $(uci -q get "$NAME.@schedule[$LIST].cell"); do
+			add_cell "${c%%,*}" "${c##*,}"
+		done
+		LIST_NAME=$(uci -q get "$NAME.@schedule[$LIST].name")
+		;;
+	esac
+	now
+	LAST_LIST_CHECK=$NOW
+}
+
+check_list() {
+	local old=$LIST
+
+	now
+	[ $((NOW - LAST_LIST_CHECK)) -ge 30 ] || return 0
+	LAST_LIST_CHECK=$NOW
+	pick_list
+	[ "$R" = "$old" ] && return 0
+	load_cells
+	log "priority list changed to $LIST"
+	TARGET=0
+	RECOVERY=1
+	LIST_CHANGE=1
+	LAST_PROBE=-100000
+	PENDING=0
+	startup_target
+}
+
+other_lock_on() {
+	[ "$(uci -q get pcilock.cfg.enabled)" = 1 ]
+}
+
+load_config() {
+	ENABLED=$(uci -q get "$NAME.main.enabled")
+	[ "$ENABLED" = 1 ] || ENABLED=0
+	PORT_MODE=$(uci -q get "$NAME.main.at_port_mode")
+	MANUAL_PORT=$(uci -q get "$NAME.main.manual_at_port")
+	OFF_ACTION=$(uci -q get "$NAME.main.off_action")
+	PROBE=$(uci -q get "$NAME.main.probe")
+	[ "$PROBE" = 0 ] || PROBE=1
+	PROBE_SCHED=$(uci -q get "$NAME.main.probe_schedule")
+	PROBE_FROM=$(uci -q get "$NAME.main.probe_from")
+	PROBE_TO=$(uci -q get "$NAME.main.probe_to")
+	opt_int INTERVAL interval 5 1 60
+	opt_int LOST_SECS lost_secs 10 3 300
+	opt_int VERIFY verify_timeout 20 5 120
+	opt_int PROBE_WAIT probe_timeout 12 5 120
+	opt_int RETRY retry_delay 60 10 900
+	opt_int NEIGH_EVERY neighbour_interval 30 5 600
+	opt_int PROBE_EVERY probe_interval 300 60 3600
+	opt_int GRACE call_grace 5 0 120
+	opt_int SMS_HOLD sms_hold 20 0 120
+	MIN_RSRP=$(uci -q get "$NAME.main.min_rsrp")
+	case "$MIN_RSRP" in
+	-[0-9]*) ;;
+	*) MIN_RSRP=-125 ;;
+	esac
+	load_cells
+}
+
+at() {
+	local esc
+
+	AT_OUT=
+	[ -n "$PORT" ] || return 1
+	esc=$(printf '%s' "$1" | sed 's/"/\\"/g')
+	AT_OUT=$(ubus -t $((${2:-5} + 3)) call at-daemon sendat \
+		"{\"at_port\":\"$PORT\",\"at_cmd\":\"$esc\",\"timeout\":${2:-5}}" 2>/dev/null) || return 1
+	AT_OUT=$(printf '%s\n' "$AT_OUT" | sed -n 's/^[[:space:]]*"response": "\(.*\)",\{0,1\}$/\1/p' |
+		sed 's/\\r//g; s/\\n/\n/g' | tr -d '"\\ ')
+	[ -n "$AT_OUT" ]
+}
+
+at_want() {
+	local n=0
+
+	while [ "$n" -lt "${3:-3}" ]; do
+		if at "$1" 5; then
+			case "$AT_OUT" in
+			*"$2"*) return 0 ;;
+			esac
+		fi
+		n=$((n + 1))
+		[ "$n" -lt "${3:-3}" ] && sleep 1
+	done
+	return 1
+}
+
+port_ok() {
+	local keep=$PORT
+
+	PORT=$1
+	at_want 'AT+QNWLOCK=?' '+QNWLOCK:common/4g' && return 0
+	PORT=$keep
+	return 1
+}
+
+auto_ports() {
+	local t i v
+
+	uci -q show qmodem | sed -n "s/^qmodem\.[^.]*\.at_port='\(.*\)'$/\1/p"
+	for t in /sys/class/tty/ttyUSB*; do
+		[ -e "$t/device" ] || continue
+		read -r i < "$t/device/../bInterfaceNumber" 2>/dev/null || continue
+		read -r v < "$t/device/../../idVendor" 2>/dev/null || continue
+		[ "$v" = 2c7c ] && [ "$i" = 02 ] && echo "/dev/${t##*/}"
+	done
+	uci -q get modeminfo.settings.comm
+}
+
+find_port() {
+	local p
+
+	PORT=
+	if [ "$PORT_MODE" = manual ]; then
+		case "$MANUAL_PORT" in
+		/dev/*[!A-Za-z0-9_/.-]*|'') ;;
+		/dev/*) port_ok "$MANUAL_PORT" ;;
+		esac
+	else
+		for p in $(auto_ports); do
+			case "$p" in /dev/*[!A-Za-z0-9_/.-]*) continue ;; esac
+			port_ok "$p" && break
+		done
+	fi
+	[ -n "$PORT" ]
+}
+
+read_serving() {
+	local l sc=
+
+	S_ST=err S_PCI= S_EAR= S_BAND= S_RSRP= S_RSRQ= S_RSSI= S_SINR= S_NR=0
+	at_want 'AT+QENG="servingcell"' '+QENG:servingcell' || return 1
+	IFS=$NL
+	for l in $AT_OUT; do
+		case "$l" in *+QENG:*) ;; *) continue ;; esac
+		l=${l#*+QENG:}
+		IFS=,
+		set -- $l
+		IFS=$NL
+		case "$1" in
+		servingcell)
+			sc=$2
+			case "$3" in
+			LTE)
+				shift 3
+				S_PCI=$5 S_EAR=$6 S_BAND=$7 S_RSRP=${11} S_RSRQ=${12} S_RSSI=${13} S_SINR=${14}
+				;;
+			NR5G-SA) S_NR=1 ;;
+			esac
+			;;
+		LTE)
+			S_PCI=$6 S_EAR=$7 S_BAND=$8 S_RSRP=${12} S_RSRQ=${13} S_RSSI=${14} S_SINR=${15}
+			;;
+		esac
+	done
+	IFS='
+'
+	case "$sc" in
+	NOCONN|CONNECT)
+		if [ -n "$S_PCI" ] && [ -n "$S_EAR" ]; then
+			S_ST=lte
+		elif [ "$S_NR" = 1 ]; then
+			S_ST=other
+		else
+			S_ST=none
+		fi
+		;;
+	SEARCH|LIMSRV) S_ST=none ;;
+	*) return 1 ;;
+	esac
+	return 0
+}
+
+read_lock() {
+	local l
+
+	L_VAL=
+	at_want 'AT+QNWLOCK="common/4g"' '+QNWLOCK:common/4g,' || return 1
+	IFS=$NL
+	for l in $AT_OUT; do
+		case "$l" in
+		*+QNWLOCK:common/4g,*) L_VAL=${l#*+QNWLOCK:common/4g,} ;;
+		esac
+	done
+	IFS='
+'
+	L_VAL=${L_VAL%%[!0-9,]*}
+	[ -n "$L_VAL" ]
+}
+
+lock_is() {
+	case "$1" in
+	0) case "$L_VAL" in 0|0,*) return 0 ;; esac; return 1 ;;
+	*) [ "$L_VAL" = "$1" ] ;;
+	esac
+}
+
+set_lock() {
+	read_lock && lock_is "$1" && return 0
+	at "AT+QNWLOCK=\"common/4g\",$1" 5
+	read_lock || return 1
+	lock_is "$1" && return 0
+	at 'AT+QNWLOCK="common/4g",0' 5
+	[ "$1" = 0 ] || at "AT+QNWLOCK=\"common/4g\",$1" 5
+	read_lock && lock_is "$1"
+}
+
+take_over() {
+	[ -f "$ORIG" ] && return 0
+	read_lock || return 1
+	mkdir -p "$DATA"
+	echo "$L_VAL" > "$ORIG" || return 1
+	sync
+}
+
+cell_lock() {
+	eval "R=\"1,\$EAR_$1,\$PCI_$1\""
+}
+
+label() {
+	if [ "$1" -gt 0 ]; then
+		eval "R=\"\$PCI_$1/\$EAR_$1\""
+	else
+		R=open
+	fi
+}
+
+serving_idx() {
+	local i=1 p e
+
+	R=0
+	[ "$S_ST" = lte ] || return 0
+	while [ "$i" -le "$N" ]; do
+		eval "p=\$PCI_$i e=\$EAR_$i"
+		if [ "$p" = "$S_PCI" ] && [ "$e" = "$S_EAR" ]; then
+			R=$i
+			return 0
+		fi
+		i=$((i + 1))
+	done
+}
+
+record() {
+	local t
+
+	t=$(date +%s)
+	echo "$t|$1|$2|$3|$4|$5" >> "$HISTORY"
+	if [ "$(wc -l < "$HISTORY")" -gt 120 ]; then
+		tail -n 100 "$HISTORY" > "$HISTORY.new" && mv "$HISTORY.new" "$HISTORY"
+	fi
+	log "$1 to $2: $3, $5 after $4 s"
+}
+
+mark_fail() {
+	local f h
+
+	eval "f=\$((FAILS_$1 + 1))"
+	h=$RETRY
+	[ "$f" -gt 1 ] && h=$((RETRY << (f > 6 ? 6 : f - 1)))
+	[ "$h" -gt "$MAX_HOLD" ] && h=$MAX_HOLD
+	now
+	eval "FAILS_$1=$f HOLD_$1=$((NOW + h)) SEEN_$1=0"
+}
+
+held() {
+	local h
+
+	eval "h=\$HOLD_$1"
+	now
+	[ "$h" -gt "$NOW" ]
+}
+
+strong() {
+	case "$S_RSRP" in
+	-[0-9]*) [ "$S_RSRP" -ge "$MIN_RSRP" ] ;;
+	*) return 0 ;;
+	esac
+}
+
+wait_on() {
+	local p e t0 limit=${2:-$VERIFY}
+
+	eval "p=\$PCI_$1 e=\$EAR_$1"
+	now
+	t0=$NOW
+	while :; do
+		if read_serving && [ "$S_ST" = lte ] && [ "$S_PCI" = "$p" ] && [ "$S_EAR" = "$e" ] && strong; then
+			return 0
+		fi
+		now
+		[ $((NOW - t0)) -ge "$limit" ] && return 1
+		sleep 2
+	done
+}
+
+go_cell() {
+	local i=$1 reason=$2 from to t0 limit=$VERIFY
+
+	[ "$reason" = probe ] && limit=$PROBE_WAIT
+	label "$TARGET"
+	from=$R
+	label "$i"
+	to=$R
+	now
+	t0=$NOW
+	STATE=switching
+	DETAIL="$to"
+	write_status
+	take_over || return 1
+	cell_lock "$i"
+	if set_lock "$R" && wait_on "$i" "$limit"; then
+		now
+		record "$from" "$to" "$reason" $((NOW - t0)) ok
+		TARGET=$i
+		RECOVERY=0
+		LIST_CHANGE=0
+		PREV_LOCK=
+		PENDING=0
+		BAD_SINCE=
+		MISMATCH_SINCE=
+		ON_TARGET_SINCE=$NOW
+		return 0
+	fi
+	now
+	mark_fail "$i"
+	record "$from" "$to" "$reason" $((NOW - t0)) failed
+	return 1
+}
+
+all_lost() {
+	local from
+
+	if [ "$RECOVERY" = 0 ]; then
+		label "$TARGET"
+		from=$R
+		take_over || return 1
+		now
+		local t0=$NOW
+		if set_lock 0; then
+			now
+			record "$from" open all_cells_lost $((NOW - t0)) ok
+			RECOVERY=1
+			TARGET=0
+			LAST_PROBE=$NOW
+		else
+			record "$from" open all_cells_lost 0 failed
+		fi
+	fi
+	BAD_SINCE=
+	MISMATCH_SINCE=
+}
+
+on_loss() {
+	local i=1
+
+	[ "$TARGET" -gt 0 ] && mark_fail "$TARGET"
+	while [ "$i" -le "$N" ]; do
+		if [ "$i" != "$TARGET" ] && ! held "$i"; then
+			go_cell "$i" cell_lost && return 0
+		fi
+		i=$((i + 1))
+	done
+	all_lost
+}
+
+phone_state() {
+	local k v st= off=0 sip=0 ring=0 f=
+
+	PHONE=none
+	if [ -f "$FXS_STATE" ] && pidof fxsd >/dev/null; then
+		f=$FXS_STATE
+	elif [ -f "$RJ11_STATE" ] && pidof aw1000-rj11d >/dev/null; then
+		f=$RJ11_STATE
+	fi
+	if [ -n "$f" ]; then
+		while IFS='=' read -r k v; do
+			case "$k" in
+			state) st=$v ;;
+			offhook) off=$v ;;
+			sipcall) sip=$v ;;
+			ringing) ring=$v ;;
+			esac
+		done < "$f"
+		PHONE=${st:-unknown}
+		[ "$sip" = 1 ] && PHONE=sipcall
+		[ "$off" = 1 ] && [ "$PHONE" = idle ] && PHONE=offhook
+		[ "$ring" = 1 ] && [ "$PHONE" = idle ] && PHONE=ringing
+	fi
+	case "$PHONE" in
+	none|idle) ;;
+	*)
+		now
+		PROT_UNTIL=$((NOW + GRACE))
+		;;
+	esac
+}
+
+voice_call() {
+	local l
+
+	if ! at_want 'AT+CLCC' '+CLCC:' 2; then
+		[ -n "$AT_OUT" ] && return 1
+		return 2
+	fi
+	IFS=$NL
+	for l in $AT_OUT; do
+		case "$l" in
+		*+CLCC:*)
+			IFS=,
+			set -- ${l#*+CLCC:}
+			IFS=$NL
+			if [ "$4" = 0 ]; then
+				IFS='
+'
+				return 0
+			fi
+			;;
+		esac
+	done
+	IFS='
+'
+	return 1
+}
+
+sms_busy() {
+	local l c=
+
+	ps w 2>/dev/null | grep -v grep | grep -qE 'sms_tool.* send|send_sms' && return 0
+	if at_want 'AT+CPMS?' '+CPMS:' 2; then
+		IFS=$NL
+		for l in $AT_OUT; do
+			case "$l" in *+CPMS:*) c=${l#*+CPMS:} ;; esac
+		done
+		IFS='
+'
+		if [ -n "$c" ] && [ "$c" != "$SMS_LAST" ]; then
+			[ -n "$SMS_LAST" ] && {
+				now
+				SMS_UNTIL=$((NOW + SMS_HOLD))
+			}
+			SMS_LAST=$c
+		fi
+	fi
+	now
+	[ "$SMS_UNTIL" -gt "$NOW" ]
+}
+
+is_free() {
+	local rc
+
+	phone_state
+	now
+	if [ "$PROT_UNTIL" -gt "$NOW" ]; then
+		case "$PHONE" in
+		sipcall) PROTECT=sip ;;
+		*) PROTECT=phone ;;
+		esac
+		return 1
+	fi
+	voice_call
+	rc=$?
+	if [ "$rc" = 0 ]; then
+		now
+		PROT_UNTIL=$((NOW + GRACE))
+		PROTECT=call
+		return 1
+	fi
+	if [ "$rc" = 2 ]; then
+		PROTECT=unknown
+		return 1
+	fi
+	if sms_busy; then
+		PROTECT=sms
+		return 1
+	fi
+	PROTECT=none
+	return 0
+}
+
+try_up() {
+	local i=$1 reason=$2 prev=$TARGET was=$S_ST
+
+	if ! is_free; then
+		[ "$PENDING" = "$i" ] || log "cell $i wanted, waiting for $PROTECT to finish"
+		PENDING=$i
+		return 1
+	fi
+	go_cell "$i" "$reason" && return 0
+	if [ "$prev" -gt 0 ]; then
+		cell_lock "$prev"
+		set_lock "$R" && wait_on "$prev"
+	elif [ "$was" = lte ] && [ -n "$PREV_LOCK" ]; then
+		set_lock "$PREV_LOCK"
+	else
+		set_lock 0
+	fi
+	return 1
+}
+
+read_neighbours() {
+	local l list= i p e r
+
+	NEIGH_OK=0
+	at_want 'AT+QENG="neighbourcell"' '+QENG:neighbourcell' 2 || return 1
+	case "$NL$AT_OUT$NL" in
+	*"${NL}OK$NL"*) ;;
+	*) return 1 ;;
+	esac
+	IFS=$NL
+	for l in $AT_OUT; do
+		case "$l" in
+		*+QENG:neighbourcell*)
+			IFS=,
+			set -- ${l#*+QENG:}
+			IFS=$NL
+			if [ "$2" = LTE ]; then
+				list="$list $3:$4:$6"
+				[ "$3:$4" = "$S_EAR:$S_PCI" ] || NEIGH_OK=1
+			fi
+			;;
+		esac
+	done
+	IFS='
+'
+	i=1
+	while [ "$i" -le "$N" ]; do
+		eval "p=\$PCI_$i e=\$EAR_$i"
+		r=
+		case "$list " in
+		*" $e:$p:"*)
+			r=${list##*" $e:$p:"}
+			r=${r%% *}
+			;;
+		esac
+		case "$r" in -[0-9]*) ;; *) r= ;; esac
+		if [ -n "$r" ] && [ "$r" -ge "$MIN_RSRP" ]; then
+			eval "SEEN_$i=\$((SEEN_$i + 1))"
+		else
+			eval "SEEN_$i=0"
+		fi
+		i=$((i + 1))
+	done
+	return 0
+}
+
+probe_time() {
+	local cur from to
+
+	[ "$PROBE_SCHED" = 1 ] || return 0
+	hhmm "$PROBE_FROM" || return 0
+	from=$R
+	hhmm "$PROBE_TO" || return 0
+	to=$R
+	hhmm "$(date +%H:%M)" || return 0
+	cur=$R
+	if [ "$from" -lt "$to" ]; then
+		[ "$cur" -ge "$from" ] && [ "$cur" -lt "$to" ]
+	elif [ "$from" -gt "$to" ]; then
+		[ "$cur" -ge "$from" ] || [ "$cur" -lt "$to" ]
+	fi
+}
+
+look_up() {
+	local i=1 limit=$N seen every
+
+	now
+	[ "$TARGET" -gt 0 ] && limit=$((TARGET - 1))
+	every=$NEIGH_EVERY
+	[ "$limit" -gt 0 ] || every=$((NEIGH_EVERY * 4))
+	if [ $((NOW - LAST_NEIGH)) -ge "$every" ]; then
+		LAST_NEIGH=$NOW
+		read_neighbours
+	fi
+	[ "$limit" -gt 0 ] || return 0
+	while [ "$i" -le "$limit" ]; do
+		eval "seen=\$SEEN_$i"
+		if [ "$seen" -ge 2 ] && ! held "$i"; then
+			try_up "$i" higher_returned
+			return 0
+		fi
+		i=$((i + 1))
+	done
+	[ "$PROBE" = 1 ] || return 0
+	now
+	if [ "$S_ST" = lte ]; then
+		[ $((NOW - LAST_PROBE)) -ge "$PROBE_EVERY" ] || return 0
+		probe_time || return 0
+	else
+		[ $((NOW - LAST_PROBE)) -ge "$RETRY" ] || return 0
+	fi
+	[ "$PROBE_NEXT" -le "$limit" ] || PROBE_NEXT=1
+	i=$PROBE_NEXT
+	if is_free; then
+		now
+		LAST_PROBE=$NOW
+		PROBE_NEXT=$((i + 1))
+		try_up "$i" probe
+	else
+		PENDING=$i
+	fi
+}
+
+cell_state() {
+	local i=$1 seen
+
+	if [ "$i" = "$SERVING_IDX" ]; then
+		R=active
+		return 0
+	fi
+	if held "$i"; then
+		R=unavailable
+		return 0
+	fi
+	eval "seen=\$SEEN_$i"
+	if [ "$seen" -gt 0 ]; then
+		R=available
+	else
+		R=unknown
+	fi
+}
+
+write_status() {
+	local i=1 f=$STATUS.new
+
+	serving_idx
+	SERVING_IDX=$R
+	now
+	{
+		echo "enabled=$ENABLED"
+		echo "state=$STATE"
+		echo "detail=$DETAIL"
+		echo "port=$PORT"
+		echo "port_mode=${PORT_MODE:-auto}"
+		echo "serving=$S_ST"
+		echo "pci=$S_PCI"
+		echo "earfcn=$S_EAR"
+		echo "band=$S_BAND"
+		echo "rsrp=$S_RSRP"
+		echo "rsrq=$S_RSRQ"
+		echo "rssi=$S_RSSI"
+		echo "sinr=$S_SINR"
+		echo "priority=$SERVING_IDX"
+		echo "target=$TARGET"
+		echo "count=$N"
+		echo "list=$LIST"
+		echo "list_name=$LIST_NAME"
+		echo "phone=$PHONE"
+		echo "protect=$PROTECT"
+		echo "pending=$PENDING"
+		echo "neighbours=$NEIGH_OK"
+		echo "updated=$(date +%s)"
+		while [ "$i" -le "$N" ]; do
+			cell_state "$i"
+			eval "echo \"cell_$i=\$PCI_$i,\$EAR_$i,$R\""
+			i=$((i + 1))
+		done
+	} > "$f" && mv "$f" "$STATUS"
+}
+
+turn_off() {
+	[ -f "$ORIG" ] || return 0
+	local saved
+
+	read -r saved < "$ORIG"
+	case "$saved" in
+	''|*[!0-9,]*) saved=0 ;;
+	esac
+	case "$OFF_ACTION" in
+	keep) ;;
+	clear)
+		set_lock 0 || return 1
+		;;
+	*)
+		set_lock "$saved" || return 1
+		;;
+	esac
+	rm -f "$ORIG"
+	sync
+	log "stopped managing the lock (${OFF_ACTION:-restore})"
+}
+
+startup_target() {
+	local i=1 want
+
+	TARGET=0
+	RECOVERY=1
+	read_lock || return 1
+	PREV_LOCK=$L_VAL
+	while [ "$i" -le "$N" ]; do
+		cell_lock "$i"
+		want=$R
+		if [ "$L_VAL" = "$want" ]; then
+			TARGET=$i
+			RECOVERY=0
+			now
+			ON_TARGET_SINCE=$NOW
+			return 0
+		fi
+		i=$((i + 1))
+	done
+	return 0
+}
+
+tick_on() {
+	local weak=0 want
+
+	if other_lock_on; then
+		STATE=other_lock
+		phone_state
+		return
+	fi
+	check_list
+	if [ "$N" = 0 ]; then
+		STATE=no_cells
+		[ "$LIST" = none ] && STATE=no_list
+		return
+	fi
+	phone_state
+	now
+	if [ "$PROT_UNTIL" -gt "$NOW" ]; then
+		case "$PHONE" in
+		sipcall) PROTECT=sip ;;
+		*) PROTECT=phone ;;
+		esac
+	else
+		PROTECT=none
+	fi
+
+	[ "$S_ST" = other ] && return
+	serving_idx
+	want=$R
+
+	if [ "$RECOVERY" = 1 ]; then
+		STATE=recovery
+		[ "$LIST_CHANGE" = 1 ] && STATE=list_change
+		if [ "$want" -gt 0 ] && strong && ! held "$want"; then
+			try_up "$want" cell_returned
+		else
+			look_up
+		fi
+		return
+	fi
+
+	case "$S_RSRP" in
+	-[0-9]*) [ "$S_RSRP" -lt "$MIN_RSRP" ] && weak=1 ;;
+	esac
+	if [ "$S_ST" = none ] || [ "$weak" = 1 ]; then
+		[ -n "$BAD_SINCE" ] || BAD_SINCE=$NOW
+		STATE=signal_lost
+		if [ $((NOW - BAD_SINCE)) -ge "$LOST_SECS" ]; then
+			on_loss
+		fi
+		return
+	fi
+	BAD_SINCE=
+
+	if [ "$want" != "$TARGET" ]; then
+		[ -n "$MISMATCH_SINCE" ] || MISMATCH_SINCE=$NOW
+		STATE=wrong_cell
+		[ $((NOW - MISMATCH_SINCE)) -ge "$LOST_SECS" ] || return
+		if is_free; then
+			MISMATCH_SINCE=
+			go_cell "$TARGET" lock_lost || on_loss
+		fi
+		return
+	fi
+	MISMATCH_SINCE=
+
+	STATE=locked
+	local f
+
+	eval "f=\$FAILS_$TARGET"
+	if [ "$f" -gt 0 ] && [ $((NOW - ON_TARGET_SINCE)) -ge "$STABLE_SECS" ]; then
+		eval "FAILS_$TARGET=0"
+	fi
+	look_up
+}
+
+release() {
+	load_config
+	find_port || {
+		echo "no working AT port, lock left as it is" >&2
+		return 1
+	}
+	if ! is_free; then
+		echo "a call or SMS is active, lock left as it is" >&2
+		return 1
+	fi
+	OFF_ACTION=${OFF_ACTION:-restore}
+	turn_off
+}
+
+main() {
+	mkdir -p "$RUN"
+	load_config
+	[ -f "$HISTORY" ] || : > "$HISTORY"
+	STATE=no_modem
+	write_status
+
+	while :; do
+		if [ -z "$PORT" ]; then
+			if find_port; then
+				AT_FAILS=0
+				if [ "$ENABLED" = 1 ] && [ "$STARTED" = 0 ] && ! other_lock_on; then
+					startup_target && STARTED=1
+				fi
+				log "using AT port $PORT"
+			else
+				STATE=no_modem
+				DETAIL=
+				S_ST=err
+				write_status
+				sleep 10
+				continue
+			fi
+		fi
+
+		if read_serving; then
+			AT_FAILS=0
+		else
+			AT_FAILS=$((AT_FAILS + 1))
+			STATE=no_answer
+			write_status
+			[ "$AT_FAILS" -ge 3 ] && PORT=
+			sleep "$INTERVAL"
+			continue
+		fi
+
+		if [ "$ENABLED" = 1 ]; then
+			DETAIL=
+			tick_on
+			write_status
+			sleep "$INTERVAL"
+		else
+			STATE=off
+			phone_state
+			if [ -f "$ORIG" ] && is_free; then
+				turn_off
+			fi
+			write_status
+			sleep 10
+		fi
+	done
+}
+
+case "$1" in
+release) release ;;
+*) main ;;
+esac

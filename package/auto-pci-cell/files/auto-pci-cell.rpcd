@@ -1,0 +1,139 @@
+#!/bin/sh
+
+. /usr/share/libubox/jshn.sh
+
+RUN=${APC_RUN:-/var/run/auto-pci-cell}
+STATUS=$RUN/status
+HISTORY=$RUN/history
+ORIG=${APC_DATA:-/etc/auto-pci-cell}/original
+
+status() {
+	local k v tmp=/tmp/auto-pci-cell.$$
+
+	json_init
+	json_add_boolean running "$(pidof auto-pci-cell >/dev/null && echo 1 || echo 0)"
+	json_add_boolean atd "$(ubus list at-daemon >/dev/null 2>&1 && echo 1 || echo 0)"
+	json_add_boolean managed "$([ -f "$ORIG" ] && echo 1 || echo 0)"
+	json_add_string original "$(cat "$ORIG" 2>/dev/null)"
+	json_add_array cells
+	if [ -f "$STATUS" ]; then
+		grep '^cell_' "$STATUS" > "$tmp"
+		while IFS='=' read -r k v; do
+			json_add_object
+			json_add_string pci "${v%%,*}"
+			v=${v#*,}
+			json_add_string earfcn "${v%%,*}"
+			json_add_string state "${v#*,}"
+			json_close_object
+		done < "$tmp"
+		rm -f "$tmp"
+	fi
+	json_close_array
+	if [ -f "$STATUS" ]; then
+		while IFS='=' read -r k v; do
+			case "$k" in
+			cell_*) ;;
+			*) json_add_string "$k" "$v" ;;
+			esac
+		done < "$STATUS"
+	fi
+	json_add_array history
+	if [ -f "$HISTORY" ]; then
+		tail -n 50 "$HISTORY" > "$tmp"
+		while IFS='|' read -r t from to why secs res; do
+			json_add_object
+			json_add_string time "$t"
+			json_add_string from "$from"
+			json_add_string to "$to"
+			json_add_string reason "$why"
+			json_add_string secs "$secs"
+			json_add_string result "$res"
+			json_close_object
+		done < "$tmp"
+		rm -f "$tmp"
+	fi
+	json_close_array
+	json_dump
+}
+
+ports() {
+	local p
+
+	json_init
+	json_add_array ports
+	for p in /dev/ttyUSB* /dev/ttyACM*; do
+		[ -e "$p" ] && json_add_string "" "$p"
+	done
+	json_close_array
+	json_dump
+}
+
+send() {
+	ubus -t 8 call at-daemon sendat "{\"at_port\":\"$1\",\"at_cmd\":\"$2\",\"timeout\":5}" 2>/dev/null |
+		sed -n 's/^[[:space:]]*"response": "\(.*\)",\{0,1\}$/\1/p' |
+		sed 's/\\r//g; s/\\n/\n/g; s/\\"//g' | tr -d '"'
+}
+
+test_port() {
+	local input port model cap lock
+
+	read -r input
+	json_load "$input"
+	json_get_var port port
+	json_init
+	case "$port" in
+	/dev/tty*[!A-Za-z0-9_/.-]*|'')
+		json_add_boolean ok 0
+		json_add_string error "Not a valid port"
+		json_dump
+		return
+		;;
+	/dev/tty*) ;;
+	*)
+		json_add_boolean ok 0
+		json_add_string error "Not a valid port"
+		json_dump
+		return
+		;;
+	esac
+	if [ ! -e "$port" ]; then
+		json_add_boolean ok 0
+		json_add_string error "Port is missing"
+		json_dump
+		return
+	fi
+	if ! ubus list at-daemon >/dev/null 2>&1; then
+		json_add_boolean ok 0
+		json_add_string error "at-daemon is not running"
+		json_dump
+		return
+	fi
+	model=$(send "$port" 'AT+CGMM' | grep -v -E '^(OK|ERROR.*|AT.*)?$' | head -1)
+	cap=$(send "$port" 'AT+QNWLOCK=?')
+	lock=$(send "$port" 'AT+QNWLOCK=\"common/4g\"' | sed -n 's/.*+QNWLOCK: *common\/4g,//p' | head -1 | tr -d '\r ')
+	case "$cap" in
+	*common/4g*)
+		json_add_boolean ok 1
+		;;
+	*)
+		json_add_boolean ok 0
+		json_add_string error "The port did not answer as a modem with 4G cell lock"
+		;;
+	esac
+	json_add_string model "$model"
+	json_add_string lock "$lock"
+	json_dump
+}
+
+case "$1" in
+list)
+	echo '{ "status": {}, "ports": {}, "test_port": { "port": "" } }'
+	;;
+call)
+	case "$2" in
+	status) status ;;
+	ports) ports ;;
+	test_port) test_port ;;
+	esac
+	;;
+esac

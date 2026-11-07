@@ -59,12 +59,16 @@ opkg update
 | `luci-app-alwaysonline` | `luci-app-netspeedtest` | `luci-app-mini-diskmanager` | `luci-app-eqosplus` |
 | `luci-theme-noobwrt` | `luci-app-cpufreq` | `luci-app-ramfree` | `openwrt-bandix` |
 | `autocore` | `dns2tcp` | `luci-app-homeproxy` | `luci-app-arwi-dashboard` |
-| `luci-app-guest-wifi` | `luci-app-oaf` | `` | `` |
+| `luci-app-guest-wifi` | `luci-app-oaf` | `auto-pci-cell` | `` |
 
 
 
 
 
+
+### Automatic PCI cell locking
+
+[`auto-pci-cell`](https://github.com/Perz3us/PCI-Cell-Lock) keeps a supported Quectel modem on a prioritized list of 4G cells. It is synchronized automatically from upstream and installs disabled by default. It requires a working `ubus at` daemon on the router; enable it under **Services → Auto Pci Cell** only after configuring the cell list.
 
 ## Contribute Your Packages
 

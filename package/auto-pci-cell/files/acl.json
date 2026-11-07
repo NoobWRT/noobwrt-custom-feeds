@@ -1,0 +1,14 @@
+{
+	"luci-app-auto-pci-cell": {
+		"description": "Grant access to Auto Pci Cell",
+		"read": {
+			"ubus": {
+				"auto-pci-cell": [ "status", "ports", "test_port" ]
+			},
+			"uci": [ "auto-pci-cell" ]
+		},
+		"write": {
+			"uci": [ "auto-pci-cell" ]
+		}
+	}
+}

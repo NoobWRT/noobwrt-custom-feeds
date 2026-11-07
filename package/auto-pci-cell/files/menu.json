@@ -1,0 +1,14 @@
+{
+	"admin/services/auto-pci-cell": {
+		"title": "Auto Pci Cell",
+		"order": 61,
+		"action": {
+			"type": "view",
+			"path": "auto-pci-cell"
+		},
+		"depends": {
+			"acl": [ "luci-app-auto-pci-cell" ],
+			"uci": { "auto-pci-cell": true }
+		}
+	}
+}

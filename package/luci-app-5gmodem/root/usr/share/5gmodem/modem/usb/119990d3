@@ -1,0 +1,260 @@
+_SG_RAW=$(sms_tool -d $DEVICE at "at!gstatus?" 2>/dev/null | tr -d '\r')
+case "$_SG_RAW" in
+	*OK*|*ERROR*) ;;
+	*) _SG_RAW=$(sms_tool -d $DEVICE at "at!gstatus?" 2>/dev/null | tr -d '\r') ;;
+esac
+
+_SG=$(printf '%s\n' "$_SG_RAW" | awk '
+	function after(lbl, k,   p, s, a, n) {
+		p = index($0, lbl)
+		if (p == 0) return ""
+		s = substr($0, p + length(lbl))
+		if (!sub(/^[ \t]*(\([^)]*\))?[ \t]*:[ \t]*/, "", s)) return ""
+		n = split(s, a, /[ \t]+/)
+		if (k == "") k = 1
+		if (n < k) return ""
+		s = a[k]
+		gsub(/[()]/, "", s)
+		return (s == "---" || s == "--") ? "" : s
+	}
+	function put(k, v) { if (v != "") V[k] = v }
+	function best(k, v) { if (v != "" && (!(k in V) || v + 0 > V[k] + 0)) V[k] = v }
+
+	/Temperature/            { put("TEMP",   after("Temperature")) }
+	/^System mode/           { put("SYSMODE", after("System mode")) }
+	/^LTE band/              { put("PBAND",  after("LTE band")); put("PBW", after("LTE bw")) }
+	/^LTE Rx chan/           { put("PEARFCN", after("LTE Rx chan")) }
+	/^LTE S[CS]C[0-9] state/ { n = substr($0, 8, 1)
+	                           put("S" n "STATE", after("state"))
+	                           put("S" n "BAND",  after("band")) }
+	/^LTE S[CS]C[0-9] bw/    { n = substr($0, 8, 1)
+	                           put("S" n "BW",     after("bw"))
+	                           c = after("Rx chan")
+	                           if (c == "") c = after(substr($0, 5, 3) n " chan")
+	                           put("S" n "EARFCN", c) }
+	/^PCC Rx[0-9MD] RSSI/    { c = substr($0, 7, 1)
+	                           i = (c == "M") ? 0 : ((c == "D") ? 1 : c)
+	                           r = after("PCC Rx" c " RSRP"); q = after("PCC Rx" c " RSSI")
+	                           if (r != "" || q != "") ANT[i] = r ":" q
+	                           best("PRSRP", r); best("PRSSI", q) }
+	/^SCC[0-9] Rx[0-9MD] RSSI/ { n = substr($0, 4, 1); c = substr($0, 8, 1)
+	                           best("S" n "RSRP", after("SCC" n " Rx" c " RSRP")) }
+	/^PCC Tx Power/          { put("TXPWR", after("PCC Tx Power")) }
+	/^Tx Power/              { put("TXPWR", after("Tx Power")) }
+	/TAC/                    { put("TACHEX", after("TAC", 1)); put("TACDEC", after("TAC", 2)) }
+	/Cell ID/                { put("CIDHEX", after("Cell ID", 1)); put("CIDDEC", after("Cell ID", 2)) }
+	/^RSRQ/                  { put("RSRQ", after("RSRQ")) }
+	/^SINR/                  { put("SINR", after("SINR")) }
+	/NR5G band/              { put("NRBAND", after("NR5G band")) }
+	/NR5G bw/                { put("NRBW", after("NR5G bw")) }
+	/NR5G Rx chan/           { put("NREARFCN", after("NR5G Rx chan")) }
+	/NR5G RSRP/              { put("NRRSRP", after("NR5G RSRP")) }
+	/NR5G RSRQ/              { put("NRRSRQ", after("NR5G RSRQ")) }
+	/NR5G SINR/              { put("NRSINR", after("NR5G SINR")) }
+
+	END {
+		for (k in V) print k " " V[k]
+		for (i in ANT) print "ANT" i " " ANT[i]
+	}
+')
+
+_sg() {
+	_V=""
+	_sg_o=$IFS; IFS='
+'
+	set -f
+	for _sg_l in $_SG; do
+		case "$_sg_l" in
+			"$1 "*) _V=${_sg_l#* }; break ;;
+		esac
+	done
+	set +f
+	IFS=$_sg_o
+}
+
+_sg SYSMODE; _SYSMODE=$_V
+_sg NRBAND; _NRBAND=$_V
+
+_sg TEMP; T=$_V
+[ -n "$T" ] && TEMP="$T &deg;C"
+
+_sg TACHEX; T=$_V
+if [ -n "$T" ]; then
+	T_HEX="$T"
+	_sg TACDEC; T_DEC=$_V
+	[ -n "$T_DEC" ] || T_DEC=$(printf "%d" "0x$T" 2>/dev/null)
+fi
+_sg CIDHEX; T=$_V
+if [ -n "$T" ]; then
+	CID_HEX="$T"
+	_sg CIDDEC; CID_DEC=$_V
+	[ -n "$CID_DEC" ] || CID_DEC=$(printf "%d" "0x$T" 2>/dev/null)
+fi
+
+_sg PRSRP; T=$_V; [ -n "$T" ] && RSRP="$T"
+_sg PRSSI; T=$_V; [ -n "$T" ] && RSSI="$T"
+_sg RSRQ; T=$_V;  [ -n "$T" ] && RSRQ="$T"
+_sg SINR; T=$_V;  [ -n "$T" ] && SINR="$T"
+_sg TXPWR; T=$_V; [ -n "$T" ] && TXPOWER="$T dBm"
+
+_sg PBAND; T=$_V
+if [ -n "$T" ]; then
+	_sg PBW; T1=$_V
+	PBAND="$(band4g ${T#B})"
+	if [ -n "$T1" ]; then
+		PBAND="$PBAND @$T1 MHz"
+		BANDWIDTH="$T1 MHz"
+	fi
+fi
+_sg PEARFCN; T=$_V; [ -n "$T" ] && EARFCN="$T"
+
+ANTPORTS=""
+for _ap in 0 1 2 3; do
+	_sg "ANT$_ap"; T=$_V
+	case "$T" in
+		:*|'') continue ;;
+	esac
+	ANTPORTS="$ANTPORTS${ANTPORTS:+ }$_ap:${T%:*}::${T#*:}"
+done
+
+_CANUM=0
+_CABANDS=""
+_HAVE_LTE_SCC=""
+for _cc in 1 2 3 4; do
+	_sg "S${_cc}BAND"; T=$_V
+	[ -n "$T" ] || continue
+	_HAVE_LTE_SCC=1
+	_sg "S${_cc}BW"; T1=$_V
+	_b="$(band4g ${T#B})"
+	[ -n "$T1" ] && _b="$_b @$T1 MHz"
+	_sg "S${_cc}STATE"; _st=$_V
+	case "$_st" in
+		INACTIVE|inactive) _st="deactivated" ;;
+		ACTIVE|active|ACTIVATED) _st="activated"; _CANUM=$((_CANUM + 1))
+			_CABANDS="$_CABANDS + $(band4g ${T#B})" ;;
+		*) _st="" ;;
+	esac
+	_sg "S${_cc}EARFCN"; _er=$_V
+	_sg "S${_cc}RSRP"; _rp=$_V
+	case "$_cc" in
+		1) S1BAND="$_b"; S1STATE="$_st"; S1EARFCN="$_er"; S1RSRP="$_rp" ;;
+		2) S2BAND="$_b"; S2STATE="$_st"; S2EARFCN="$_er"; S2RSRP="$_rp" ;;
+		3) S3BAND="$_b"; S3STATE="$_st"; S3EARFCN="$_er"; S3RSRP="$_rp" ;;
+		4) S4BAND="$_b"; S4STATE="$_st"; S4EARFCN="$_er"; S4RSRP="$_rp" ;;
+	esac
+done
+
+if [ -n "$_NRBAND" ]; then
+	_nb="$(band5g ${_NRBAND#n})"
+	_sg NRBW; T1=$_V
+	[ -n "$T1" ] && _nb="$_nb @$T1 MHz"
+	_sg NREARFCN; _ner=$_V
+	_sg NRRSRP; _nrp=$_V
+	_sg NRRSRQ; _nrq=$_V
+	_sg NRSINR; _nsi=$_V
+	if [ -z "$S1BAND" ]; then
+		S1BAND="$_nb"; S1STATE="activated"; S1EARFCN="$_ner"; S1RSRP="$_nrp"; S1RSRQ="$_nrq"; S1SINR="$_nsi"
+	elif [ -z "$S2BAND" ]; then
+		S2BAND="$_nb"; S2STATE="activated"; S2EARFCN="$_ner"; S2RSRP="$_nrp"; S2RSRQ="$_nrq"; S2SINR="$_nsi"
+	elif [ -z "$S3BAND" ]; then
+		S3BAND="$_nb"; S3STATE="activated"; S3EARFCN="$_ner"; S3RSRP="$_nrp"; S3RSRQ="$_nrq"; S3SINR="$_nsi"
+	elif [ -z "$S4BAND" ]; then
+		S4BAND="$_nb"; S4STATE="activated"; S4EARFCN="$_ner"; S4RSRP="$_nrp"; S4RSRQ="$_nrq"; S4SINR="$_nsi"
+	fi
+fi
+
+_LI=$(sms_tool -d $DEVICE at "at!lteinfo?" 2>/dev/null | tr -d '\r')
+case "$_LI" in
+	*OK*|*ERROR*) ;;
+	*) _LI=$(sms_tool -d $DEVICE at "at!lteinfo?" 2>/dev/null | tr -d '\r') ;;
+esac
+
+_LINB=$(printf '%s\n' "$_LI" | awk '
+	function emit(bd, ef, pc, rq, rp, rs, sv,   key) {
+		if (pc == "" || pc !~ /^[0-9]+$/) return
+		key = ef "_" pc
+		if (key in done) return
+		done[key] = 1
+		printf "%s{\"band\":\"%s\",\"earfcn\":\"%s\",\"pci\":\"%s\",\"rsrp\":\"%s\",\"rsrq\":\"%s\",\"rssi\":\"%s\",\"serving\":%s}",
+			(n++ ? "," : ""), bd, ef, pc, rp, rq, rs, sv
+	}
+	/^Serving:/   { sec = "serv";  next }
+	/^IntraFreq:/ { sec = "intra"; next }
+	/^InterFreq:/ { sec = "inter"; next }
+	/^[A-Za-z]/   { sec = "" }
+	sec == "" { next }
+	sec == "serv" && NF >= 14 && $1 ~ /^[0-9]+$/ {
+		sef = $1; sbd = $6
+		emit(sbd, sef, $10, $11, $12, $13, "1")
+	}
+	sec == "intra" && NF >= 5 && $1 ~ /^[0-9]+$/ {
+		emit(sbd, sef, $1, $2, $3, $4, "0")
+	}
+	sec == "inter" && NF >= 9 && $1 ~ /^[0-9]+$/ {
+		emit("", $1, $5, $6, $7, $8, "0")
+	}
+')
+[ -n "$_LINB" ] && NEIGHBORS="$_LINB"
+if [ -z "$PCI" ] || [ "$PCI" = "-" ]; then
+	_li_pci=$(printf '%s\n' "$_LI" | awk '/^Serving:/ { s = 1; next } s && NF >= 14 && $1 ~ /^[0-9]+$/ { print $10; exit }')
+	[ -n "$_li_pci" ] && PCI="$_li_pci"
+fi
+
+if [ -n "$_HAVE_LTE_SCC" ]; then
+	_LIMAP=$(printf '%s\n' "$_LI" | awk \
+		-v e1="$S1EARFCN" -v e2="$S2EARFCN" -v e3="$S3EARFCN" -v e4="$S4EARFCN" '
+		/^CA SCell/ { ca = 1; next }
+		ca && $1 !~ /^[0-9]+$/ { ca = 0 }
+		ca && NF >= 12 {
+			s = $12
+			if (s == "---" || s == "--" || s == "") next
+			if (e1 != "" && $1 == e1) n = 1
+			else if (e2 != "" && $1 == e2) n = 2
+			else if (e3 != "" && $1 == e3) n = 3
+			else if (e4 != "" && $1 == e4) n = 4
+			else n = $2
+			print n " " s
+		}')
+	while read -r _li_n _li_s; do
+		case "$_li_n" in
+			1) S1SINR="$_li_s" ;;
+			2) S2SINR="$_li_s" ;;
+			3) S3SINR="$_li_s" ;;
+			4) S4SINR="$_li_s" ;;
+		esac
+	done <<EOF
+$_LIMAP
+EOF
+fi
+
+case "$_SYSMODE" in
+	'')    [ -n "$_NRBAND" ] && MODE="5G NSA" ;;
+	ENDC)  [ -n "$_NRBAND" ] && MODE="5G NSA" || MODE="LTE" ;;
+	NR5G|SA|ENDC_SA) MODE="5G SA" ;;
+	LTE)   [ -n "$_NRBAND" ] && MODE="5G NSA" || MODE="LTE" ;;
+	WCDMA|HSPA|UMTS) MODE="WCDMA" ;;
+	*)     [ -n "$_NRBAND" ] && MODE="5G NSA" || MODE="$_SYSMODE" ;;
+esac
+[ "$MODE" = "LTE" ] && [ "$_CANUM" -gt 0 ] && MODE="LTE-A"
+if [ -n "$_SYSMODE" ] && [ -n "$PBAND" ]; then
+	MODE="$MODE | ${PBAND%% @*}$_CABANDS"
+	[ -n "$_NRBAND" ] && MODE="$MODE + $(band5g ${_NRBAND#n})"
+fi
+
+PV=$(cat /sys/kernel/debug/usb/devices)
+_PVID="1199"; _PPID="90d3"
+if [ -n "$_POLL_AM" ] && [ -f "/sys/bus/usb/devices/$_POLL_AM/idVendor" ]; then
+	_PVID=$(cat "/sys/bus/usb/devices/$_POLL_AM/idVendor" 2>/dev/null)
+	_PPID=$(cat "/sys/bus/usb/devices/$_POLL_AM/idProduct" 2>/dev/null)
+fi
+PVCUT=$(echo $PV | awk -F "Vendor=$_PVID ProdID=$_PPID" '{print $2}' | cut -c-1100)
+if echo "$PVCUT" | grep -q "Driver=qmi_wwan"
+then
+    PROTO="qmi"
+elif echo "$PVCUT" | grep -q "Driver=cdc_mbim"
+then
+    PROTO="mbim"
+elif echo "$PVCUT" | grep -q "Driver=cdc_ether"
+then
+    PROTO="ecm"
+fi

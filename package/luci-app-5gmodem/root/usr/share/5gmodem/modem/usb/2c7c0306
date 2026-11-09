@@ -1,0 +1,84 @@
+. "$RES/modem/usb/_quectel_common"
+
+O=$(sms_tool -d $DEVICE at "at+qtemp")
+
+T=$(echo "$O" | awk -F[,:] '/^\+QTEMP/ {t=-999; for(i=2;i<=NF;i++){v=$i; gsub(/[^0-9-]/,"",v); if(v ~ /^-?[0-9]+$/ && v*1>t) t=v*1}; if(t>-999) printf "%d", t}')
+[ -n "$T" ] && TEMP="$T &deg;C"
+
+O=$(sms_tool -d $DEVICE at "at+qnwinfo;+qeng=\"servingcell\";+qspn")
+
+T=$(echo "$O" | awk -F[,:] '/^\+QNWINFO/ {print $2"/"$4}' | xargs)
+if [ "x$MODE_NUM" = "x7" ]; then
+	B=$(echo $T | sed -n 's/.*LTE BAND \([0-9][0-9]*\).*/\1/p')
+	[ -n "$B" ] || B=$(echo "$O" | awk -F[,:] '/^\+QENG:/ && $4 ~ /LTE/ {v=$11; gsub(/[^0-9]/,"",v); print v; exit}')
+	case "$B" in
+		''|*[!0-9]*) : ;;
+		*)
+			MODE="LTE $(band4g ${B})"
+			MAINCUT="$(band4g ${B})"
+			;;
+	esac
+fi
+
+_qc_qeng_bw
+
+_qc_spn4
+
+if [ "x$MODE_NUM" = "x7" ]; then
+	_QENG_O="$O"
+	O=$(sms_tool -d $DEVICE at "AT+QCAINFO")
+	
+	_scc_i=0
+	_SCCL=$(echo "$O" | tr -d '\r' | awk -F, '/^\+QCAINFO: "scc"/ && ($5==1 || $5==2) {
+		gsub(/"/, "", $4); print $5 "|" $2 "|" $3 "|" $4 "|" $6 "|" $7 "|" $8 }')
+	while IFS='|' read -r _SST _SE _SBW _SBSTR _SPCI _SRSRP _SRSRQ; do
+		[ -n "$_SST" ] || continue
+		[ "$_scc_i" -ge 4 ] && break
+		_scc_i=$((_scc_i + 1))
+		B="${_SBSTR#LTE BAND }"
+		_qc_cbw T1 "$_SBW" "?"
+		if [ "$_SST" = "2" ]; then
+			_SSTW="activated"
+			case "$MODE" in *LTE_A*) MODE="$MODE / $(band4g ${B})" ;;
+				*) MODE="${MODE/LTE/LTE_A} / $(band4g ${B})" ;; esac
+		else
+			_SSTW="deactivated"
+		fi
+		case "$_scc_i" in
+			1) S1BAND="$(band4g ${B}) @$T1 MHz"; S1PCI="$_SPCI"; S1EARFCN="$_SE"
+			   S1RSRP=$_SRSRP; S1RSRQ=$_SRSRQ; S1STATE="$_SSTW" ;;
+			2) S2BAND="$(band4g ${B}) @$T1 MHz"; S2PCI="$_SPCI"; S2EARFCN="$_SE"
+			   S2RSRP=$_SRSRP; S2RSRQ=$_SRSRQ; S2STATE="$_SSTW" ;;
+			3) S3BAND="$(band4g ${B}) @$T1 MHz"; S3PCI="$_SPCI"; S3EARFCN="$_SE"
+			   S3RSRP=$_SRSRP; S3RSRQ=$_SRSRQ; S3STATE="$_SSTW" ;;
+			4) S4BAND="$(band4g ${B}) @$T1 MHz"; S4PCI="$_SPCI"; S4EARFCN="$_SE"
+			   S4RSRP=$_SRSRP; S4RSRQ=$_SRSRQ; S4STATE="$_SSTW" ;;
+		esac
+	done <<EOF
+$_SCCL
+EOF
+	if [ -n "$S1BAND" ]; then
+		T=$(echo "$_QENG_O" | awk -F[,:] '/^\+QENG:/ {v=$18; gsub(/[^0-9-]/,"",v); if(v ~ /^-?[0-9]+$/) print v; exit}')
+		[ -n "$T" ] && SINR=$T
+	fi
+fi
+
+if [ -z "$BANDWIDTH" ]; then
+	T=$(echo "${_QENG_O:-$O}" | awk -F[,:] '/^\+QENG:/ {print $13}')
+	case "$T" in
+		0) BANDWIDTH="1.4 MHz";; 1) BANDWIDTH="3 MHz";; 2) BANDWIDTH="5 MHz";;
+		3) BANDWIDTH="10 MHz";; 4) BANDWIDTH="15 MHz";; 5) BANDWIDTH="20 MHz";;
+	esac
+fi
+
+_qc_neighbours "1 2 3 4 5 7 8 20 28 32 38 40 41"
+
+MODE=$(echo $MODE | sed 's,/,+,' | sed 's, / \(B[0-9]\), + \1,g' | sed "s/LTE_A/LTE-A | /g")
+
+_qc_ati
+
+_qc_ids
+
+_qc_proto "Vendor=2c7c ProdID=0306" 1220
+
+. "$RES/modem/usb/_quectel_qrsrp"

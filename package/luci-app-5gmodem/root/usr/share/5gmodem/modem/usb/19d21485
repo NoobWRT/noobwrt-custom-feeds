@@ -1,0 +1,211 @@
+O=$(sms_tool -d $DEVICE at "at+zrssi;+zcellinfo?;+zcainfo?")
+
+case "$MODE_NUM" in
+	3*)
+		T=$(echo "$O" | awk -F[,:] '/^\+ZRSSI/ {print $2}' | xargs)
+		RSSI="$T"
+		if [ "x${LAC_DEC}" = "x0" ]; then
+			T=$(echo "$O" | awk -F[,:] '/^\+ZCELLINFO/ {print $2}' | xargs)
+			if [ -n "$T" ]; then
+				LAC_DEC=$T
+				LAC_HEX=$(printf "%X" $T)
+			fi
+		fi
+		if [ "x${CID_DEC}" = "x0" ]; then
+			T=$(echo "$O" | awk -F[,:] '/^\+ZCELLINFO/ {print $3}' | xargs)
+			if [ -n "$T" ]; then
+				CID_DEC=$T
+				CID_HEX=$(printf "%X" $T)
+			fi
+		fi
+		;;
+	2*|\
+	4*|\
+	5*|\
+	6*)
+		T=$(echo "$O" | awk -F[,:] '/^\+ZCELLINFO/ {print $4}' | xargs)
+		[ -n "$T" ] && MODE="$T"
+		if [ "x${LAC_DEC}" = "x0" ]; then
+			T=$(echo "$O" | awk -F[,:] '/^\+ZCELLINFO/ {print $2}' | xargs)
+			if [ -n "$T" ]; then
+				LAC_DEC=$T
+				LAC_HEX=$(printf "%X" $T)
+			fi
+		fi
+		if [ "x${CID_DEC}" = "x0" ]; then
+			T=$(echo "$O" | awk -F[,:] '/^\+ZCELLINFO/ {print $3}' | xargs)
+			if [ -n "$T" ]; then
+				CID_DEC=$T
+				CID_HEX=$(printf "%X" $T)
+			fi
+		fi
+		;;
+	7*)
+		if [ "x${CID_DEC}" = "x0" ]; then
+			T=$(echo "$O" | awk -F[,:] '/^\+ZCELLINFO/ {print $2}' | xargs)
+			if [ -n "$T" ]; then
+				CID_DEC=$T
+				CID_HEX=$(printf "%X" $T)
+			fi
+		fi
+
+		T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $4}' | xargs)
+		if [ -n "$T" ]; then
+			T_HEX=$(printf "%X" $T)
+			T_DEC=$T
+		fi
+
+		T=$(echo "$O" | awk -F[,:] '/^\+ZRSSI/ {print $4}' | xargs)
+		RSSI="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+ZRSSI/ {print $2}' | xargs)
+		RSRP="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+ZRSSI/ {print $3}' | xargs)
+		RSRQ="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+ZRSSI/ {print $5}' | xargs)
+		SINR="$T"
+
+		T=$(echo "$O" | awk -F[,:\;] '/^\+ZCELLINFO/ {print $4}' | xargs)
+		MODE="LTE $(band4g ${T/LTE B/})"
+
+		T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $3}' | xargs)
+		if [ -n "$T" ]; then
+			T1=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $6}' | xargs)
+			PBAND="$(band4g $T "") @$T1 MHz"
+			case "$MODE" in "LTE BUnknown"|"LTE ") MODE="LTE $(band4g $T)" ;; esac
+			T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $2}' | xargs)
+			[ -n "$T" ] && PCI="$T"
+			T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $5}' | xargs)
+			[ -n "$T" ] && EARFCN="$T"
+		fi
+
+		T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $9}' | xargs)
+		if [ -n "$T" ]; then
+			T1=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $11}' | xargs)
+			S1BAND="$(band4g $T "") @$T1 MHz"
+			MODE="${MODE/LTE/LTE_A} / $(band4g ${T})"
+			T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $7}' | xargs)
+			[ -n "$T" ] && S1PCI="$T"
+			T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $10}' | xargs)
+			[ -n "$T" ] && S1EARFCN="$T"
+		fi
+
+		T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $14}' | xargs)
+		if [ -n "$T" ]; then
+			T1=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $16}' | xargs)
+			S2BAND="$(band4g $T "") @$T1 MHz"
+			MODE="$MODE / $(band4g ${T})"
+			T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $12}' | xargs)
+			[ -n "$T" ] && S2PCI="$T"
+			T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $15}' | xargs)
+			[ -n "$T" ] && S2EARFCN="$T"
+		fi
+
+		T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $19}' | xargs)
+		if [ -n "$T" ]; then
+			T1=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $21}' | xargs)
+			S3BAND="$(band4g $T "") @$T1 MHz"
+			MODE="$MODE / $(band4g ${T})"
+			T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $17}' | xargs)
+			[ -n "$T" ] && S3PCI="$T"
+			T=$(echo "$O" | awk -F[,:\;] '/^\+ZCAINFO/ {print $20}' | xargs)
+			[ -n "$T" ] && S3EARFCN="$T"
+		fi
+
+		;;
+esac
+
+MODE=$(echo $MODE | sed "s/LTE_A/LTE-A |/g" | sed 's,/,+,' | sed 's, / \(B[0-9]\), + \1,g')
+
+if [ "${LAC_DEC}" = "0" ]; then
+	LAC_DEC="-"
+	LAC_HEX="-"
+fi 
+
+if command -v adb >/dev/null 2>&1 && [ -n "$_POLL_AM" ]; then
+	_zt_ser=$(cat "/sys/bus/usb/devices/$_POLL_AM/serial" 2>/dev/null)
+	_zt_c="/tmp/5gmodem/adbtemp_$(printf '%s' "$_POLL_AM" | tr -c 'A-Za-z0-9' '_')"
+	_zt_cmd='for i in 1 2 3 4; do echo "ant $i $(cfg get lte_rsrp_$i)"; done'
+	_zt_stale=""
+	if [ -z "$(find "$_zt_c" -mmin -1 2>/dev/null)" ]; then
+		_zt_stale=1
+		: > "$_zt_c"
+		_zt_cmd="$_zt_cmd"'; for z in /sys/class/thermal/thermal_zone*; do [ "$(cat $z/type)" = mdm_case_therm ] && echo "temp $(cat $z/temp)"; done'
+	fi
+	_zt_out=""
+	[ -n "$_zt_ser" ] && _zt_out=$(timeout 5 adb -s "$_zt_ser" shell "$_zt_cmd" 2>/dev/null 1000>&- 6>&- 7>&- 8>&- 9>&- | tr -d '\r')
+	[ -n "$_zt_stale" ] && printf '%s\n' "$_zt_out" | sed -n 's/^temp \([0-9]*\)$/\1/p' | head -1 > "$_zt_c"
+	_zt_v=$(cat "$_zt_c" 2>/dev/null)
+	case "$_zt_v" in ''|*[!0-9]*) ;; *) [ "$_zt_v" -gt 0 ] && [ "$_zt_v" -lt 150 ] && TEMP="$_zt_v &deg;C" ;; esac
+	case "$MODE" in
+		LTE*)
+			ANTPORTS=$(printf '%s\n' "$_zt_out" | awk '$1 == "ant" && $3 ~ /^-[0-9]+$/ {
+				printf "%s%d:%s:", (n++ ? " " : ""), $2 - 1, $3 }')
+			;;
+	esac
+fi
+
+OF=$(sms_tool -d $DEVICE at "ati")
+DEVV=$(echo $OF | tr -s "\n"  | xargs)
+FWA=$(sms_tool -d $DEVICE at "AT+GMR" | tr -s "\n"  | xargs)
+FW=$(echo $FWA | sed 's/^.*AT+GMR *//' | xargs)
+
+MODELA=$(echo $DEVV | awk -F 'Revision: ' '{print $1}'| xargs)
+MODELB=$(echo $MODELA | awk -F 'Manufacturer: |CORPORATION' '{print $2}'| xargs)
+
+MODELD=$(sms_tool -d $DEVICE at "AT+CGMM" | tr -s "\n"  | xargs)
+
+SUB='MODULE'
+case "$MODELD" in *"$SUB"*) _zte_sub=1 ;; *) _zte_sub=0 ;; esac
+if [ "$_zte_sub" = 1 ]; then
+MODELDCUT=$(echo $MODELD | sed 's/.*CGMM *//; s/MODULE.*//' | xargs)
+MODEL=$(echo $MODELB $MODELDCUT)
+else
+MODELDCUT=$(echo $MODELD | sed 's/.*CGMM *//' | xargs)
+MODEL=$(echo $MODELB $MODELDCUT)
+fi
+
+O=$(sms_tool -d $DEVICE at "AT+GSN" | xargs)
+NR_I=$(digits_of "$O" 15 17)
+if [ -n "$NR_I" ]; then
+	NR_IMEI="$NR_I"
+fi
+
+O=$(sms_tool -d $DEVICE at "AT+CIMI" | xargs)
+NR_C=$(digits_of "$O" 14 16)
+if [ -n "$NR_C" ]; then
+	NR_IMSI="$NR_C"
+fi
+
+O=$(sms_tool -d $DEVICE at "AT+ICCID")
+NR_D=$(echo "$O" | awk -F [:] '/^\ICCID:/{print $2}' | xargs)
+if [ -n "$NR_D" ]; then
+	NR_ICCID="$NR_D"
+fi
+
+PV=$(cat /sys/kernel/debug/usb/devices 2>/dev/null)
+PV85=$(echo $PV | awk -F 'Vendor=19d2 ProdID=1485' '{print $2}' | cut -c-1220)
+if [ -n "$PV85" ]; then
+    if echo "$PV85" | grep -q "Driver=qmi_wwan"
+    then
+    PROTO="qmi"
+    elif echo "$PV85" | grep -q "Driver=cdc_mbim"
+    then
+    PROTO="mbim"
+    elif echo "$PV85" | grep -q "Driver=cdc_ether"
+    then
+    PROTO="ecm"
+    fi
+fi
+PV32=$(echo $PV | awk -F 'Vendor=19d2 ProdID=1432' '{print $2}' | cut -c-1220)
+if [ -n "$PV32" ]; then
+    if echo "$PV32" | grep -q "Driver=qmi_wwan"
+    then
+    PROTO="qmi"
+    elif echo "$PV32" | grep -q "Driver=cdc_mbim"
+    then
+    PROTO="mbim"
+    elif echo "$PV32" | grep -q "Driver=cdc_ether"
+    then
+    PROTO="ecm"
+    fi
+fi

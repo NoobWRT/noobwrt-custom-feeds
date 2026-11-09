@@ -1,0 +1,46 @@
+#!/bin/sh
+
+if [ "$ACTION" = "add" ] && [ -z "$INTERFACE" ]; then
+
+    if case "$PRODUCT" in 5c6/9063/*) true ;; *) false ;; esac; then
+        sleep 3
+        /usr/share/5gmodem/usbports.sh coldplug
+        exit 0
+    fi
+
+    if case "$PRODUCT" in 5c6/90d5/*|5c6/90d6/*) true ;; *) false ;; esac; then
+
+        PID=$(echo "$PRODUCT" | cut -d'/' -f2)
+
+        sleep 5
+
+        /usr/share/5gmodem/usbports.sh bind "05c6" "$PID"
+
+        if ! uci -q show network | grep -q "\.proto='modemmanager'"; then
+            logger -t hotplug-compal "Ports activated for PID $PID. No modemmanager-proto interfaces - nothing to wait for"
+        else
+
+        logger -t hotplug-compal "Ports activated for PID $PID. Waiting for ModemManager to pick the modem up..."
+
+        (
+            sleep 5
+
+            n=0
+            while [ "$n" -lt 180 ]; do
+                mmcli -L 2>/dev/null | grep -q "/Modem/" && break
+                sleep 2; n=$((n + 2))
+            done
+            if [ "$n" -ge 180 ]; then
+                logger -t hotplug-compal "ModemManager did not report a modem in ${n}s, skipping ifup"
+                exit 0
+            fi
+            logger -t hotplug-compal "ModemManager is up after ${n}s, bringing up modemmanager interfaces"
+            for i in $(uci -q show network | sed -n "s/^network\.\([^.]*\)\.proto='modemmanager'\$/\1/p"); do
+                ifstatus "$i" 2>/dev/null | grep -q '"up": true' && continue
+                logger -t hotplug-compal "ifup $i"
+                ifup "$i"
+            done
+        ) >/dev/null 2>&1 </dev/null &
+        fi
+    fi
+fi

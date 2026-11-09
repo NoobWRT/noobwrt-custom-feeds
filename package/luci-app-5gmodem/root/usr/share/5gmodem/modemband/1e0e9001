@@ -1,0 +1,315 @@
+#!/bin/sh
+[ -d /tmp/5gmodem ] || mkdir -p /tmp/5gmodem 2>/dev/null
+
+_DEVICE=""
+
+_SIM7100_LTE_BANDS="1 3 7 8 20 38 40"
+
+_SIM7600_LTE_BANDS="1 3 5 7 8 20 38 40 41"
+_SIM7906_LTE_BANDS="1 3 5 7 8 20 28 38 40 41"
+_SIM7912_LTE_BANDS="1 2 3 4 5 7 8 12 13 14 17 18 19 20 25 26 28 29 30 32 38 40 41 66"
+
+_BANDS_APPLY_LIVE=1
+
+_model() {
+	_mf="/tmp/5gmodem/simcom_model_$(basename "$_DEVICE" 2>/dev/null)"
+	if [ -s "$_mf" ]; then cat "$_mf"; return; fi
+	sms_tool -d $_DEVICE at "AT+CGMM" 2>/dev/null | tr -d '\r' \
+		| grep -o "SIM[0-9][0-9A-Za-z_-]*" | head -1 | tee "$_mf"
+}
+
+_is_7600() {
+	case "$(_model)" in *7600*) return 0 ;; esac
+	return 1
+}
+
+_is_79xx() {
+	case "$(_model)" in *7906*|*7912*) return 0 ;; esac
+	return 1
+}
+_is_cnbp_family() {
+	_is_7100 || _is_7600 || _is_79xx
+}
+
+_lte_bands_for_model() {
+	case "$(_model)" in
+		*7912*) echo "$_SIM7912_LTE_BANDS" ;;
+		*7906*) echo "$_SIM7906_LTE_BANDS" ;;
+		*7600*) echo "$_SIM7600_LTE_BANDS" ;;
+		*) echo "$_SIM7100_LTE_BANDS" ;;
+	esac
+}
+_cnbp_lte_tail() {
+	_lt_h=$(printf '%s' "$1" | tr -d '\r ' | sed 's/^\(0x\)*//')
+	[ "${#_lt_h}" -gt 32 ] && _lt_h=$(printf '%s' "$_lt_h" | sed 's/.*\(.\{32\}\)$/\1/')
+	echo "0x$_lt_h"
+}
+
+_DEFAULT_LTE_BANDS="1 2 3 4 5 7 8 12 13 14 17 18 19 20 25 26 28 29 30 32 34 38 39 40 41 42 43 48 66 71"
+_DEFAULT_5GNSA_BANDS="1 2 3 5 7 8 12 14 20 28 38 40 41 48 66 71 77 78"
+_DEFAULT_5GSA_BANDS="1 2 3 5 7 8 12 14 20 28 38 40 41 48 66 71 77 78"
+
+_is_7100() {
+	case "$(_model)" in *7100*) return 0 ;; esac
+	return 1
+}
+
+getinfo() {
+	if _is_7100; then
+		echo "SIMCOM SIM7100E"
+	elif _is_7600 || _is_79xx; then
+		echo "SIMCOM $(_model | sed 's/^SIMCOM_//')"
+	else
+		echo "SIMCOM SIM8200EA-M2"
+	fi
+}
+
+getsupportedbands() {
+	if _is_cnbp_family; then
+		_lte_bands_for_model
+	else
+		echo "$_DEFAULT_LTE_BANDS"
+	fi
+}
+
+getbands() {
+	if _is_cnbp_family; then
+		O=$(sms_tool -d $_DEVICE at "AT+CNBP?")
+		HEX=$(echo "$O" | grep "^+CNBP:" | tr -d '\r ' | awk -F, '{print $2}')
+		[ -n "$HEX" ] || { echo ""; return; }
+		HEX=$(_cnbp_lte_tail "$HEX")
+		ALL=$(hextobands "$HEX")
+		SUP=$(_lte_bands_for_model)
+		OUT=""
+		for b in $ALL; do
+			for s in $SUP; do
+				[ "$b" = "$s" ] && OUT="$OUT $b"
+			done
+		done
+		echo $OUT | xargs
+	else
+		O=$(sms_tool -d $_DEVICE at "AT+CSYSSEL=\"lte_band\"")
+		echo "$O" | awk -F, '/^\+CSYSSEL: "lte_band",/{gsub(":"," ");print $2}' | xargs
+	fi
+}
+
+setbands() {
+	BANDS="$1"
+
+	if _is_cnbp_family; then
+		[ "$BANDS" = "default" ] && BANDS=$(_lte_bands_for_model)
+
+		LTEHEX=$(bandstohex "$BANDS")
+		[ -n "$LTEHEX" ] && [ "$LTEHEX" != "0" ] || return 1
+		if _is_79xx; then
+			LTEHEX=$(printf "%064s" "$LTEHEX" | tr ' ' 0)
+		else
+			LTEHEX=$(printf "%016s" "$LTEHEX" | tr ' ' 0)
+		fi
+
+		O=$(sms_tool -d $_DEVICE at "AT+CNBP?")
+		MODE=$(echo "$O" | grep "^+CNBP:" | tr -d '\r ' | sed 's/^+CNBP://' | awk -F, '{print $1}' | sed 's/^0x0x/0x/')
+		[ -n "$MODE" ] || MODE=0x0002000000400180
+		sms_tool -d $_DEVICE at "AT+CNBP=$MODE,0x$LTEHEX"
+	else
+		[ "$BANDS" = "default" ] && BANDS="$_DEFAULT_LTE_BANDS"
+		T=""
+		for BAND in $BANDS; do
+			case $BAND in
+				''|*[!0-9]*) continue ;;
+			esac
+			[ -n "$T" ] && T="${T}:"
+			T="${T}${BAND}"
+		done
+		[ -n "$T" ] && sms_tool -d $_DEVICE at "AT+CSYSSEL=\"lte_band\",$T"
+	fi
+}
+
+_SIM7100_2G_BANDS="900 1800"
+_SIM7100_3G_BANDS="1 8"
+_SIM7600_2G_BANDS="900 1800"
+_SIM7600_3G_BANDS="1 5 8"
+_SIM7906_3G_BANDS="1 5 8"
+_SIM7912_3G_BANDS="1 2 4 5 6 8"
+
+_cnbp_bit_2g() { case "$1" in 900) echo 8 ;; 1800) echo 7 ;; 850) echo 19 ;; 1900) echo 21 ;; *) echo "" ;; esac; }
+_cnbp_bit_3g() { case "$1" in 1) echo 22 ;; 2) echo 23 ;; 3) echo 24 ;; 4) echo 25 ;; 5) echo 26 ;; 6) echo 27 ;; 7) echo 48 ;; 8) echo 49 ;; 9) echo 50 ;; *) echo "" ;; esac; }
+
+_2g_bands_for_model() { if _is_7600; then echo "$_SIM7600_2G_BANDS"; else echo "$_SIM7100_2G_BANDS"; fi; }
+_3g_bands_for_model() {
+	case "$(_model)" in
+		*7912*) echo "$_SIM7912_3G_BANDS" ;;
+		*7906*) echo "$_SIM7906_3G_BANDS" ;;
+		*7600*) echo "$_SIM7600_3G_BANDS" ;;
+		*) echo "$_SIM7100_3G_BANDS" ;;
+	esac
+}
+
+_cnbp_mode_hex() {
+	sms_tool -d $_DEVICE at "AT+CNBP?" | grep "^+CNBP:" | tr -d '\r ' \
+		| sed 's/^+CNBP://' | awk -F, '{print $1}' | sed 's/^0x0x/0x/'
+}
+_cnbp_lte_hex() {
+	sms_tool -d $_DEVICE at "AT+CNBP?" | grep "^+CNBP:" | tr -d '\r ' | awk -F, '{print $2}'
+}
+
+_cnbp_write_mode() {
+	_cw_hex=$(bandstohex "$1")
+	[ -n "$_cw_hex" ] && [ "$_cw_hex" != "0" ] || return 1
+	_cw_hex=$(printf "%016s" "$_cw_hex" | tr ' ' 0)
+	_cw_lte=$(_cnbp_lte_hex)
+	[ -n "$_cw_lte" ] || _cw_lte=0x000007FF03DF3FFF
+	sms_tool -d $_DEVICE at "AT+CNBP=0x$_cw_hex,$_cw_lte"
+}
+
+bands3g_style() { echo "mask"; }
+
+getsupportedbands3g() {
+	_is_cnbp_family || { echo "Unsupported"; return; }
+	_3g_bands_for_model
+}
+
+getbands3g() {
+	_is_cnbp_family || { echo "Unsupported"; return; }
+	_g3_nums=$(hextobands "$(_cnbp_mode_hex)")
+	_g3_out=""
+	for _b in $(_3g_bands_for_model); do
+		_g3_bit=$(_cnbp_bit_3g "$_b"); [ -n "$_g3_bit" ] || continue
+		case " $_g3_nums " in *" $((_g3_bit + 1)) "*) _g3_out="$_g3_out $_b" ;; esac
+	done
+	echo $_g3_out | xargs
+}
+
+setbands3g() {
+	_is_cnbp_family || { echo "Unsupported"; return; }
+	_s3_want="$1"
+	[ "$_s3_want" = "default" ] && _s3_want=$(_3g_bands_for_model)
+	_s3_nums=$(hextobands "$(_cnbp_mode_hex)")
+	_s3_keep=""
+	for _n in $_s3_nums; do
+		_s3_drop=""
+		for _b in 1 2 3 4 5 6 7 8 9; do
+			[ "$((_n - 1))" = "$(_cnbp_bit_3g "$_b")" ] && _s3_drop=1
+		done
+		[ -n "$_s3_drop" ] || _s3_keep="$_s3_keep $_n"
+	done
+	for _b in $_s3_want; do
+		_s3_bit=$(_cnbp_bit_3g "$_b"); [ -n "$_s3_bit" ] || continue
+		_s3_keep="$_s3_keep $((_s3_bit + 1))"
+	done
+	_cnbp_write_mode "$_s3_keep" || echo "ERROR: empty band mask"
+}
+
+getsupportedbands2g() {
+	_is_79xx && { echo "Unsupported"; return; }
+	_is_cnbp_family || { echo "Unsupported"; return; }
+	_2g_bands_for_model
+}
+
+getbands2g() {
+	_is_79xx && { echo "Unsupported"; return; }
+	_is_cnbp_family || { echo "Unsupported"; return; }
+	_g2_nums=$(hextobands "$(_cnbp_mode_hex)")
+	_g2_out=""
+	for _b in $(_2g_bands_for_model); do
+		_g2_bit=$(_cnbp_bit_2g "$_b"); [ -n "$_g2_bit" ] || continue
+		case " $_g2_nums " in *" $((_g2_bit + 1)) "*) _g2_out="$_g2_out $_b" ;; esac
+	done
+	echo $_g2_out | xargs
+}
+
+setbands2g() {
+	_is_79xx && { echo "Unsupported"; return; }
+	_is_cnbp_family || { echo "Unsupported"; return; }
+	_s2_want="$1"
+	[ "$_s2_want" = "default" ] && _s2_want=$(_2g_bands_for_model)
+	_s2_nums=$(hextobands "$(_cnbp_mode_hex)")
+	_s2_keep=""
+	for _n in $_s2_nums; do
+		_s2_drop=""
+		for _b in 900 1800 850 1900; do
+			[ "$((_n - 1))" = "$(_cnbp_bit_2g "$_b")" ] && _s2_drop=1
+		done
+		[ "$((_n - 1))" = 9 ] && _s2_drop=1
+		[ -n "$_s2_drop" ] || _s2_keep="$_s2_keep $_n"
+	done
+	for _b in $_s2_want; do
+		_s2_bit=$(_cnbp_bit_2g "$_b"); [ -n "$_s2_bit" ] || continue
+		_s2_keep="$_s2_keep $((_s2_bit + 1))"
+	done
+	_cnbp_write_mode "$_s2_keep" || echo "ERROR: empty band mask"
+}
+
+getsupportedmodes() {
+	_is_cnbp_family || { echo "Unsupported"; return; }
+	_is_79xx && { echo "2:Auto 14:3G 38:4G 54:3G+4G"; return; }
+	echo "2:Auto 13:2G 14:3G 38:4G 19:2G+3G"
+}
+
+getmode() {
+	_is_cnbp_family || { echo "Unsupported"; return; }
+	_m=$(sms_tool -d $_DEVICE at "AT+CNMP?" | awk -F: '/^\+CNMP:/{gsub(/[^0-9]/,"",$2);print $2}' | head -1)
+	[ "$_m" = "1" ] && _m=2
+	echo "$_m"
+}
+
+setmode() {
+	_is_cnbp_family || return
+	M="$1"
+	case "$M" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	sms_tool -d $_DEVICE at "AT+CNMP=$M"
+}
+
+getsupportedbands5gnsa() {
+	_is_cnbp_family && { echo "Unsupported"; return; }
+	echo "$_DEFAULT_5GNSA_BANDS"
+}
+
+getbands5gnsa() {
+	_is_cnbp_family && { echo "Unsupported"; return; }
+	O=$(sms_tool -d $_DEVICE at "AT+CSYSSEL=\"nsa_nr5g_band\"")
+	echo "$O" | awk -F, '/^\+CSYSSEL: "nsa_nr5g_band",/{gsub(":"," ");print $2}' | xargs
+}
+
+setbands5gnsa() {
+	_is_cnbp_family && return
+	BANDS="$1"
+	[ "$BANDS" = "default" ] && BANDS="$_DEFAULT_5GNSA_BANDS"
+	T=""
+	for BAND in $BANDS; do
+		case $BAND in
+			''|*[!0-9]*) continue ;;
+		esac
+		[ -n "$T" ] && T="${T}:"
+		T="${T}${BAND}"
+	done
+	[ -n "$T" ] && sms_tool -d $_DEVICE at "AT+CSYSSEL=\"nsa_nr5g_band\",$T"
+}
+
+getsupportedbands5gsa() {
+	_is_cnbp_family && { echo "Unsupported"; return; }
+	echo "$_DEFAULT_5GSA_BANDS"
+}
+
+getbands5gsa() {
+	_is_cnbp_family && { echo "Unsupported"; return; }
+	O=$(sms_tool -d $_DEVICE at "AT+CSYSSEL=\"nr5g_band\"")
+	echo "$O" | awk -F, '/^\+CSYSSEL: "nr5g_band",/{gsub(":"," ");print $2}' | xargs
+}
+
+setbands5gsa() {
+	_is_cnbp_family && return
+	BANDS="$1"
+	[ "$BANDS" = "default" ] && BANDS="$_DEFAULT_5GSA_BANDS"
+	T=""
+	for BAND in $BANDS; do
+		case $BAND in
+			''|*[!0-9]*) continue ;;
+		esac
+		[ -n "$T" ] && T="${T}:"
+		T="${T}${BAND}"
+	done
+	[ -n "$T" ] && sms_tool -d $_DEVICE at "AT+CSYSSEL=\"nr5g_band\",$T"
+}

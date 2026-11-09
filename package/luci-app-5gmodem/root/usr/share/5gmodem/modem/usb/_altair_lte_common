@@ -1,0 +1,230 @@
+[ -n "$DEVICE" ] && [ -c "$DEVICE" ] || return 0
+
+_alt_at() {
+	sms_tool -d "$DEVICE" at "$1" 2>/dev/null | tr -d '\r'
+}
+
+_alt_kv() {
+	printf '%s\n' "$1" | awk -v k="$2" '
+		{
+			s = $0
+			gsub(/[[:space:]]*=[[:space:]]*/, "=", s)
+			n = split(s, f, /[,:]/)
+			for (i = 1; i <= n; i++) {
+				t = f[i]
+				gsub(/^[[:space:]]+|[[:space:]]+$/, "", t)
+				if (index(t, k "=") != 1) continue
+				v = substr(t, length(k) + 2)
+				if (v ~ /^-?[0-9]+(\.[0-9]+)?$/) { print v; exit }
+			}
+		}'
+}
+
+_alt_in() {
+	case "$1" in ''|*[!0-9.-]*) return ;; esac
+	awk -v v="$1" -v lo="$2" -v hi="$3" 'BEGIN { v += 0; if (v >= lo && v <= hi) printf "%.0f", v }'
+}
+
+_ALT_KEY=$(printf '%s' "${DEVICE##*/}" | tr -c 'A-Za-z0-9' '_')
+
+_ALT_NO8="/tmp/5gmodem/alt_nomeas8_$_ALT_KEY"
+if [ ! -f "$_ALT_NO8" ]; then
+	_ALT_Q=$(_alt_at 'AT%MEAS="8"')
+	_ALT_V=$(_alt_in "$(_alt_kv "$_ALT_Q" RSRP)" -140 -44); [ -n "$_ALT_V" ] && RSRP="$_ALT_V"
+	_ALT_V=$(_alt_in "$(_alt_kv "$_ALT_Q" RSRQ)" -40 0);    [ -n "$_ALT_V" ] && RSRQ="$_ALT_V"
+	_ALT_V=$(_alt_in "$(_alt_kv "$_ALT_Q" SINR)" -20 50);   [ -n "$_ALT_V" ] && SINR="$_ALT_V"
+	_ALT_V=$(_alt_in "$(_alt_kv "$_ALT_Q" RSSI)" -120 -20); [ -n "$_ALT_V" ] && RSSI="$_ALT_V"
+	case "$_ALT_Q" in
+		*ERROR*) : > "$_ALT_NO8" 2>/dev/null ;;
+	esac
+fi
+
+_ALT_A=$(_alt_at 'AT%MEAS="0"')
+if [ -f "$_ALT_NO8" ]; then
+	_ALT_V=$(_alt_in "$(_alt_kv "$_ALT_A" Reported)" -140 -44); [ -n "$_ALT_V" ] && RSRP="$_ALT_V"
+	_ALT_Q=$(_alt_at 'AT%MEAS="1"')
+	_ALT_V=$(_alt_in "$(_alt_kv "$_ALT_Q" Reported)" -40 0);    [ -n "$_ALT_V" ] && RSRQ="$_ALT_V"
+	_ALT_Q=$(_alt_at 'AT%MEAS="2"')
+	_ALT_V=$(_alt_in "$(_alt_kv "$_ALT_Q" Reported)" -20 50);   [ -n "$_ALT_V" ] && SINR="$_ALT_V"
+	_ALT_Q=$(_alt_at 'AT%MEAS="3"')
+	_ALT_V=$(_alt_in "$(_alt_kv "$_ALT_Q" Reported)" -120 -20); [ -n "$_ALT_V" ] && RSSI="$_ALT_V"
+fi
+if [ -z "$ANTPORTS" ]; then
+	_ALT_OK=0
+	for _alt_rx in 0 1; do
+		_ALT_BEST=""
+		for _alt_tx in 0 1 2 3; do
+			_ALT_V=$(_alt_in "$(_alt_kv "$_ALT_A" "Rx${_alt_rx}Tx${_alt_tx}")" -150 -30)
+			[ -n "$_ALT_V" ] || continue
+			if [ -z "$_ALT_BEST" ] || [ "$_ALT_V" -gt "$_ALT_BEST" ]; then
+				_ALT_BEST="$_ALT_V"
+			fi
+		done
+		[ -n "$_ALT_BEST" ] || continue
+		ANTPORTS="$ANTPORTS${ANTPORTS:+ }$_alt_rx:$_ALT_BEST:"
+		_ALT_OK=$((_ALT_OK + 1))
+	done
+	[ "$_ALT_OK" = 2 ] && RXDIV="2rx"
+fi
+
+_ALT_P=$(_alt_at 'AT%PCONI')
+_ALT_E=""; _ALT_PCI=""; _ALT_BW=""; _ALT_CID=""; _ALT_BWDONE=""
+case "$_ALT_P" in
+	*EARFCN:*)
+		_ALT_E=$(printf '%s\n' "$_ALT_P" | sed -n 's/^[[:space:]]*EARFCN:[[:space:]]*\([0-9]*\).*/\1/p' | head -1)
+		_ALT_PCI=$(printf '%s\n' "$_ALT_P" | sed -n 's/^[[:space:]]*Physical Cell ID:[[:space:]]*\([0-9]*\).*/\1/p' | head -1)
+		_ALT_BW=$(printf '%s\n' "$_ALT_P" | sed -n 's/^[[:space:]]*Bandwidth:[[:space:]]*//p' | head -1 \
+			| sed 's/[[:space:]]*MHz//; s/[[:space:]]*$//')
+		case "$_ALT_BW" in
+			10|15|20|1.4) ;;
+			0) _ALT_BW=1.4 ;; 1) _ALT_BW=3 ;; 2) _ALT_BW=5 ;; 4) _ALT_BW=15 ;;
+			*) _ALT_BW="" ;;
+		esac
+		_ALT_BWDONE=1
+		;;
+	*ERROR*|'') ;;
+	*)
+		_ALT_L=$(printf '%s\n' "$_ALT_P" | grep -E '(^|[:[:space:]])(FDD|TDD)[[:space:]]*,' | head -1 \
+			| sed 's/^%PCONI:[[:space:]]*//')
+		if [ -n "$_ALT_L" ]; then
+			_ALT_BW=$(printf '%s' "$_ALT_L" | cut -d, -f3 | tr -d ' ')
+			_ALT_E=$(printf '%s' "$_ALT_L" | cut -d, -f4 | tr -d ' ')
+			_ALT_CID=$(printf '%s' "$_ALT_L" | cut -d, -f5 | tr -d ' ')
+			_ALT_PCI=$(printf '%s' "$_ALT_L" | cut -d, -f6 | tr -d ' ')
+		fi
+		;;
+esac
+if [ -z "$_ALT_BWDONE" ]; then
+	case "$_ALT_BW" in
+		0) _ALT_BW=1.4 ;; 1) _ALT_BW=3 ;; 2) _ALT_BW=5 ;; 3) _ALT_BW=10 ;; 4) _ALT_BW=15 ;; 5) _ALT_BW=20 ;;
+		*) _ALT_BW="" ;;
+	esac
+fi
+case "$_ALT_PCI" in ''|*[!0-9]*) _ALT_PCI="" ;; *) [ "$_ALT_PCI" -le 503 ] || _ALT_PCI="" ;; esac
+case "$_ALT_E" in ''|*[!0-9]*) _ALT_E="" ;; esac
+if [ -n "$_ALT_E" ]; then
+	EARFCN="$_ALT_E"
+	[ -n "$_ALT_PCI" ] && PCI="$_ALT_PCI"
+	_ALT_B=$(earfcn2band "$_ALT_E")
+	if [ -n "$_ALT_B" ]; then
+		PBAND="$(band4g "$_ALT_B")${_ALT_BW:+ @$_ALT_BW MHz}"
+		MODE="LTE | $(band4g "$_ALT_B")"
+	fi
+	[ -n "$_ALT_BW" ] && BANDWIDTH="$_ALT_BW"
+fi
+case "$CID_DEC" in
+	''|0|-)
+		case "$_ALT_CID" in
+			''|*[!0-9]*) ;;
+			*) CID_DEC="$_ALT_CID"; CID_HEX=$(printf '%X' "$_ALT_CID" 2>/dev/null) ;;
+		esac
+		;;
+esac
+
+_ALT_SLOW="/tmp/5gmodem/alt_slow_$_ALT_KEY"
+_ALT_NOW=$(cut -d. -f1 /proc/uptime)
+_ALT_TS=$(sed -n '1p' "$_ALT_SLOW" 2>/dev/null)
+case "$_ALT_TS" in ''|*[!0-9]*) _ALT_TS=0 ;; esac
+if [ $((_ALT_NOW - _ALT_TS)) -ge 30 ] || [ "$_ALT_TS" -gt "$_ALT_NOW" ]; then
+	_ALT_T=$(_alt_at 'AT%MEAS="5"' | grep -i 'temperature' | head -1 | sed 's/.*[:=][[:space:]]*//')
+	_ALT_T=$(_alt_in "$_ALT_T" -40 125)
+	_ALT_X=$(_alt_kv "$(_alt_at 'AT%MEAS="4"')" PUSCH)
+	_ALT_XV=""
+	case "$_ALT_X" in
+		-[0-9]*|[0-9]*)
+			_ALT_XV=$(awk -v v="$_ALT_X" 'BEGIN { if (v ~ /^-?[0-9]+$/) { v = v / 10; if (v >= -50 && v <= 30) printf "%.1f", v } }') ;;
+	esac
+	_ALT_L=$(_alt_at 'AT%MEAS="6"' | grep -i 'pathloss' | head -1 | sed 's/.*[:=][[:space:]]*//')
+	_ALT_L=$(_alt_in "$_ALT_L" 40 200)
+	printf '%s\n%s\n%s\n%s\n' "$_ALT_NOW" "$_ALT_T" "$_ALT_XV" "$_ALT_L" > "$_ALT_SLOW.tmp" 2>/dev/null \
+		&& mv "$_ALT_SLOW.tmp" "$_ALT_SLOW" 2>/dev/null
+else
+	_ALT_T=$(sed -n '2p' "$_ALT_SLOW" 2>/dev/null)
+	_ALT_XV=$(sed -n '3p' "$_ALT_SLOW" 2>/dev/null)
+	_ALT_L=$(sed -n '4p' "$_ALT_SLOW" 2>/dev/null)
+fi
+[ -n "$_ALT_T" ] && TEMP="$_ALT_T &deg;C"
+[ -n "$_ALT_XV" ] && [ -z "$TXPOWER" ] && TXPOWER="$_ALT_XV dBm"
+[ -n "$_ALT_L" ] && [ -z "$PATHLOSS" ] && PATHLOSS="$_ALT_L dB"
+
+_ALT_NON="/tmp/5gmodem/alt_nonbr_$_ALT_KEY"
+if [ -z "$NEIGHBORS" ] && [ ! -f "$_ALT_NON" ]; then
+	_ALT_N=$(_alt_at 'AT%MEAS="97"')
+	case "$_ALT_N" in
+		*ERROR*) : > "$_ALT_NON" 2>/dev/null ;;
+	esac
+	_ALT_NB=$(printf '%s\n' "$_ALT_N" | awk -v se="$EARFCN" -v sp="$PCI" '
+		function num(v) { gsub(/[^0-9-]/, "", v); return v }
+		/CellID/ {
+			s = $0
+			gsub(/[[:space:]]*=[[:space:]]*/, "=", s)
+			e = ""; c = ""; p = ""; q = ""
+			n = split(s, f, /[,:[:space:]]+/)
+			for (i = 1; i <= n; i++) {
+				if (f[i] ~ /^EARFCN=/) e = num(substr(f[i], 8))
+				else if (f[i] ~ /^CellID=/) c = num(substr(f[i], 8))
+				else if (f[i] ~ /^RSRP=/) p = num(substr(f[i], 6))
+				else if (f[i] ~ /^RSRQ=/) q = num(substr(f[i], 6))
+			}
+			if (c == "" || c + 0 > 503) next
+			if (e == "" || e + 0 == 0) e = se
+			if (p != "" && p + 0 > 0) p = -p
+			if (q != "" && q + 0 > 0) q = -q
+			if (q != "" && (q + 0 < -20 || q + 0 > 0)) q = ""
+			if (p != "" && (p + 0 < -140 || p + 0 > -44)) p = ""
+			if (e == se && c == sp) next
+			key = e "_" c
+			if (key in seen) next
+			seen[key] = 1
+			printf "%s %s %s %s\n", e, c, p, q
+		}')
+	_ALT_NJ=""
+	_ALT_SIFS="$IFS"
+	IFS='
+'
+	for _alt_l in $_ALT_NB; do
+		IFS="$_ALT_SIFS"
+		_alt_e="${_alt_l%% *}"; _alt_r="${_alt_l#* }"
+		_alt_c="${_alt_r%% *}"; _alt_r="${_alt_r#* }"
+		_alt_p="${_alt_r%% *}"; _alt_q="${_alt_r#* }"
+		[ "$_alt_q" = "$_alt_r" ] && [ "$_alt_p" = "$_alt_r" ] && _alt_q=""
+		_ALT_NJ="$_ALT_NJ${_ALT_NJ:+,}$(printf '{"band":"%s","earfcn":"%s","pci":"%s","rsrp":"%s","rsrq":"%s","rssi":"","serving":0}' \
+			"$(earfcn2band "$_alt_e")" "$_alt_e" "$_alt_c" "$_alt_p" "$_alt_q")"
+		IFS='
+'
+	done
+	IFS="$_ALT_SIFS"
+	if [ -n "$EARFCN" ] && [ -n "$PCI" ]; then
+		NEIGHBORS=$(printf '{"band":"%s","earfcn":"%s","pci":"%s","rsrp":"%s","rsrq":"%s","rssi":"%s","serving":1}' \
+			"$(earfcn2band "$EARFCN")" "$EARFCN" "$PCI" "$RSRP" "$RSRQ" "$RSSI")
+		NEIGHBORS="$NEIGHBORS${_ALT_NJ:+,$_ALT_NJ}"
+	elif [ -n "$_ALT_NJ" ]; then
+		NEIGHBORS="$_ALT_NJ"
+	fi
+fi
+
+_alt_first() {
+	printf '%s\n' "$1" | awk '
+		/^AT/ { next }
+		/^[+%^]/ { next }
+		/^(OK|ERROR)$/ { next }
+		/^[[:space:]]*$/ { next }
+		{ gsub(/^[[:space:]]+|[[:space:]]+$/, ""); print; exit }'
+}
+_ALT_V=$(_alt_first "$(_alt_at 'AT+CGMR')")
+[ -n "$_ALT_V" ] && FW="$_ALT_V"
+_ALT_M=$(_alt_first "$(_alt_at 'AT+CGMM')")
+_ALT_I=$(_alt_first "$(_alt_at 'AT+CGMI')")
+[ -n "$_ALT_M" ] && MODEL=$(printf '%s %s' "$_ALT_I" "$_ALT_M" | xargs)
+
+if [ -z "$PROTO" ] && [ -n "$_POLL_AM" ] && [ -d "/sys/bus/usb/devices/$_POLL_AM" ]; then
+	for _alt_if in "/sys/bus/usb/devices/$_POLL_AM":*; do
+		[ -e "$_alt_if/driver" ] || continue
+		case "$(readlink -f "$_alt_if/driver" 2>/dev/null)" in
+			*/rndis_host) PROTO="rndis"; break ;;
+			*/cdc_ncm)    PROTO="ncm";   break ;;
+			*/cdc_ether)  PROTO="ecm";   break ;;
+		esac
+	done
+fi
+[ -n "$PROTO" ] || PROTO="ecm"

@@ -1,0 +1,83 @@
+_DEVICE=""
+
+getinfo() {
+	echo "MeigLink SLM770A-R"
+}
+
+getsupportedbands() {
+	echo "1 3 5 7 8 20 28 38 40 41"
+}
+
+getbands() {
+	O=$(sms_tool -d $_DEVICE at "at^syscfgex?")
+	HEX="0x"$(echo "$O" | awk -F[:,] '/^\^SYSCFGEX:/{print $6}' | xargs)
+	if [ "$HEX" = "0x7FFFFFFFFFFFFFFF" ]; then
+		getsupportedbands
+	else
+		[ "$HEX" = "0x" ] || hextobands "$HEX"
+	fi
+}
+
+setbands() {
+	BANDS="$1"
+
+	if [ "$BANDS" = "default" ]; then
+		HEX="7FFFFFFFFFFFFFFF"
+	else
+		HEX=$(bandstohex "$BANDS")
+	fi
+	[ "$HEX" = "0" ] && return
+
+	O=$(sms_tool -d $_DEVICE at "at^syscfgex?" | tr -d '\r')
+	_L=$(echo "$O" | sed -n 's/^\^SYSCFGEX: *//p' | head -1)
+	_ACQ=$(echo "$_L" | awk -F, '{print $1}')
+	_WB=$(echo "$_L"  | awk -F, '{print $2}')
+	_ROAM=$(echo "$_L" | awk -F, '{print $3}')
+	_SRV=$(echo "$_L" | awk -F, '{print $4}')
+	_LB2=$(echo "$_L" | awk -F, '{print $6}')
+	[ -n "$_ACQ" ]  || _ACQ='"03"'
+	[ -n "$_WB" ]   || _WB="2000004400000"
+	[ -n "$_ROAM" ] || _ROAM="3"
+	[ -n "$_SRV" ]  || _SRV="2"
+	[ -n "$_LB2" ]  || _LB2="0"
+
+	sms_tool -d $_DEVICE at "at^syscfgex=${_ACQ},${_WB},${_ROAM},${_SRV},${HEX},${_LB2},,"
+}
+
+getcelllock() {
+	O=$(sms_tool -d $_DEVICE at "AT^CELLLOCK?" 2>/dev/null | tr -d '\r' \
+		| sed -n 's/^\^CELLLOCK: *//p' | head -1)
+	[ -n "$O" ] || { echo "Unsupported"; return; }
+	_EN=$(echo "$O" | awk -F, '{print $1}')
+	[ "$_EN" = "1" ] || { echo "off"; return; }
+	_LT=$(echo "$O" | awk -F, '{gsub(/"/,"",$3); print $3}')
+	_AR=$(echo "$O" | awk -F, '{print $4}')
+	_PC=$(echo "$O" | awk -F, '{print $5}')
+	if [ "$_LT" = "1" ] && [ -n "$_PC" ]; then
+		echo "cell $_AR $_PC"
+	else
+		echo "arfcn $_AR"
+	fi
+}
+
+setcelllock() {
+	case "$1" in
+		off)
+			sms_tool -d $_DEVICE at "AT^CELLLOCK=0" >/dev/null 2>&1
+			sms_tool -d $_DEVICE at "AT+CFUN=1,1" >/dev/null 2>&1
+			;;
+		arfcn|cell)
+			_AR="$2"; _PC="$3"
+			[ -n "$_AR" ] || return
+			sms_tool -d $_DEVICE at "AT+CFUN=0" >/dev/null 2>&1
+			sleep 2
+			if [ "$1" = "cell" ] && [ -n "$_PC" ]; then
+				sms_tool -d $_DEVICE at "AT^CELLLOCK=1,\"03\",1,$_AR,$_PC" >/dev/null 2>&1
+			else
+				sms_tool -d $_DEVICE at "AT^CELLLOCK=1,\"03\",0,$_AR" >/dev/null 2>&1
+			fi
+			sleep 1
+			sms_tool -d $_DEVICE at "AT+CFUN=1" >/dev/null 2>&1
+			;;
+	esac
+}

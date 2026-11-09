@@ -1,0 +1,10 @@
+_DEVICE=""
+_BAND_READONLY=1
+
+getinfo() {
+	echo "Sierra Wireless EM7345 (Intel XMM7160)"
+}
+
+getsupportedbands() {
+	echo "1 2 3 4 5 7 8 13 17 18 19 20"
+}

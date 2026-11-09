@@ -1,0 +1,41 @@
+#!/bin/sh
+
+[ "$ACTION" = add ] || [ "$ACTION" = remove ] || exit 0
+case "$DEVNAME" in
+	cdc-wdm*) ;;
+	*) exit 0 ;;
+esac
+
+. /lib/functions.sh
+. /lib/netifd/netifd-proto.sh
+. /usr/share/5gmodem/lib.sh 2>/dev/null
+
+_wwan_mark() {
+	local cfg="$1"
+	local proto device devpath
+
+	config_get proto "$cfg" proto
+	proto_in own "$proto" && proto_in wdm "$proto" || return 0
+
+	config_get device "$cfg" device
+	config_get devpath "$cfg" devpath
+
+	if [ -n "$devpath" ]; then
+		local _ci _db
+		_ci="${DEVPATH%/usbmisc/*}"; _ci="${_ci##*/}"
+		_db="${devpath%/}"; _db="${_db##*/}"
+		[ -n "$_ci" ] && { [ "$_db" = "$_ci" ] || [ "$_db" = "${_ci%%:*}" ]; } || return 0
+	elif [ -n "$device" ] && [ "$device" != "/dev/$DEVNAME" ]; then
+		return 0
+	fi
+
+	if [ "$ACTION" = add ]; then
+		proto_set_available "$cfg" 1
+		logger -t 5gmodem "wwan-hotplug: $DEVNAME is back - interface $cfg ($proto) marked available"
+	else
+		proto_set_available "$cfg" 0
+	fi
+}
+
+config_load network
+config_foreach _wwan_mark interface

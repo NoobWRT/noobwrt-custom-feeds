@@ -1,0 +1,309 @@
+_DEVICE=""
+
+_EM9190_4G="1 2 3 4 5 7 8 12 13 14 17 18 19 20 25 26 28 29 30 32 34 38 39 40 41 42 43 46 48 66 71"
+_EM9190_5G="1 2 3 5 7 8 12 20 25 28 38 40 41 48 66 71 77 78 79"
+_EM9190_3G="1 2 3 4 5 6 8 9 19"
+
+_EM9190_SET=10
+_EM9190_SETNAME="5gmodemapp"
+
+_HEXD="0123456789ABCDEF"
+
+_mask_hex() {
+	_mh_n="0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0"
+	for _mh_b in $1; do
+		_mh_i=$((15 - _mh_b / 4))
+		_mh_v=$((1 << (_mh_b % 4)))
+		_mh_k=0; _mh_o=""
+		for _mh_c in $_mh_n; do
+			[ "$_mh_k" = "$_mh_i" ] && _mh_c=$((_mh_c | _mh_v))
+			_mh_o="$_mh_o $_mh_c"
+			_mh_k=$((_mh_k + 1))
+		done
+		_mh_n=$_mh_o
+	done
+	_mh_r=""
+	for _mh_c in $_mh_n; do
+		_mh_r="$_mh_r${_HEXD:$_mh_c:1}"
+	done
+	printf '%s' "$_mh_r"
+}
+
+_slot_hex() {
+	_sh_lo=$(( ($2 - 1) * 64 + 1 ))
+	_sh_hi=$(( $2 * 64 ))
+	_sh_b=""
+	for _sh_x in $1; do
+		case "$_sh_x" in ''|*[!0-9]*) continue ;; esac
+		[ "$_sh_x" -ge "$_sh_lo" ] && [ "$_sh_x" -le "$_sh_hi" ] \
+			&& _sh_b="$_sh_b $(( _sh_x - _sh_lo ))"
+	done
+	_mask_hex "$_sh_b"
+}
+
+_gw_bit() {
+	case "$1" in
+		1) _GWB=22 ;; 2) _GWB=23 ;; 3) _GWB=24 ;; 4) _GWB=25 ;;
+		5) _GWB=26 ;; 6) _GWB=27 ;; 8) _GWB=49 ;; 9) _GWB=50 ;;
+		19) _GWB=60 ;;
+		*) _GWB="" ;;
+	esac
+}
+
+_gw_hex() {
+	_gh_b=""
+	for _gh_x in $1; do
+		_gw_bit "$_gh_x"
+		[ -n "$_GWB" ] && _gh_b="$_gh_b $_GWB"
+	done
+	_mask_hex "$_gh_b"
+}
+
+_hex_bands() {
+	_hb_off=$(( ($2 - 1) * 64 + 1 ))
+	_hb_i=15
+	_hb_out=""
+	while [ "$_hb_i" -ge 0 ]; do
+		_hb_c=${1:$_hb_i:1}
+		case "$_hb_c" in
+			[0-9]) _hb_v=$_hb_c ;;
+			[aA]) _hb_v=10 ;; [bB]) _hb_v=11 ;; [cC]) _hb_v=12 ;;
+			[dD]) _hb_v=13 ;; [eE]) _hb_v=14 ;; [fF]) _hb_v=15 ;;
+			*) _hb_v=0 ;;
+		esac
+		_hb_base=$(( (15 - _hb_i) * 4 ))
+		for _hb_k in 0 1 2 3; do
+			if [ $(( (_hb_v >> _hb_k) & 1 )) = 1 ]; then
+				if [ "$3" = "gw" ]; then
+					case $(( _hb_base + _hb_k )) in
+						22) _hb_out="$_hb_out 1" ;; 23) _hb_out="$_hb_out 2" ;;
+						24) _hb_out="$_hb_out 3" ;; 25) _hb_out="$_hb_out 4" ;;
+						26) _hb_out="$_hb_out 5" ;; 27) _hb_out="$_hb_out 6" ;;
+						49) _hb_out="$_hb_out 8" ;; 50) _hb_out="$_hb_out 9" ;;
+						60) _hb_out="$_hb_out 19" ;;
+					esac
+				else
+					_hb_out="$_hb_out $(( _hb_base + _hb_k + _hb_off ))"
+				fi
+			fi
+		done
+		_hb_i=$(( _hb_i - 1 ))
+	done
+	printf '%s' "${_hb_out# }"
+}
+
+_ENTERCND=""
+_entercnd() {
+	[ -n "$_ENTERCND" ] && return 0
+	_ec_o=$(sms_tool -d $_DEVICE at 'AT!ENTERCND="A710"' 2>/dev/null | tr -d '\r')
+	case "$_ec_o" in
+		*OK*)    _ENTERCND=1 ;;
+		*ERROR*) logger -t 5gmodem "EM9190: !ENTERCND was rejected - extended !BAND commands will fail" ;;
+	esac
+}
+
+_BQ=""
+_bandq() {
+	[ -n "$_BQ" ] && return 0
+	[ -n "$_DEVICE" ] && [ -e "$_DEVICE" ] || return 0
+	_BQ_F="/tmp/5gmodem/bands_bandq_${_DEVICE##*/}"
+	if [ -s "$_BQ_F" ]; then
+		_BQ=$(cat "$_BQ_F")
+		return 0
+	fi
+	_entercnd
+	_BQ=$(sms_tool -d $_DEVICE at 'AT!BAND?' 2>/dev/null | tr -d '\r')
+	case "$_BQ" in
+		*Index*Name*) printf '%s\n' "$_BQ" > "$_BQ_F" ;;
+	esac
+}
+
+_bq_mask() {
+	_bandq
+	printf '%s\n' "$_BQ" | awk -v lbl="$1" -v k="$2" '
+		{
+			p = index($0, lbl ":")
+			if (p == 0) next
+			s = substr($0, p + length(lbl) + 1)
+			n = split(s, a, /[ \t]+/)
+			c = 0
+			for (i = 1; i <= n; i++) {
+				if (a[i] == "") continue
+				if (++c == k) { print a[i]; exit }
+			}
+			exit
+		}'
+}
+
+_bq_index() {
+	_bandq
+	printf '%s\n' "$_BQ" | awk '
+		/^[0-9A-Fa-f][0-9A-Fa-f],/ { p = index($0, ","); print substr($0, 1, p - 1); exit }'
+}
+
+_SDP=""
+_sdpref() {
+	[ -n "$_SDP" ] && return 0
+	[ -n "$_DEVICE" ] && [ -e "$_DEVICE" ] || return 0
+	_SDP_F="/tmp/5gmodem/bands_sdpref_${_DEVICE##*/}"
+	if [ -s "$_SDP_F" ]; then
+		_SDP=$(cat "$_SDP_F")
+		return 0
+	fi
+	_SDP=$(sms_tool -d $_DEVICE at "AT!SDPREF?" 2>/dev/null | tr -d '\r')
+	case "$_SDP" in
+		*RATs*|*SDPREF*) printf '%s\n' "$_SDP" > "$_SDP_F" ;;
+	esac
+}
+
+_sdp_bands() {
+	_sdpref
+	printf '%s\n' "$_SDP" | awk -v lbl="$1" '
+		{
+			p = index($0, ":")
+			if (p == 0) next
+			k = substr($0, 1, p - 1)
+			gsub(/[ \t]/, "", k)
+			if (k != lbl) next
+			s = substr($0, p + 1)
+			gsub(/[ \t]/, "", s)
+			n = split(s, a, ",")
+			for (i = 1; i <= n; i++) {
+				b = a[i]
+				gsub(/[^0-9]/, "", b)
+				if (b != "") printf "%s%s", (out++ ? " " : ""), b
+			}
+			exit
+		}'
+}
+
+_cur_bands() {
+	[ -n "$_DEVICE" ] && [ -e "$_DEVICE" ] || return 0
+	_cb_i=$(_bq_index)
+	case "$_cb_i" in
+		00|"") _sdp_bands "$2"; return 0 ;;
+	esac
+	_cb_k=1
+	_cb_out=""
+	while [ "$_cb_k" -le "$3" ]; do
+		_cb_m=$(_bq_mask "$1" "$_cb_k")
+		case "$_cb_m" in
+			????????????????) _cb_out="$_cb_out $(_hex_bands "$_cb_m" "$_cb_k" "$4")" ;;
+		esac
+		_cb_k=$(( _cb_k + 1 ))
+	done
+	_cb_r=""
+	for _cb_x in $_cb_out; do _cb_r="$_cb_r${_cb_r:+ }$_cb_x"; done
+	printf '%s' "$_cb_r"
+}
+
+_band_apply() {
+	[ -n "$_DEVICE" ] && [ -e "$_DEVICE" ] || return 1
+	if [ -z "$(printf '%s' "$1" | tr -cd '0-9')" ]; then
+		logger -t 5gmodem "EM9190: refusing an empty LTE band set - NSA needs an LTE anchor, and a radio reset without LTE soft-bricks the module (no AT until a hard power cycle)"
+		return 1
+	fi
+	_entercnd
+	_ba_n="$_EM9190_SET,1,\"$_EM9190_SETNAME\""
+
+	_ba_fail=0
+	_ba_w() {
+		_bw_o=$(sms_tool -d $_DEVICE at "$2" 2>&1 | tr -d '\r')
+		case "$_bw_o" in
+			*OK*) ;;
+			*) _ba_fail=1
+			   logger -t 5gmodem "EM9190: band write ($1) rejected: $(echo "$_bw_o" | tr '\n' ' ' | head -c 120)" ;;
+		esac
+		sleep 1
+	}
+	_ba_w "GW"     "AT!BAND=$_ba_n,0,$(_gw_hex "$4")"
+	_ba_w "LTE"    "AT!BAND=$_ba_n,1,$(_slot_hex "$1" 1),$(_slot_hex "$1" 2)"
+	_ba_w "NRNSA"  "AT!BAND=$_ba_n,3,$(_slot_hex "$2" 1),$(_slot_hex "$2" 2),$(_slot_hex "$2" 3),$(_slot_hex "$2" 4),$(_slot_hex "$2" 5)"
+	_ba_w "NRSA"   "AT!BAND=$_ba_n,4,$(_slot_hex "$3" 1),$(_slot_hex "$3" 2),$(_slot_hex "$3" 3),$(_slot_hex "$3" 4),$(_slot_hex "$3" 5)"
+	_ba_w "select" "AT!BAND=$_EM9190_SET"
+	_ba_v=$(sms_tool -d $_DEVICE at "AT!BAND?" 2>/dev/null | tr -d '\r')
+	echo "$_ba_v" | grep -q "$_EM9190_SET, *$_EM9190_SETNAME" || {
+		_ba_fail=1
+		logger -t 5gmodem "EM9190: after apply the active band set is NOT $_EM9190_SETNAME: $(echo "$_ba_v" | grep -m1 ',' | head -c 60)"
+	}
+	echo "$_ba_v" | grep -qi "$(_slot_hex "$1" 1)" || {
+		_ba_fail=1
+		logger -t 5gmodem "EM9190: after apply the LTE mask does not match the requested set (wanted $(_slot_hex "$1" 1))"
+	}
+
+	_ba_r=$(sms_tool -d $_DEVICE at "AT!SELRAT?" 2>/dev/null | tr -d '\r' \
+		| awk -F'[:,]' '/!SELRAT:/ { gsub(/[ \t]/, "", $2); print $2; exit }')
+	case "$_ba_r" in
+		00|"") ;;
+		*) logger -t 5gmodem "EM9190: both a custom band set and network mode $_ba_r are set - the vendor advises against combining them (return one to auto)" ;;
+	esac
+	rm -f "/tmp/5gmodem/bands_bandq_${_DEVICE##*/}" 2>/dev/null
+	return "$_ba_fail"
+}
+
+_band_default() {
+	[ -n "$_DEVICE" ] && [ -e "$_DEVICE" ] || return 1
+	_entercnd
+	sms_tool -d $_DEVICE at "AT!BAND=00" >/dev/null 2>&1
+	rm -f "/tmp/5gmodem/bands_bandq_${_DEVICE##*/}" 2>/dev/null
+}
+
+getinfo() {
+	echo "Sierra Wireless EM9190"
+}
+
+getsupportedbands()      { echo "$_EM9190_4G"; }
+getsupportedbands5gnsa() { echo "$_EM9190_5G"; }
+getsupportedbands5gsa()  { echo "$_EM9190_5G"; }
+getsupportedbands3g()    { echo "$_EM9190_3G"; }
+
+getbands()      { _cur_bands LTE   LTE   2; }
+getbands5gnsa() { _cur_bands NRNSA NRNSA 5; }
+getbands5gsa()  { _cur_bands NRSA  NRSA  5; }
+getbands3g()    { _cur_bands GW    GWC   1 gw; }
+
+bands3g_style() { echo "mask"; }
+
+setbands() {
+	[ "$1" = "default" ] && { _band_default; return $?; }
+	_band_apply "$1" "$(getbands5gnsa)" "$(getbands5gsa)" "$(getbands3g)"
+}
+
+setbands5gnsa() {
+	[ "$1" = "default" ] && { _band_default; return $?; }
+	_band_apply "$(getbands)" "$1" "$(getbands5gsa)" "$(getbands3g)"
+}
+
+setbands5gsa() {
+	[ "$1" = "default" ] && { _band_default; return $?; }
+	_band_apply "$(getbands)" "$(getbands5gnsa)" "$1" "$(getbands3g)"
+}
+
+setbands3g() {
+	[ "$1" = "default" ] && { _band_default; return $?; }
+	_band_apply "$(getbands)" "$(getbands5gnsa)" "$(getbands5gsa)" "$1"
+}
+
+_EM9190_MODES="00:Auto 01:3G 06:4G 11:3G+4G 20:5G 21:4G+5G 22:3G+5G"
+
+getsupportedmodes() {
+	echo "$_EM9190_MODES"
+}
+
+getmode() {
+	[ -n "$_DEVICE" ] && [ -e "$_DEVICE" ] || return 0
+	sms_tool -d $_DEVICE at "AT!SELRAT?" 2>/dev/null | tr -d '\r' \
+		| awk -F'[:,]' '/!SELRAT:/ { gsub(/[ \t]/, "", $2); print $2; exit }'
+}
+
+setmode() {
+	_sm="$1"
+	_sm_ok=""
+	for _sm_p in $_EM9190_MODES; do
+		[ "${_sm_p%%:*}" = "$_sm" ] && _sm_ok=1 && break
+	done
+	[ -n "$_sm_ok" ] || return 1
+	[ -n "$_DEVICE" ] && [ -e "$_DEVICE" ] || return 1
+	_entercnd
+	sms_tool -d $_DEVICE at "AT!SELRAT=$_sm"
+}

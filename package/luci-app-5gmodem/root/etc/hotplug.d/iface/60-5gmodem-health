@@ -1,0 +1,5 @@
+#!/bin/sh
+[ "$ACTION" = ifup ] || [ "$ACTION" = ifdown ] || exit 0
+[ -x /usr/share/5gmodem/health.sh ] || exit 0
+( /usr/share/5gmodem/health.sh event "$INTERFACE" ) >/dev/null 2>&1 </dev/null &
+exit 0

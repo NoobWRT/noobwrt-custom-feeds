@@ -1,0 +1,78 @@
+. "$RES/modem/usb/_quectel_common"
+
+O=$(sms_tool -d $DEVICE at "at+qtemp")
+
+T=$(echo "$O" | awk -F[,:] '/^\+QTEMP/ {print $2}' | tr -d '"' | sort -rn | head -n1 | xargs)
+if [ -n "$T" ]; then
+	TEMP="$T &deg;C"
+fi
+
+O=$(sms_tool -d $DEVICE at "at+qnwinfo;+qspn")
+
+T=$(echo "$O" | awk -F[,:] '/^\+QNWINFO/ {print $2"/"$4}' | xargs)
+if [ -n "$T" ]; then
+	if [ "x$MODE_NUM" = "x7" ]; then
+		B=$(echo $T | sed 's/.*LTE BAND \(.*\)/\1/')
+		MODE="LTE | $(band4g ${B})"
+		MAINCUT="$(band4g ${B})"
+	fi
+fi
+
+E=$(sms_tool -d $DEVICE at "at+qeng=\"servingcell\"")
+
+T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $4}' | xargs)
+if [ "x$T" = "xLTE" ] || [ "x$T" = "x4G" ]; then
+	T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $14}')
+	T_DEC=$(printf "%d" "0x$T")
+	T_HEX=$T
+
+	T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $12}')
+	_qc_lbw T1 "$T" "?"
+	ULBW="UL: @$T1 MHz"
+	T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $13}')
+	_qc_lbw T1 "$T" "?"
+	DLBW="DL: @$T1 MHz"
+	PBAND="$MAINCUT $DLBW $ULBW"
+	
+	T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $9}')
+	PCI=$T
+	T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $10}')
+	EARFCN=$T
+	T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $17}')
+	RSSI=$T
+	T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $15}')
+	RSRP=$T
+	T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $16}')
+	RSRQ=$T
+	T=$(echo "$E" | awk -F[,:] '/^\+QENG:/ {print $18}')
+	SINR=$T
+fi
+
+_qc_spn2
+
+O=$(sms_tool -d $DEVICE at "AT+GSN" | xargs)
+NR_I=$(echo "$O"  | sed 's/AT+GSN//g' | xargs)
+if [ -n "$NR_I" ]; then
+	NR_IMEI="$NR_I"
+fi
+
+O=$(sms_tool -d $DEVICE at "AT+CIMI" | xargs)
+NR_C=$(echo "$O" | sed 's/AT+CIMI//g' | xargs)
+if [ -n "$NR_C" ]; then
+	NR_IMSI="$NR_C"
+fi
+
+_qc_iccid
+
+FWA=$(sms_tool -d $DEVICE at "AT+GMR" | tr -s "\n" | xargs)
+FW=$(echo $FWA | sed s/"AT+GMR"//)
+
+MODELA=$(sms_tool -d $DEVICE at "AT+CGMM" | tr -s "\n" | xargs)
+MODELB=$(sms_tool -d $DEVICE at "AT+CGMI" | tr -s "\n" | xargs)
+MODELACUT=$(echo $MODELA | sed s/"AT+CGMM"//)
+MODELBCUT=$(echo $MODELB | sed s/"AT+CGMI"//)
+MODEL="$MODELBCUT "$MODELACUT
+
+_qc_proto "Vendor=2c7c ProdID=6026" 1220
+
+. "$RES/modem/usb/_quectel_qrsrp"

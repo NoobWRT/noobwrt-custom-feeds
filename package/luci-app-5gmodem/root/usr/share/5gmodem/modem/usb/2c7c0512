@@ -1,0 +1,114 @@
+. "$RES/modem/usb/_quectel_common"
+
+O=$(sms_tool -d $DEVICE at "at+qtemp")
+
+T=$(echo "$O" | awk -F[,:] '/^\+QTEMP/ {print $3}' | tr -d '"' | sort -rn | head -n1 | xargs)
+[ -n "$T" ] && TEMP="$T &deg;C"
+
+if [ "$REGOK" = "1" ]; then
+
+O=$(sms_tool -d $DEVICE at "at+qnwinfo;+qcainfo;+qeng=\"servingcell\";+qspn")
+
+_qc_spn2
+
+if [ "x$MODE_NUM" = "x7" ]; then
+	_qc_act "$O" | grep -q -i "+QCAINFO.*SCC" && MODE="LTE-A"
+
+	T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {print $4}' | xargs)
+	if [ "x$T" = "xLTE" ]; then
+		T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {print $14}')
+		TAC_DEC=$(printf "%d" "0x$T")
+		TAC_HEX=$T
+		
+		T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {print $12}')
+		_qc_lbw T1 "$T" ""
+		[ -n "$T1" ] && ULBW="UL: @$T1 MHz"
+		T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {print $13}')
+		_qc_lbw T1 "$T" ""
+		[ -n "$T1" ] && DLBW="DL: @$T1 MHz"
+	fi
+
+	T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(pcc|PCC)"/{print $5}')
+	if [ -z "$T" ]; then
+		T=$(echo "$O" | awk -F[,:] '/^\+QNWINFO:/{print $4}')
+		B=$(echo $T | sed 's/"LTE BAND \(.*\)"/\1/')
+		T2=$(band4g ${B})
+		MODE="$MODE $T2"
+		T3=$(echo "$O" | awk -F[,:] '/^\+QNWINFO:"/{print $11}')
+		_qc_cbw T4 "$T3" ""
+		if [ -z "$T4" ]; then
+			PBAND="$T2"
+		else
+			PBAND="$T2 @${T4} MHz"
+		fi
+		T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {print $9}')
+		[ -n "$T" ] && PCI="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {print $10}')
+		[ -n "$T" ] && EARFCN="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {print $17}')
+		[ -n "$T" ] && RSSI="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {print $15}')
+		[ -n "$T" ] && RSRP="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {print $16}')
+		[ -n "$T" ] && RSRQ="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QENG:/ {v=$18; gsub(/[^0-9-]/,"",v); if(v ~ /^-?[0-9]+$/) print v; exit}')
+		[ -n "$T" ] && SINR="$T"
+	else
+		B=$(echo $T | sed 's/"LTE BAND \(.*\)"/\1/')
+		T2=$(band4g ${B})
+		MODE="$MODE $T2"
+		T3=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(pcc|PCC)"/{print $4}')
+		_qc_cbw T4 "$T3" ""
+		if [ -z "$T4" ]; then
+			PBAND="$T2"
+		else
+			PBAND="$T2 @${T4} MHz"
+		fi
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(pcc|PCC)"/{print $3}')
+		[ -n "$T" ] && EARFCN="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(pcc|PCC)"/{print $7}')
+		[ -n "$T" ] && PCI="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(pcc|PCC)"/{print $10}')
+		[ -n "$T" ] && RSSI="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(pcc|PCC)"/{print $8}')
+		[ -n "$T" ] && RSRP="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(pcc|PCC)"/{print $9}')
+		[ -n "$T" ] && RSRQ="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(pcc|PCC)"/{v=$11; gsub(/[^0-9-]/,"",v); if(v ~ /^-?[0-9]+$/) print v; exit}')
+		[ -n "$T" ] && SINR="$T"
+
+IFS="
+"
+
+		_qc_scc_lte "" mode
+	fi
+fi
+
+fi
+
+_qc_neighbours
+
+MODE=$(echo $MODE | sed 's,/,+,' | sed 's, / \(B[0-9]\), + \1,g' | sed 's,LTE B,LTE | B,' | sed 's,LTE_A,LTE-A,' | sed 's,LTE-A B,LTE-A | B,')
+
+OF=$(sms_tool -d $DEVICE at "ati")
+DEVV=$(echo $OF | tr -s "\n"  | xargs)
+FWA=$(sms_tool -d $DEVICE at "AT+GMR" | tr -s "\n"  | xargs)
+FW=$(echo $FWA | sed 's/^.*AT+GMR *//' | xargs)
+
+MODELA=$(sms_tool -d $DEVICE at "AT+CGMM" | tr -s "\n"  | xargs)
+MODELB=$(sms_tool -d $DEVICE at "AT+CGMI" | tr -s "\n"  | xargs)
+MODELACUT=$(echo $MODELA | cut -c 9-)
+MODELBCUT=$(echo $MODELB | cut -c 9-)
+MODEL="$MODELBCUT "$MODELACUT
+if [ -z "$MODEL" ]
+then
+      MODEL=$(echo $DEVV | awk -F 'ati|Revision:' '{print $2}'| xargs)
+fi
+
+_qc_qslot
+
+_qc_ids
+
+_qc_proto "Vendor=2c7c ProdID=0512" 1220
+
+. "$RES/modem/usb/_quectel_qrsrp"

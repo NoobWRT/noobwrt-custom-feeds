@@ -1,0 +1,50 @@
+# AT templates — '## group' starts a section, a '# description' line describes
+# the command below it, and the command line is sent to the modem as-is.
+# '#' lines are never sent. Full help is in generic.user. Edit freely.
+
+## Signal and cell
+
+# Base station and signal
+AT+BINFO;+CESQ
+
+# Aggregation
+AT+LCAINFO
+
+# 5G cell and signal (answers in about 3 s)
+AT+BNRINFO
+
+# 5G aggregation
+AT+NRCAINFO
+
+# Model, firmware and hardware versions
+AT+PRODUCTINFO
+
+## Bands and temperature
+
+# Bands and 5G mode (masks)
+AT+BCONFIG?
+
+# Thermal sensors
+AT+CEITHERM?
+
+## SIM
+
+# SIM slot
+AT+CEISWITCHSIM?
+
+# ICCID
+AT+ICCID
+
+## USB composition
+
+# Current USB composition
+AT+USBCOMP?
+
+# User mode, usually MBIM (90d5, 90d6 or 9063 - depends on the firmware)
+AT+USBCOMP=USER
+
+# RNDIS mode (on some firmware it comes up as QMI 9025 instead)
+AT+USBCOMP=RNDIS
+
+# Debug mode, usually QMI (1e2d:00b7 or 05c6:9091 - depends on the firmware)
+AT+USBCOMP=DEBUG

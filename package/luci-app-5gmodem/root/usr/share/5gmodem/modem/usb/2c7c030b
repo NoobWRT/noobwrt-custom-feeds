@@ -1,0 +1,59 @@
+. "$RES/modem/usb/_quectel_common"
+
+_qc_temp3n
+
+O=$(sms_tool -d $DEVICE at "at+qnwinfo;+qeng=\"servingcell\";+qspn")
+
+T=$(echo "$O" | awk -F[,:] '/^\+QNWINFO/ {print $2"/"$4}' | xargs)
+if [ -n "$T" ]; then
+	if [ "x$MODE_NUM" = "x7" ]; then
+		B=$(echo $T | sed 's/.*LTE BAND \(.*\)/\1/')
+		MODE="LTE $(band4g ${B})"
+		MAINCUT="$(band4g ${B})"
+	fi
+fi
+
+_qc_qeng_bw
+
+_qc_spn4
+
+if [ "x$MODE_NUM" = "x7" ]; then
+	O=$(sms_tool -d $DEVICE at "AT+QCAINFO")
+	
+	T=$(echo "$O" | awk -F[,] '/^\+QCAINFO: "(scc|SCC)"/{print $4}' | xargs)
+	if [ -n "$T" ]; then
+		B=$(echo $T | sed 's/.*LTE BAND \(.*\)/\1/')
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(scc|SCC)"/ {print $4}')
+		_qc_cbw T1 "$T" "?"
+		_qc_sst 1 "$(echo "$O" | grep -m1 -E '^\+QCAINFO: "(scc|SCC)"')"
+		[ "$S1STATE" = activated ] && MODE="${MODE/LTE/LTE_A} / $(band4g ${B})"
+		S1BAND="$(band4g ${B}) @$T1 MHz"
+
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(scc|SCC)"/ {print $7}')
+		S1PCI="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(scc|SCC)"/ {print $3}')
+		S1EARFCN="$T"
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(scc|SCC)"/ {print $10}')
+		S1RSSI=$T
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(scc|SCC)"/ {print $8}')
+		S1RSRP=$T
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(scc|SCC)"/ {print $9}')
+		S1RSRQ=$T
+		T=$(echo "$O" | awk -F[,:] '/^\+QCAINFO: "(scc|SCC)"/ {v=$11; gsub(/[^0-9-]/,"",v); if(v ~ /^-?[0-9]+$/) print v; exit}')
+		S1SINR=$T
+	fi
+fi
+
+_qc_neighbours
+
+MODE=$(echo $MODE | sed 's,/,+,' | sed 's, / \(B[0-9]\), + \1,g' | sed "s/LTE_A/LTE-A | /g")
+
+_qc_ati
+
+_qc_ids
+
+_PV_V=$(cat "/sys/bus/usb/devices/$_POLL_AM/idVendor" 2>/dev/null)
+_PV_P=$(cat "/sys/bus/usb/devices/$_POLL_AM/idProduct" 2>/dev/null)
+_qc_proto "Vendor=${_PV_V:-2c7c} ProdID=${_PV_P:-030b}" 1220
+
+. "$RES/modem/usb/_quectel_qrsrp"

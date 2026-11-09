@@ -1,0 +1,28 @@
+#!/bin/sh
+
+[ "$ACTION" = "add" ] || [ "$ACTION" = "remove" ] || exit 0
+
+case "${DEVNAME}" in
+	cdc-wdm*) ;;
+	*) exit 0 ;;
+esac
+
+[ -r /usr/share/ModemManager/modemmanager.common ] || exit 0
+. /usr/share/ModemManager/modemmanager.common
+
+mkdir -m 0755 -p "${MODEMMANAGER_RUNDIR}"
+
+if ! pidof ModemManager >/dev/null 2>&1; then
+	case "$ACTION" in
+		add)
+			grep -qs "${DEVNAME},usbmisc" "${MODEMMANAGER_EVENTS_CACHE}" || \
+				echo "add,${DEVNAME},usbmisc,/sys${DEVPATH}" >> "${MODEMMANAGER_EVENTS_CACHE}"
+			;;
+		remove)
+			sed -i "/${DEVNAME},usbmisc/d" "${MODEMMANAGER_EVENTS_CACHE}" 2>/dev/null
+			;;
+	esac
+	exit 0
+fi
+mm_log "info" "${ACTION} usbmisc control port ${DEVNAME}: event processed"
+mm_report_event "${ACTION}" "${DEVNAME}" "usbmisc" "/sys${DEVPATH}"

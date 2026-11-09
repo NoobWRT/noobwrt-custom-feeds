@@ -1,0 +1,14 @@
+# Your own AT commands. Same format as the vendor files:
+#   ## Group             a section header in the drop-down list
+#   # What it does        a description of the command below it
+#   AT+COMMAND            the command, sent to the modem as-is
+# '#' lines are never sent. Add your commands below — this file is yours and
+# survives package upgrades. A couple of examples to start from:
+
+## My commands
+
+# Modem information
+ATI
+
+# Signal quality
+AT+CSQ

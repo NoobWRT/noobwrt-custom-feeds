@@ -1,0 +1,269 @@
+_DEVICE=""
+
+_MODES="1:Auto 2:3G 4:4G"
+
+_BANDS_APPLY_LIVE=1
+
+_DEFAULT_LTE_BANDS="1 2 3 4 5 7 8 12 13 17 20 25 26 28 29 30 38 40 41"
+
+_LTE_EXT_TABLE="2:66 40:71"
+
+_ext_to_bands() {
+	case "$1" in
+		''|*[!0-9A-Fa-f]*) return ;;
+	esac
+	_v=$((0x$1))
+	for _p in $_LTE_EXT_TABLE; do
+		[ $((_v & 0x${_p%%:*})) -ne 0 ] && echo "${_p#*:}"
+	done
+}
+
+_bands_to_ext() {
+	_s=0
+	for _b in $1; do
+		for _p in $_LTE_EXT_TABLE; do
+			[ "${_p#*:}" = "$_b" ] && _s=$((_s | 0x${_p%%:*}))
+		done
+	done
+	printf '%x' "$_s"
+}
+
+_strip_ext_bands() {
+	for _b in $1; do
+		_skip=0
+		for _p in $_LTE_EXT_TABLE; do
+			[ "${_p#*:}" = "$_b" ] && _skip=1
+		done
+		[ "$_skip" = 0 ] && printf '%s ' "$_b"
+	done
+}
+
+_model() {
+	_mf="/tmp/5gmodem/telit_model_$(basename "$_DEVICE" 2>/dev/null)"
+	if [ -s "$_mf" ]; then cat "$_mf"; return; fi
+	sms_tool -d $_DEVICE at "AT+CGMM" 2>/dev/null | tr -d '\r' \
+		| grep -oE "L[MN][0-9]+[A-Za-z0-9-]*" | head -1 | tee "$_mf"
+}
+
+getinfo() {
+	_m=$(_model)
+	echo "Telit ${_m:-LM960}"
+}
+
+getsupportedbands() {
+	O=$(sms_tool -d $_DEVICE at "at#bnd=?" 2>/dev/null | tr -d '\r')
+	HEX=$(echo "$O" | sed -n 's/^#BND: *([^)]*),([^)]*),(\([0-9A-Fa-f]*\)).*/\1/p' | head -1)
+	if [ -n "$HEX" ]; then
+		_B=$(hextobands "0x$HEX")
+	else
+		_B="$_DEFAULT_LTE_BANDS"
+	fi
+	_E=$(echo "$O" | sed -n 's/^#BND: *([^)]*),([^)]*),([^)]*),(\([0-9A-Fa-f]*\)).*/\1/p' | head -1)
+	[ -n "$_E" ] && _B="$_B $(_ext_to_bands "$_E" | tr '\n' ' ')"
+	echo "$_B" | xargs -n1 2>/dev/null | sort -n | uniq | xargs
+}
+
+getbands() {
+	O=$(sms_tool -d $_DEVICE at "at#bnd?" 2>/dev/null | tr -d '\r')
+	HEX="0x"$(echo "$O" | awk -F[:,] '/^#BND/ {print $4}' | xargs)
+	_B=$(hextobands "$HEX")
+	_E=$(echo "$O" | awk -F[:,] '/^#BND/ {print $5}' | xargs)
+	[ -n "$_E" ] && _B="$_B $(_ext_to_bands "$_E" | tr '\n' ' ')"
+	echo "$_B" | xargs -n1 2>/dev/null | sort -n | uniq | xargs
+}
+
+setbands() {
+	BANDS="$1"
+	[ "$BANDS" = "default" ] && BANDS="$(getsupportedbands)"
+
+	HEX=$(bandstohex "$(_strip_ext_bands "$BANDS")")
+	NEWEXT=$(_bands_to_ext "$BANDS")
+
+	O=$(sms_tool -d $_DEVICE at "at#bnd?" 2>/dev/null | tr -d '\r')
+	GSM=$(echo "$O" | awk -F[:,] '/^#BND/ {print $2}' | xargs)
+	UMTS=$(echo "$O" | awk -F[:,] '/^#BND/ {print $3}' | xargs)
+	CUREXT=$(echo "$O" | awk -F[:,] '/^#BND/ {print $5}' | xargs)
+	case "$GSM" in ''|*[!0-9]*) return 1 ;; esac
+	case "$UMTS" in ''|*[!0-9]*) return 1 ;; esac
+
+	[ "$HEX" = "0" ] && [ "$NEWEXT" = "0" ] && return 1
+
+	if [ -n "$CUREXT" ]; then
+		sms_tool -d $_DEVICE at "at#bnd=${GSM},${UMTS},${HEX},${NEWEXT}"
+	else
+		sms_tool -d $_DEVICE at "at#bnd=${GSM},${UMTS},${HEX}"
+	fi
+}
+
+_UMTS_TABLE="0:2100 (FDD I)
+1:1900 (FDD II)
+2:850 (FDD V)
+3:2100 + 1900 + 850
+4:1900 + 850
+5:900 (FDD VIII)
+6:2100 + 900
+7:1700 (FDD IV)
+8:2100 + 850
+9:2100 + 900 + 850
+10:1900 + 1700 + 850
+11:2100 + 1900 + 1700 + 850 + 900
+12:2100 + 1800 + 850 + 900
+13:1800 (FDD III)
+14:2100 + 1800 + 850
+15:1800 + 850
+16:2100 + 1900 + 1800 + 1700 + 850 + 900
+17:2100 + 1900 + 900
+18:2100 + 1900 + 1700 + 850 + 900 + Japan
+19:2100 + 1900 + 1700 + 850 + 900 + Japan (+ FDD VI)"
+
+_expand_range() {
+	for _p in $(echo "$1" | tr ',' ' '); do
+		case "$_p" in
+			*-*)
+				_a=${_p%-*}; _b=${_p#*-}
+				while [ "$_a" -le "$_b" ] 2>/dev/null; do echo "$_a"; _a=$((_a + 1)); done
+				;;
+			*) echo "$_p" ;;
+		esac
+	done
+}
+
+_sort_umts_label() {
+	echo "$1" | awk -F' \\+ ' '{
+		n = 0; t = 0
+		for (i = 1; i <= NF; i++) {
+			if ($i ~ /^[0-9]+$/) { num[++n] = $i + 0 } else { txt[++t] = $i }
+		}
+		for (i = 2; i <= n; i++) {          # сортировка вставками: список короткий
+			k = num[i]; j = i - 1
+			while (j > 0 && num[j] > k) { num[j+1] = num[j]; j-- }
+			num[j+1] = k
+		}
+		out = ""
+		for (i = 1; i <= n; i++) out = out (out ? " + " : "") num[i]
+		for (i = 1; i <= t; i++) out = out (out ? " + " : "") txt[i]
+		print out
+	}'
+}
+
+getsupportedbands3g() {
+	O=$(sms_tool -d $_DEVICE at "at#bnd=?" 2>/dev/null | tr -d '\r')
+	R=$(echo "$O" | sed -n 's/^#BND: *([^)]*),(\([^)]*\)).*/\1/p' | head -1)
+	[ -n "$R" ] || { echo "Unsupported"; return; }
+	for _i in $(_expand_range "$R"); do
+		_l=$(echo "$_UMTS_TABLE" | sed -n "s/^$_i:\(.*\)$/\1/p" | head -1)
+		[ -n "$_l" ] || continue
+		printf '%s\t%s:%s\n' "$(_umts_sort_key "$_l")" "$_i" "$(_sort_umts_label "$_l")"
+	done | sort | cut -f2-
+}
+
+_umts_sort_key() {
+	echo "$1" | awk -F' \\+ ' '{
+		n = 0
+		for (i = 1; i <= NF; i++) {
+			if (match($i, /^[0-9]+/)) { num[++n] = substr($i, 1, RLENGTH) + 0 }
+		}
+		for (i = 2; i <= n; i++) {
+			k = num[i]; j = i - 1
+			while (j > 0 && num[j] > k) { num[j+1] = num[j]; j-- }
+			num[j+1] = k
+		}
+		key = sprintf("%02d", n)
+		for (i = 1; i <= n; i++) key = key sprintf("%05d", num[i])
+		print key
+	}'
+}
+
+getbands3g() {
+	sms_tool -d $_DEVICE at "at#bnd?" 2>/dev/null | tr -d '\r' \
+		| awk -F[:,] '/^#BND/ {print $3}' | xargs
+}
+
+setbands3g() {
+	[ -n "$1" ] || return 1
+	O=$(sms_tool -d $_DEVICE at "at#bnd?" 2>/dev/null | tr -d '\r')
+	GSM=$(echo "$O" | awk -F[:,] '/^#BND/ {print $2}' | xargs)
+	LTE=$(echo "$O" | awk -F[:,] '/^#BND/ {print $4}' | xargs)
+	EXT=$(echo "$O" | awk -F[:,] '/^#BND/ {print $5}' | xargs)
+	case "$GSM" in ''|*[!0-9]*) return 1 ;; esac
+	case "$LTE" in ''|*[!0-9A-Fa-f]*) return 1 ;; esac
+	if [ -n "$EXT" ]; then
+		sms_tool -d $_DEVICE at "at#bnd=${GSM},${1},${LTE},${EXT}"
+	else
+		sms_tool -d $_DEVICE at "at#bnd=${GSM},${1},${LTE}"
+	fi
+}
+
+getantports() {
+	O=$(sms_tool -d $_DEVICE at "AT#LAPS" 2>/dev/null | tr -d '\r' \
+		| sed -n 's/^#LAPS: *//p' | head -1)
+	[ -n "$O" ] || { echo "Unsupported"; return; }
+	_i=0
+	case "$O" in
+		*[!0-9,\ -]*) echo "Unsupported"; return ;;
+	esac
+	set -- $(echo "$O" | tr ',' ' ')
+	while [ $# -ge 2 ]; do
+		echo "$_i:$1:$2"
+		shift 2
+		_i=$((_i + 1))
+	done
+}
+
+getsupportedmodes() {
+	echo "$_MODES"
+}
+
+getmode() {
+	M=$(sms_tool -d $_DEVICE at "AT+WS46?" 2>/dev/null | tr -d '\r' \
+		| sed -n 's/^+WS46: *\([0-9]*\).*/\1/p' | head -1)
+	case "$M" in
+		31) echo 1 ;;
+		22) echo 2 ;;
+		28) echo 4 ;;
+		*)  echo "" ;;
+	esac
+}
+
+setmode() {
+	case "$1" in
+		1) W=31 ;;
+		2) W=22 ;;
+		4) W=28 ;;
+		*) return 1 ;;
+	esac
+	sms_tool -d $_DEVICE at "AT+WS46=$W"
+}
+
+_CA_SWITCH=1
+getcaenabled() {
+	_ca_o=$(sms_tool -d $_DEVICE at "AT#CACTL?" 2>/dev/null | tr -d '\r' \
+		| sed -n 's/^#CACTL: *\([0-9]*\).*/\1/p' | head -1)
+	case "$_ca_o" in
+		0) echo "off" ;;
+		1) echo "on" ;;
+		*) echo "Unsupported" ;;
+	esac
+}
+
+setcaenabled() {
+	case "$1" in
+		1|on)  _ca_w=1 ;;
+		0|off) _ca_w=0 ;;
+		*) echo "Unsupported"; return 1 ;;
+	esac
+	case "$(getcaenabled):$_ca_w" in
+		on:1|off:0) return 0 ;;
+		on:0|off:1) : ;;
+		*) echo "Unsupported"; return 1 ;;
+	esac
+	_ca_r=$(sms_tool -d $_DEVICE at "AT#CACTL=$_ca_w" 2>&1)
+	_ca_rc=$?
+	case "$_ca_rc:$_ca_r" in
+		0:*ERROR*|[!0]*)
+			logger -t 5gmodem "cactl: firmware rejected AT#CACTL=$_ca_w"
+			echo "Unsupported"; return 1 ;;
+	esac
+	/usr/share/5gmodem/reboot_modem.sh hard "$_DEVICE" >/dev/null 2>&1 </dev/null
+	return 0
+}

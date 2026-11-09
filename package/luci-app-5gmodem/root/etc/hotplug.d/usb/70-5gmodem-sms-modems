@@ -1,0 +1,159 @@
+#!/bin/sh
+
+if [ -z "$ACTION" ]; then
+	for d in /sys/bus/usb/devices/*; do
+		[ -f "$d/idVendor" ] || continue
+		_vid=$(cat "$d/idVendor")
+		_pid=$(cat "$d/idProduct")
+		case "$_vid:$_pid" in 05c6:9025|05c6:90d5|05c6:90d6|1e2d:00b7) ;; *) continue ;; esac
+		ACTION="add"; DEVTYPE="usb_device"
+		PRODUCT="$(printf '%x' "0x$_vid")/$(printf '%x' "0x$_pid")/0"
+		DEVPATH="${d#/sys}"
+		break
+	done
+fi
+
+[ "$ACTION" = "add" ] || exit 0
+[ "$DEVTYPE" = "usb_device" ] || exit 0
+
+WANTID=""
+# hotplug $PRODUCT has no leading zeros, see docs/subsystems/device-detection.md#usb70-5gmodem-sms-modems
+case "$PRODUCT" in
+	5c6/90d6/*)
+		WANTID="05c6:90d6"
+		;;
+	5c6/9025/*)
+		WANTID="05c6:9025"
+		;;
+	1e2d/b7/*)
+		_p=$(cat "/sys$DEVPATH/product" 2>/dev/null)
+		_m=$(cat "/sys$DEVPATH/manufacturer" 2>/dev/null)
+		case "$_p$_m" in
+			*VOS_5G*|*RXM-G1*|*RXMG1*|*SG500M2*|*Tri?Cascade*) WANTID="1e2d:00b7" ;;
+			*) exit 0 ;;
+		esac
+		;;
+	5c6/90d5/*)
+		_p=$(cat "/sys$DEVPATH/product" 2>/dev/null)
+		_m=$(cat "/sys$DEVPATH/manufacturer" 2>/dev/null)
+		case "$_p$_m" in
+			*VOS_5G*|*Tri?Cascade*) WANTID="05c6:90d5" ;;
+			*) exit 0 ;;
+		esac
+		;;
+	*) exit 0 ;;
+esac
+
+_HOLD_IF=""
+if command -v qmicli >/dev/null 2>&1 && [ -f /usr/share/5gmodem/lib.sh ]; then
+	. /usr/share/5gmodem/lib.sh 2>/dev/null
+	_h_sec="m_$(printf '%s' "${DEVPATH##*/}" | sed 's/[^A-Za-z0-9]/_/g')"
+	_h_if=$(uci -q get "5gmodem.$_h_sec.network" 2>/dev/null)
+	if [ -n "$_h_if" ] && [ "$(uci -q get "network.$_h_if.auto" 2>/dev/null)" != "0" ]; then
+		if proto_in direct "$(uci -q get "network.$_h_if.proto" 2>/dev/null)"; then
+			case "$(ubus call "network.interface.$_h_if" status 2>/dev/null)" in
+				*'"autostart": true'*)
+					ifdown "$_h_if" 2>/dev/null
+					_HOLD_IF="$_h_if"
+					logger -t 5gmodem "sms-routes: interface $_h_if held until the SMS routes of ${DEVPATH##*/} are set" ;;
+			esac
+		fi
+	fi
+fi
+
+(
+	trap '[ -n "$_HOLD_IF" ] && ifup "$_HOLD_IF" 2>/dev/null' EXIT
+	case "$WANTID" in
+		1e2d:00b7) ;;
+		*) /usr/share/5gmodem/usbports.sh bind "${WANTID%%:*}" "${WANTID##*:}" ;;
+	esac
+
+	if ! uci -q get 5gmodem.sms >/dev/null; then
+		touch /etc/config/5gmodem
+		uci -q set 5gmodem.sms=sms >/dev/null || exit 0
+	fi
+
+	set_if_empty() {
+		[ -z "$(uci -q get "5gmodem.sms.$1")" ] && \
+			uci set "5gmodem.sms.$1=$2"
+	}
+
+	if command -v mmcli >/dev/null 2>&1; then
+		set_if_empty ussd_via_mm '1'
+		set_if_empty sms_via_mm '1'
+	fi
+	uci commit 5gmodem
+
+	if command -v qmicli >/dev/null 2>&1; then
+		for try in 1 2 3 4 5 6; do
+			WDM=""
+			for wdm in /sys"$DEVPATH"/*:*/usbmisc/cdc-wdm*; do
+				[ -e "$wdm" ] || continue
+				[ -c "/dev/${wdm##*/}" ] && { WDM="/dev/${wdm##*/}"; break; }
+			done
+			[ -n "$WDM" ] && break
+			sleep 5
+		done
+		if [ -n "$WDM" ]; then
+			. /usr/share/5gmodem/lib.sh 2>/dev/null
+			QMI_TARGET_PATH="${DEVPATH##*/}"
+			if command -v qmicli_p >/dev/null 2>&1; then
+				_rt_try=0
+				while [ "$_rt_try" -lt 6 ]; do
+					_rt_try=$((_rt_try + 1))
+					for c in 0 1 2 3 none; do
+						qmicli_p "$WDM" \
+							--wms-set-routes="type=point,class=$c,storage=uim,receipt-action=store-and-notify" \
+							>/dev/null 2>&1
+					done
+					_rt_n=$(qmicli_p "$WDM" --wms-get-routes 2>/dev/null | grep -c "Storage Type: 'uim'")
+					[ "${_rt_n:-0}" -ge 5 ] && break
+					sleep 5
+				done
+				[ "${_rt_n:-0}" -ge 5 ] || logger -t 5gmodem "sms-routes: ${DEVPATH##*/} did not accept the SIM storage routes (${_rt_n:-0} of 5)"
+			fi
+		fi
+	fi
+	if [ -n "$_HOLD_IF" ]; then
+		ifup "$_HOLD_IF" 2>/dev/null
+		_HOLD_IF=""
+	fi
+
+	command -v sms_tool >/dev/null || exit 0
+
+	tty_vidpid() {
+		p=$(readlink -f "/sys/class/tty/$1/device" 2>/dev/null)
+		while [ -n "$p" ] && [ "$p" != "/" ]; do
+			if [ -f "$p/idVendor" ] && [ -f "$p/idProduct" ]; then
+				echo "$(cat "$p/idVendor"):$(cat "$p/idProduct")"
+				return
+			fi
+			p="${p%/*}"
+		done
+	}
+
+	ATPORT=""
+	for try in 1 2 3 4 5 6 7 8; do
+		sleep 5
+		for tty in /sys/class/tty/ttyUSB*; do
+			[ -e "$tty" ] || continue
+			t="${tty##*/}"
+			[ "$(tty_vidpid "$t")" = "$WANTID" ] || continue
+			if sms_tool -d "/dev/$t" at "AT" >/dev/null 2>&1; then
+				ATPORT="/dev/$t"
+				break 2
+			fi
+		done
+	done
+
+	[ -n "$ATPORT" ] || exit 0
+
+	set_if_empty readport "$ATPORT"
+	set_if_empty sendport "$ATPORT"
+	set_if_empty ussdport "$ATPORT"
+	set_if_empty atport "$ATPORT"
+
+	uci commit 5gmodem
+) >/dev/null 2>&1 </dev/null &
+
+exit 0

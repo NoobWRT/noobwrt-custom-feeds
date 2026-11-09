@@ -1,0 +1,52 @@
+OA=$(sms_tool -d $DEVICE at "AT+CGMM?")
+case "$OA" in
+	*FM650*) O=$(sms_tool -d $DEVICE at "AT+GTCCINFO?" | tr -d '\r') ;;
+	*) O=$(sms_tool -d $DEVICE at "AT+GTCCINFO?;+GTCAINFO?" | tr -d '\r') ;;
+esac
+
+. "$RES/modem/usb/_fibocom_qc_cell"
+
+MODELA=$(echo "$OA" | awk -F [:,] '/\+CGMM/{print $2}' | xargs)
+OB=$(sms_tool -d $DEVICE at "AT+CGMI?")
+MODELB=$(echo "$OB" | awk -F [:,] '/\+CGMI/{print $2}' | xargs)
+MODELBCUT=$(echo $MODELB | sed s/"Wireless Inc."//)
+MODEL=$(echo $MODELBCUT $MODELA)
+
+OF=$(sms_tool -d $DEVICE at "AT+GMR?")
+FW=$(echo "$OF" | awk -F[,:] '/\+GMR:/ {print $2}' | xargs)
+
+OAA=$(sms_tool -d $DEVICE at "AT+CGSN?")
+NR_IMEI=$(echo "$OAA" | awk -F[,:] '/\+CGSN:/ {print $2}' | xargs)
+
+OBB=$(sms_tool -d $DEVICE at "AT+CIMI?")
+NR_IMSI=$(echo "$OBB" | awk -F [,:] '/\+CIMI:/ {print $2}' | xargs)
+
+OCC=$(sms_tool -d $DEVICE at "AT+ICCID")
+NR_ICCID=$(echo "$OCC" | awk -F [,:] '/\+ICCID:/ {print $2}' | xargs)
+
+OT=$(sms_tool -d $DEVICE at "AT+MTSM=1")
+TM=$(echo "$OT" | awk '/\+MTSM:/{print $2}')
+if [ -n "$TM" ]; then
+	TEMP="$TM &deg;C"
+fi
+
+TTY=$(basename "$DEVICE")
+devpath=$(readlink -f "/sys/class/tty/$TTY/device" 2>/dev/null)
+BASE=""
+[ -n "$devpath" ] && BASE=$(readlink -f "${devpath%/*/*}" 2>/dev/null)
+NETDRV=""
+if [ -n "$BASE" ]; then
+	NETIF=$(for a in /sys/class/net/*; do readlink -f "$a"; done | grep "^$BASE/" | head -1)
+	[ -n "$NETIF" ] && NETDRV=$(basename "$(readlink -f "$NETIF/../../driver" 2>/dev/null)")
+fi
+
+case $NETDRV in
+	"qmi_wwan")
+		PROTO="qmi";;
+	"cdc_mbim")
+		PROTO="mbim";;
+	"cdc_ether")
+		PROTO="ecm";;
+	"cdc_ncm")
+		PROTO="ncm";;
+esac

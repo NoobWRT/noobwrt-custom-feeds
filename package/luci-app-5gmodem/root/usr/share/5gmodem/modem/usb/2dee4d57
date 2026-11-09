@@ -1,0 +1,71 @@
+_MC="/tmp/5gmodem/meig_ati_$(basename "$DEVICE")"
+if [ -s "$_MC" ]; then
+	_I=$(cat "$_MC")
+else
+	_I=$(sms_tool -d $DEVICE at "ATI" 2>/dev/null | tr -d '\r')
+	case "$_I" in *Model:*) printf '%s' "$_I" > "$_MC" ;; esac
+fi
+_M=$(echo "$_I" | sed -n 's/^Model: *\(.*\)$/\1/p' | head -1)
+[ -n "$_M" ] && MODEL="MeigLink $_M"
+_FWV=$(echo "$_I" | sed -n 's/^Revision: *\(.*\)$/\1/p' | head -1)
+[ -n "$_FWV" ] && FW="$_FWV"
+
+O=$(sms_tool -d $DEVICE at "at+cesq")
+
+T=$(echo "$O" | awk -F'[,:]' '/^\+CESQ/ {gsub(/ /,"",$6); print $6}')
+if [ -n "$T" ] && [ "$T" != "255" ]; then
+	RSRQ=$(awk -v v="$T" 'BEGIN{printf "%.1f", -19.5 + v*0.5}')
+fi
+
+T=$(echo "$O" | awk -F'[,:]' '/^\+CESQ/ {gsub(/ /,"",$7); print $7}' | head -n 1 | tr -d '\r')
+case "$T" in
+	''|255|*[!0-9]*) : ;;
+	*) RSRP=$((T - 140)) ;;
+esac
+
+if [ -z "$RSSI" ]; then
+	T=$(echo "$O" | awk -F'[,:]' '/^\+CESQ/ {gsub(/ /,"",$2); print $2}' | head -n 1 | tr -d '\r')
+	case "$T" in
+		''|99|*[!0-9]*) : ;;
+		*) RSSI=$((T - 111)) ;;
+	esac
+fi
+
+C=$(sms_tool -d $DEVICE at "AT+SGCELLINFOEX?" 2>/dev/null | tr -d '\r')
+if [ -n "$C" ]; then
+	_sg() { echo "$C" | sed -n "s/^$1:\(.*\)$/\1/p" | head -1 | tr -d ' '; }
+
+	T=$(_sg "BAND")
+	if [ -n "$T" ] && [ "$T" != "0" ]; then
+		PBAND="$(band4g $T)"
+		case "$MODE" in
+			*"$PBAND"*) : ;;
+			*) [ -n "$MODE" ] && MODE="$MODE | $PBAND" || MODE="$PBAND" ;;
+		esac
+	fi
+	T=$(_sg "DL CHANNEL"); [ -n "$T" ] && EARFCN="$T"
+	T=$(_sg "LTE_BANDWIDTH")
+	[ -n "$T" ] && [ "$T" -gt 0 ] 2>/dev/null && BANDWIDTH="$((T / 5)) MHz"
+	T=$(_sg "PHYSICAL_CELL_ID"); [ -n "$T" ] && PCI="$T"
+	T=$(_sg "GLOBAL CELL ID");   [ -n "$T" ] && CELLID="$T"
+	T=$(_sg "TAC_ID");           [ -n "$T" ] && TAC_DEC="$T"
+	T=$(_sg "eNBID");            [ -n "$T" ] && ENBID="$T"
+	T=$(_sg "RSSI"); case "$T" in -*) RSSI="$T" ;; esac
+	T=$(_sg "RSRP"); case "$T" in -*) RSRP="$T" ;; esac
+	T=$(_sg "RSRQ"); case "$T" in -*) RSRQ="$T" ;; esac
+	T=$(_sg "SINR")
+	[ -n "$T" ] && [ "$T" != "0" ] && SINR=$(awk -v v="$T" 'BEGIN{printf "%.1f", v/5-20}')
+	T=$(_sg "TM"); [ -n "$T" ] && [ "$T" != "0" ] && PMIMO="TM$T"
+	T=$(_sg "PATHLOSS");    [ -n "$T" ] && PATHLOSS="$T dB"
+	T=$(_sg "TX_POWER");    [ -n "$T" ] && TXPOWER="$T"
+	T=$(_sg "UE_category"); [ -n "$T" ] && UECAT="$T"
+	T=$(_sg "CQI"); T=${T%%:*}
+	[ -n "$T" ] && [ "$T" != "0" ] && CQI="$T"
+	T=$(_sg "VOLTE")
+	case "$T" in 1) VOLTE="вкл" ;; 0) VOLTE="выкл" ;; esac
+fi
+
+TP=$(sms_tool -d $DEVICE at "AT+TEMP" 2>/dev/null | tr -d '\r')
+T=$(echo "$TP" | sed -n 's/^+TEMP: *"rf_temp","\([0-9-]*\)".*/\1/p' | head -1)
+[ -n "$T" ] || T=$(echo "$TP" | sed -n 's/^+TEMP: *"cpu_temp","\([0-9-]*\)".*/\1/p' | head -1)
+[ -n "$T" ] && TEMP="$T"

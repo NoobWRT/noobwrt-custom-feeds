@@ -1,0 +1,6 @@
+#!/bin/sh
+[ "$ACTION" = add ] || exit 0
+case "$DEVNAME" in ttyACM*|ttyUSB*) ;; *) exit 0 ;; esac
+[ -r /usr/share/5gmodem/noatports.sh ] || exit 0
+. /usr/share/5gmodem/noatports.sh
+noat_unbind_iface "/sys${DEVPATH%/tty/*}"

@@ -1,0 +1,167 @@
+_SG=$(printf '%s\n' "$O" | tr -d '\r' | awk '
+	function after(lbl, k,   p, s, a, n) {
+		p = index($0, lbl)
+		if (p == 0) return ""
+		s = substr($0, p + length(lbl))
+		if (!sub(/^[ \t]*(\([^)]*\))?[ \t]*:[ \t]*/, "", s)) return ""
+		n = split(s, a, /[ \t]+/)
+		if (k == "") k = 1
+		if (n < k) return ""
+		s = a[k]
+		gsub(/[()]/, "", s)
+		return (s == "---" || s == "--") ? "" : s
+	}
+	function put(k, v) { if (v != "") V[k] = v }
+	function best(k, v) { if (v != "" && (!(k in V) || v + 0 > V[k] + 0)) V[k] = v }
+
+	/Temperature/            { put("TEMP", after("Temperature")) }
+	/^LTE band:/             { put("PBAND", after("LTE band")); put("PBW", after("LTE bw")) }
+	/^LTE Rx chan:/          { put("PEARFCN", after("LTE Rx chan")) }
+	/^LTE CA state:/         { put("CASTATE", after("LTE CA state"))
+	                           put("SCBAND",  after("LTE Scell band")) }
+	/^LTE Scell bw:/         { put("SCBW",     after("LTE Scell bw"))
+	                           put("SCEARFCN", after("LTE Scell chan")) }
+	/^PCC Rx[MD] RSSI:/      { i = (substr($0, 7, 1) == "M") ? 0 : 1
+	                           r = after("RSRP"); q = after("RSSI")
+	                           if (r != "" || q != "") ANT[i] = r ":" q
+	                           best("PRSRP", r); best("PRSSI", q) }
+	/^SCC Rx[MD] RSSI:/      { best("SRSRP", after("RSRP")) }
+	/Tx Power:/              { put("TXPWR", after("Tx Power")) }
+	/TAC:/                   { put("TACHEX", after("TAC", 1)); put("TACDEC", after("TAC", 2)) }
+	/Cell ID:/               { put("CIDHEX", after("Cell ID", 1)); put("CIDDEC", after("Cell ID", 2)) }
+	/^RSRQ/                  { put("RSRQ", after("RSRQ")) }
+	/^SINR/                  { put("SINR", after("SINR")) }
+	/^RSSI/                  { best("PRSSI", after("RSSI")) }
+	/^RSRP/                  { best("PRSRP", after("RSRP")) }
+	/^System mode:/          { put("SYSMODE", after("System mode")) }
+
+	END {
+		for (k in V) print k " " V[k]
+		for (i in ANT) print "ANT" i " " ANT[i]
+	}
+')
+
+_sg() {
+	_V=""
+	_sg_o=$IFS; IFS='
+'
+	set -f
+	for _sg_l in $_SG; do
+		case "$_sg_l" in
+			"$1 "*) _V=${_sg_l#* }; break ;;
+		esac
+	done
+	set +f
+	IFS=$_sg_o
+}
+
+_pb=""; _scb=""
+
+_sg TEMP; [ -n "$_V" ] && TEMP="$_V &deg;C"
+
+_sg SYSMODE; _sysmode="$_V"
+if [ "x$MODE_NUM" = "x7" ] || [ "$_sysmode" = "LTE" ]; then
+	_sg TACHEX
+	if [ -n "$_V" ]; then
+		T_HEX="$_V"
+		_sg TACDEC; T_DEC="$_V"
+		[ -n "$T_DEC" ] || T_DEC=$(printf "%d" "0x$T_HEX" 2>/dev/null)
+	fi
+	_sg CIDHEX
+	if [ -n "$_V" ]; then
+		CID_HEX="$_V"
+		_sg CIDDEC; CID_DEC="$_V"
+		[ -n "$CID_DEC" ] || CID_DEC=$(printf "%d" "0x$CID_HEX" 2>/dev/null)
+	fi
+
+	_sg PRSRP; [ -n "$_V" ] && RSRP="$_V"
+	_sg PRSSI; [ -n "$_V" ] && RSSI="$_V"
+	_sg RSRQ;  [ -n "$_V" ] && RSRQ="$_V"
+	_sg SINR;  [ -n "$_V" ] && SINR="$_V"
+	_sg TXPWR; [ -n "$_V" ] && TXPOWER="$_V dBm"
+
+	ANTPORTS=""
+	for _ap in 0 1; do
+		_sg "ANT$_ap"
+		case "$_V" in
+			:*|'') continue ;;
+		esac
+		ANTPORTS="$ANTPORTS${ANTPORTS:+ }$_ap:${_V%:*}::${_V#*:}"
+	done
+
+	_sg PBAND
+	if [ -n "$_V" ]; then
+		_pb="$_V"
+		_sg PBW
+		PBAND="$(band4g ${_pb#B})"
+		if [ -n "$_V" ]; then
+			PBAND="$PBAND @$_V MHz"
+			BANDWIDTH="$_V MHz"
+		fi
+	fi
+	_sg PEARFCN; [ -n "$_V" ] && EARFCN="$_V"
+
+	_sg SCBAND
+	if [ -n "$_V" ]; then
+		_scb="$_V"
+		_sg SCBW
+		if [ -n "$_V" ]; then
+			S1BAND="$(band4g ${_scb#B}) @$_V MHz"
+		else
+			S1BAND="$(band4g ${_scb#B})"
+		fi
+		_sg SCEARFCN; S1EARFCN="$_V"
+		_sg SRSRP;    S1RSRP="$_V"
+		_sg CASTATE
+		case "$_V" in
+			ACTIVE|active) S1STATE="activated" ;;
+			*) S1STATE="deactivated" ;;
+		esac
+	fi
+
+	if [ -n "$_pb" ]; then
+		if [ "$S1STATE" = "activated" ]; then
+			MODE="LTE-A | $(band4g ${_pb#B}) + $(band4g ${_scb#B})"
+		else
+			MODE="LTE | $(band4g ${_pb#B})"
+		fi
+	fi
+fi
+
+_LINC="/tmp/5gmodem/nolteinfo_$(echo "${DEVICE##*/}" | tr -c 'A-Za-z0-9' '_')"
+if [ -z "$NEIGHBORS" ] && { [ "x$MODE_NUM" = "x7" ] || [ "$_sysmode" = "LTE" ]; } && [ ! -f "$_LINC" ]; then
+	_LI=$(sms_tool -d $DEVICE at "at!lteinfo?" 2>/dev/null | tr -d '\r')
+	case "$_LI" in
+		*LTEINFO*) ;;
+		*ERROR*) : > "$_LINC" ;;
+	esac
+	case "$_LI" in
+	*LTEINFO*)
+		NEIGHBORS=$(printf '%s\n' "$_LI" | awk '
+			function emit(bd, ef, pc, rq, rp, rs, sv,   key) {
+				if (pc == "" || pc !~ /^[0-9]+$/) return
+				key = ef "_" pc
+				if (key in done) return
+				done[key] = 1
+				printf "%s{\"band\":\"%s\",\"earfcn\":\"%s\",\"pci\":\"%s\",\"rsrp\":\"%s\",\"rsrq\":\"%s\",\"rssi\":\"%s\",\"serving\":%s}",
+					(n++ ? "," : ""), bd, ef, pc, rp, rq, rs, sv
+			}
+			/^Serving:/   { sec = "serv";  next }
+			/^IntraFreq:/ { sec = "intra"; next }
+			/^InterFreq:/ { sec = "inter"; next }
+			/^[A-Za-z]/   { sec = "" }
+			sec == "" { next }
+			sec == "serv" && NF >= 14 && $1 ~ /^[0-9]+$/ {
+				sef = $1; sbd = $6
+				emit(sbd, sef, $10, $11, $12, $13, "true")
+			}
+			sec == "intra" && NF >= 5 && $1 ~ /^[0-9]+$/ {
+				emit(sbd, sef, $1, $2, $3, $4, "false")
+			}
+			sec == "inter" && NF >= 9 && $1 ~ /^[0-9]+$/ {
+				emit("", $1, $5, $6, $7, $8, "false")
+			}
+		')
+		;;
+	esac
+fi

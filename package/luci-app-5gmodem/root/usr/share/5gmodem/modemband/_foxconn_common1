@@ -1,0 +1,28 @@
+getsupportedbands() {
+	echo "$_DEFAULT_LTE_BANDS"
+}
+
+getbands() {
+	O=$(sms_tool -d $_DEVICE at "at^slband?")
+	echo "$O" | tr -d '\r' | awk '
+		/LTE,Disabled/ { next }
+		/LTE,Enabled,/ { sub(/.*LTE,Enabled,/, ""); gsub(/,/, " "); print; exit }
+		/LTE,Enable Bands *:/ { sub(/.*LTE,Enable Bands *:/, ""); gsub(/,/, " "); print; exit }
+		/SLBAND: *LTE,[0-9]/ { sub(/.*SLBAND: *LTE,/, ""); gsub(/,/, " "); print; exit }' | xargs
+}
+
+setbands() {
+	BANDS="$1"
+	[ "$BANDS" = "default" ] && BANDS="$_DEFAULT_LTE_BANDS"
+
+	T=""
+	for BAND in $BANDS; do
+		case $BAND in
+			''|*[!0-9]*) continue ;;
+		esac
+		[ -n "$T" ] && T="${T},"
+		T="${T}${BAND}"
+	done
+
+	[ -n "$T" ] && sms_tool -d $_DEVICE at "at^slband=lte,2,$T"
+}

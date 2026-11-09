@@ -1,0 +1,11 @@
+#!/bin/sh
+[ "$ACTION" = add ] || exit 0
+case "$DEVNAME" in ttyUSB*|ttyACM*) ;; *) exit 0 ;; esac
+[ -r /usr/share/ModemManager/modemmanager.common ] || exit 0
+. /usr/share/5gmodem/quirks.sh 2>/dev/null
+command -v mm_tty_reserved >/dev/null 2>&1 || exit 0
+mm_tty_reserved "$DEVNAME" || exit 0
+. /usr/share/ModemManager/modemmanager.common
+mm_report_event "remove" "$DEVNAME" "tty" "/sys${DEVPATH}"
+logger -t 5gmodem "mm-at: $DEVNAME is kept away from ModemManager for our AT polling"
+exit 0

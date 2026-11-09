@@ -1,0 +1,6 @@
+. "$RES/modem/usb/413c81d7"
+
+if [ -z "$MODEL" ] || [ "$MODEL" = " " ]; then
+	MODEL=$(cat "/sys/bus/usb/devices/$_POLL_AM/product" 2>/dev/null \
+		| sed 's/ Snapdragon.*$//' | xargs)
+fi

@@ -1,0 +1,7 @@
+. /usr/share/5gmodem/iscompal.sh
+if is_compal; then
+	. "$RES/05c690d6"
+	return 0 2>/dev/null || exit 0
+fi
+
+. $RES/_qualcomm_sdx55_common

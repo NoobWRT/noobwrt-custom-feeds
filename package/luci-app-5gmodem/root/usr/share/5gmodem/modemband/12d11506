@@ -1,0 +1,94 @@
+_DEVICE=""
+
+getinfo() {
+	O=$(sms_tool -d $_DEVICE at "at+cgmi")
+	VENDOR=$(echo "$O" | awk '/^[a-zA-Z0-9]/ && !/at\+cgmi/{print $0}' | xargs)
+	O=$(sms_tool -d $_DEVICE at "at+cgmm")
+	PRODUCT=$(echo "$O" | awk '/^[a-zA-Z0-9]/ && !/at\+cgmm/{print $0}' | xargs)
+	echo "$(echo ${VENDOR:0:1} | tr '[a-z]' '[A-Z]')${VENDOR:1} $PRODUCT"
+}
+
+getsupportedbands() {
+	O=$(sms_tool -d $_DEVICE at "at+cgmm")
+	_NAME=$(echo "$O" | awk '/^[a-zA-Z0-9]/ && !/at\+cgmm/{print tolower($0)}' | xargs)
+	case "$_NAME" in
+	"me906e"* | \
+	"me909u-521")
+		echo "1 2 3 5 7 8 20"
+		;;
+	"me906s"*)
+		echo "1 2 3 5 7 8 20 28"
+		;;
+	"me909s-120")
+		echo "1 2 3 4 5 7 8 20"
+		;;
+	"me909s-821")
+		echo "1 3 8 38 39 40 41"
+		;;
+	"me909s-821a")
+		echo "1 3 5 8 38 39 40 41"
+		;;
+	*)
+		echo "1 3 7 8 20"
+		;;
+	esac
+}
+
+getbands() {
+	O=$(sms_tool -d $_DEVICE at "at^syscfgex?")
+	HEX="0x"$(echo "$O" | awk -F[:,] '/^\^SYSCFGEX:/{print $6}' | xargs)
+	if [ "$HEX" = "0x7FFFFFFFFFFFFFFF" ]; then
+		getsupportedbands
+	else
+		[ "$HEX" = "0x" ] || hextobands "$HEX"
+	fi
+}
+
+setbands() {
+	BANDS="$1"
+
+	if [ "$BANDS" = "default" ]; then
+		HEX="7FFFFFFFFFFFFFFF"
+	else
+		HEX=$(bandstohex "$BANDS")
+	fi
+	if [ "$HEX" != "0" ]; then
+		O=$(sms_tool -d $_DEVICE at "at^syscfgex?")
+		MODE=$(echo "$O" | awk -F[:,] '/^\^SYSCFGEX:/{print $2; exit}' | xargs)
+		sms_tool -d $_DEVICE at "at^syscfgex=\"${MODE:-030201}\",3FFFFFFF,2,4,$HEX,,"
+	fi
+}
+
+_MODES="1:Авто 8:2G 2:3G 4:4G"
+
+getsupportedmodes() {
+	echo "$_MODES"
+}
+
+getmode() {
+	_no=$(sms_tool -d $_DEVICE at "at^syscfgex?" 2>/dev/null | tr -d '\r' \
+		| sed -n 's/^\^SYSCFGEX: *"\([0-9]*\)".*/\1/p' | head -1)
+	case "$_no" in
+		*0300*|03) echo 4 ;;
+		02) echo 2 ;;
+		01) echo 8 ;;
+		"") echo "" ;;
+		*)  echo 1 ;;
+	esac
+}
+
+setmode() {
+	O=$(sms_tool -d $_DEVICE at "at^syscfgex?" 2>/dev/null | tr -d '\r')
+	_band=$(echo "$O" | awk -F, '/SYSCFGEX/{print $2}' | xargs)
+	_lte=$(echo "$O" | awk -F, '/SYSCFGEX/{print $5}' | xargs)
+	[ -n "$_band" ] || _band="3FFFFFFF"
+	[ -n "$_lte" ] || _lte="7FFFFFFFFFFFFFFF"
+	case "$1" in
+		1) _no="00" ;;
+		8) _no="01" ;;
+		2) _no="02" ;;
+		4) _no="03" ;;
+		*) return 1 ;;
+	esac
+	sms_tool -d $_DEVICE at "at^syscfgex=\"$_no\",$_band,2,4,$_lte,,"
+}

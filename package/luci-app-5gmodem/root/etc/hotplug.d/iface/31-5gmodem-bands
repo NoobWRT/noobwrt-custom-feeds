@@ -1,0 +1,34 @@
+#!/bin/sh
+[ -d /tmp/5gmodem ] || mkdir -p /tmp/5gmodem 2>/dev/null
+[ "$ACTION" = ifup ] || exit 0
+
+CFG=5gmodem
+
+[ "$(uci -q get $CFG.@5gmodem[0].save_bands)" = 0 ] && exit 0
+
+SEC=""
+for _s in $(uci -q show $CFG 2>/dev/null | sed -n 's/^\('$CFG'\.m_[0-9A-Za-z_]*\)\.network=.*/\1/p'); do
+	[ "$(uci -q get "$_s.network")" = "$INTERFACE" ] || continue
+	SEC="$_s"; break
+done
+[ -n "$SEC" ] || exit 0
+
+MPATH=$(uci -q get "$SEC.path")
+[ -n "$MPATH" ] || exit 0
+
+S=$(uci -q get "$SEC.save_band")$(uci -q get "$SEC.save_band5gnsa")$(uci -q get "$SEC.save_band5gsa")$(uci -q get "$SEC.save_mode")
+[ -n "$S" ] || exit 0
+
+M="/tmp/5gmodem/bandrestore_$INTERFACE"
+D=$(cat "/sys/bus/usb/devices/$MPATH/devnum" 2>/dev/null)
+if [ -e "$M" ]; then
+	O=$(cat "$M" 2>/dev/null)
+	if [ -z "$O" ] || [ "$O" = "$D" ]; then
+		echo "$D" > "$M"
+		exit 0
+	fi
+fi
+echo "$D" > "$M"
+
+( unset _AT_LOCK_HELD; exec 1000>&- 7>&- 8>&- 9>&-
+  BANDS_ACTIVE_MODEM="$MPATH" /usr/share/5gmodem/bands.sh restorebands ) >/dev/null 2>&1 </dev/null &

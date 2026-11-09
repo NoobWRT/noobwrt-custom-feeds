@@ -1,0 +1,75 @@
+[ -n "$DEVICE" ] && [ -c "$DEVICE" ] || return 0
+
+O=$(sms_tool -d "$DEVICE" at 'AT$QCRSRP?;$QCRSRQ?;$QCSQ;^VERINFO' 2>/dev/null | tr -d '\r')
+
+_HP_V=$(printf '%s\n' "$O" | sed -n 's/^SW Revision: *//p' | head -1 \
+	| sed 's/[[:space:]]*$//')
+[ -n "$_HP_V" ] && FW="$_HP_V"
+
+_hp_triples() {
+	printf '%s\n' "$O" | awk -v k="$1" '
+		index($0, k) == 1 {
+			sub(/^[^:]*: */, "")
+			gsub(/"/, "")
+			n = split($0, f, ",")
+			for (i = 1; i + 2 <= n; i += 3) {
+				pci = f[i] + 0; ch = f[i + 1] + 0; v = f[i + 2] + 0
+				if (ch <= 0) continue
+				printf "%d %d %.0f\n", pci, ch, v
+			}
+			exit
+		}'
+}
+
+_HP_RP=$(_hp_triples '$QCRSRP:')
+_HP_RQ=$(_hp_triples '$QCRSRQ:')
+
+_HP_SIFS="$IFS"
+IFS='
+'
+_HP_N=0
+_HP_NB=""
+for _hp_l in $_HP_RP; do
+	IFS="$_HP_SIFS"
+	_hp_pci="${_hp_l%% *}"
+	_hp_rest="${_hp_l#* }"
+	_hp_ch="${_hp_rest%% *}"
+	_hp_rp="${_hp_rest#* }"
+	_hp_rq=$(printf '%s\n' "$_HP_RQ" | awk -v p="$_hp_pci" -v c="$_hp_ch" \
+		'$1 == p && $2 == c { print $3; exit }')
+	_hp_bn=$(earfcn2band "$_hp_ch")
+	if [ "$_HP_N" = 0 ]; then
+		PCI="$_hp_pci"
+		EARFCN="$_hp_ch"
+		RSRP="$_hp_rp"
+		[ -n "$_hp_rq" ] && RSRQ="$_hp_rq"
+		if [ -n "$_hp_bn" ]; then
+			PBAND=$(band4g "$_hp_bn")
+			MODE="LTE | $PBAND"
+		fi
+	else
+		_HP_NB="$_HP_NB${_HP_NB:+,}$(printf \
+			'{"band":"%s","earfcn":"%s","pci":"%s","rsrp":"%s","rsrq":"%s","rssi":"","serving":0}' \
+			"$_hp_bn" "$_hp_ch" "$_hp_pci" "$_hp_rp" "$_hp_rq")"
+	fi
+	_HP_N=$(( _HP_N + 1 ))
+	IFS='
+'
+done
+IFS="$_HP_SIFS"
+
+_HP_S=$(printf '%s\n' "$O" | sed -n 's/^\$QCSQ *: *//p' | head -1 | cut -d, -f1)
+case "$_HP_S" in
+	-[0-9]*)
+		if [ "$_HP_S" -le -30 ] && [ "$_HP_S" -ge -120 ]; then
+			RSSI="$_HP_S"
+		fi ;;
+esac
+
+if [ -n "$PCI" ] && [ -n "$EARFCN" ]; then
+	NEIGHBORS=$(printf '{"band":"%s","earfcn":"%s","pci":"%s","rsrp":"%s","rsrq":"%s","rssi":"%s","serving":1}' \
+		"$(earfcn2band "$EARFCN")" "$EARFCN" "$PCI" "$RSRP" "$RSRQ" "$RSSI")
+	NEIGHBORS="$NEIGHBORS${_HP_NB:+,$_HP_NB}"
+elif [ -n "$_HP_NB" ]; then
+	NEIGHBORS="$_HP_NB"
+fi

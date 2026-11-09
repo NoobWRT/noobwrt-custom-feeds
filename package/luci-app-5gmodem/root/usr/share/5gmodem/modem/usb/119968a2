@@ -1,0 +1,38 @@
+O=$(sms_tool -d $DEVICE at "at!gstatus?")
+
+T=$(echo "$O" | awk -F: '/Temperature:/ {print $3}' | xargs)
+[ -n "$T" ] && TEMP="$T &deg;C"
+
+if [ "$REGOK" = "1" ]; then
+
+if [ "x$MODE_NUM" = "x7" ]; then
+	T=$(echo "$O" | awk '/.*TAC:/ {print $5}')
+	if [ -n "$T" ]; then
+		T_HEX="$T"
+		T_DEC=$(printf "%d" "0x$T" 2>/dev/null)
+	fi
+
+	T=$(echo "$O" | awk '/^RSSI/ {print $3}')
+	[ -n "$T" ] && RSSI="$T"
+	T=$(echo "$O" | awk '/^RSRP/ {print $3}')
+	[ -n "$T" ] && RSRP="$T"
+	T=$(echo "$O" | awk '/^RSRQ/ {print $3}')
+	[ -n "$T" ] && RSRQ="$T"
+	T=$(echo "$O" | awk '/^SINR/ {print $3}')
+	[ -n "$T" ] && SINR="$T"
+
+	T=$(echo "$O" | awk '/^LTE band:/ {print $3}')
+	if [ -n "$T" ]; then
+		T1=$(echo "$O" | awk '/^LTE band:/ {print $6}')
+		PBAND="$(band4g ${T#B}) @${T1} MHz"
+		MODE="LTE | $(band4g ${T#B})"
+	fi
+	T=$(echo "$O" | awk '/^LTE Rx chan:/ {print $4}')
+	[ -n "$T" ] && EARFCN="$T"
+	T=$(echo "$O" | sed -n 's/.*Cell ID:[ \t]*\([0-9A-Fa-f]*\)[ \t]*(\([0-9]*\)).*/\1 \2/p' | head -n 1)
+	if [ -n "$T" ]; then
+		CID_HEX="${T%% *}"; CID_DEC="${T##* }"
+	fi
+fi
+
+fi

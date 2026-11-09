@@ -1,0 +1,67 @@
+#!/bin/sh
+[ "$ACTION" = ifup ] || exit 0
+[ -n "$INTERFACE" ] || exit 0
+
+CFG=5gmodem
+
+. /usr/share/5gmodem/lib.sh 2>/dev/null
+_z=$(uci show firewall 2>/dev/null | sed -n "s/^firewall\.\([^.]*\)\.name='wan'\$/\1/p" | head -1)
+_ups=""
+[ -n "$_z" ] && _ups=$(uci -q get "firewall.$_z.network")
+_ups="$_ups $(extra_uplink_nets "$_ups" 2>/dev/null | tr '\n' ' ')"
+case " $_ups " in
+	*" $INTERFACE "*) ;;
+	*) exit 0 ;;
+esac
+
+SVCS=""
+for _w in $(uci -q show $CFG 2>/dev/null | sed -n "s/^\($CFG\.[^.]*\)\.restart_on_uplink='\{0,1\}1'\{0,1\}\$/\1/p"); do
+	[ "$(uci -q get "$_w")" = svcwidget ] || continue
+	_n=$(uci -q get "$_w.service")
+	case "$_n" in ''|*[!A-Za-z0-9_.-]*) continue ;; esac
+	[ -x "/etc/init.d/$_n" ] || continue
+	SVCS="${SVCS:+$SVCS }$_n"
+done
+[ -n "$SVCS" ] || exit 0
+
+(
+	unset _AT_LOCK_HELD
+	exec 1000>&- 7>&- 8>&- 9>&- >/dev/null 2>&1 </dev/null
+
+	DEV=$(ubus call network.interface."$INTERFACE" status 2>/dev/null \
+		| jsonfilter -e '@["l3_device"]' 2>/dev/null)
+	[ -n "$DEV" ] || exit 0
+
+	_ok=0; _via=""
+	_i=0
+	while [ "$_i" -lt 30 ]; do
+		for _t in 77.88.8.8 1.1.1.1; do
+			if ping -c 1 -W 2 -I "$DEV" "$_t" >/dev/null 2>&1; then
+				_ok=1; _via="via $DEV"; break
+			fi
+			if ping -c 1 -W 2 "$_t" >/dev/null 2>&1; then
+				_ok=1; _via="via the default route"; break
+			fi
+		done
+		[ "$_ok" = 1 ] && break
+		_i=$((_i + 1))
+		sleep 3
+	done
+	[ "$_ok" = 1 ] || exit 0
+
+	for _n in $SVCS; do
+		_st="/tmp/5gmodem/svcup.$_n"
+		_up=$(cut -d. -f1 /proc/uptime 2>/dev/null)
+		case "$_up" in ''|*[!0-9]*) _up=0 ;; esac
+		if [ -f "$_st" ]; then
+			_prev=$(cat "$_st" 2>/dev/null)
+			case "$_prev" in ''|*[!0-9]*) _prev=0 ;; esac
+			[ $((_up - _prev)) -lt 120 ] && [ "$_up" -ge "$_prev" ] && continue
+		fi
+		printf '%s' "$_up" > "$_st"
+		logger -t 5gmodem "uplink $INTERFACE ($DEV) carries traffic $_via, restarting $_n"
+		/etc/init.d/"$_n" restart
+	done
+) &
+
+exit 0

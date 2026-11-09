@@ -1,0 +1,383 @@
+_FN_TAGS="cesq ca temp tml cqi laps lrx rx4"
+
+_fn_cmd() {
+	case "$1" in
+		cesq) echo '+CESQ' ;;
+		ca)   echo '#CAINFOEXT?' ;;
+		temp) echo '#TEMPSENS=2' ;;
+		tml)  echo '#TMLVL?' ;;
+		cqi)  echo '#CQI' ;;
+		laps) echo '#LAPS' ;;
+		lrx)  echo '#LRXDIV?' ;;
+		rx4)  echo '#4RXDIS?' ;;
+	esac
+}
+
+_fn_pfx() {
+	case "$1" in
+		cesq) echo '+CESQ:' ;;
+		ca)   echo '#CAINFOEXT:' ;;
+		temp) echo '#TEMPSENS:' ;;
+		tml)  echo '#TMLVL:' ;;
+		cqi)  echo '#CQI:' ;;
+		laps) echo '#LAPS:' ;;
+		lrx)  echo '#LRXDIV:' ;;
+		rx4)  echo '#4RXDIS:' ;;
+	esac
+}
+
+_fn_lteb() { earfcn2band "$1"; }
+
+_fn_bw() {
+	case "$1" in
+		0) echo "1.4" ;;
+		1) echo "3" ;;
+		2) echo "5" ;;
+		3) echo "10" ;;
+		4) echo "15" ;;
+		5) echo "20" ;;
+	esac
+}
+
+_fn_sinr() {
+	case "$1" in ''|-|*[!0-9-]*) return ;; esac
+	if [ "$1" -gt 40 ] 2>/dev/null; then
+		awk -v n="$1" 'BEGIN { printf "%.1f", n * 0.2 - 20 }'
+	else
+		printf '%s' "$1"
+	fi
+}
+
+if [ -n "$DEVICE" ] && [ -c "$DEVICE" ]; then
+
+_FN_KEY="${_MKEY:-$(basename "$DEVICE" 2>/dev/null)}"
+_FN_SKIP="/tmp/5gmodem/fn990_skip_$_FN_KEY"
+_FN_NOW=$(cut -d. -f1 /proc/uptime 2>/dev/null)
+case "$_FN_NOW" in ''|*[!0-9]*) _FN_NOW=0 ;; esac
+
+_fn_strikes() { sed -n "s/^$1 //p" "$_FN_SKIP" 2>/dev/null | head -1 | cut -d' ' -f1; }
+_fn_seen()    { sed -n "s/^$1 //p" "$_FN_SKIP" 2>/dev/null | head -1 | cut -d' ' -f2; }
+
+_FN_USE=""
+for _fn_t in $_FN_TAGS; do
+	_fn_n=$(_fn_strikes "$_fn_t"); _fn_ts=$(_fn_seen "$_fn_t")
+	case "$_fn_n$_fn_ts" in ''|*[!0-9]*) _fn_n=0; _fn_ts=0 ;; esac
+	if [ "$_fn_n" -ge 2 ] && [ "$(( _FN_NOW - _fn_ts ))" -lt 3600 ]; then
+		continue
+	fi
+	_FN_USE="$_FN_USE $_fn_t"
+done
+
+_FN_CHAIN=""
+for _fn_t in $_FN_USE; do
+	_FN_CHAIN="$_FN_CHAIN${_FN_CHAIN:+;}$(_fn_cmd "$_fn_t")"
+done
+
+O=""
+[ -n "$_FN_CHAIN" ] && O=$(sms_tool -d "$DEVICE" at "AT$_FN_CHAIN" 2>/dev/null | tr -d '\r')
+
+case "$O" in
+	*ERROR*)
+		_FN_BAD=""
+		for _fn_t in $_FN_USE; do
+			case "$O" in
+				*"$(_fn_pfx "$_fn_t")"*)
+					[ -n "$_FN_BAD" ] && { _FN_BAD=""; break; }
+					;;
+				*)
+					[ -n "$_FN_BAD" ] || _FN_BAD="$_fn_t"
+					;;
+			esac
+		done
+		if [ -n "$_FN_BAD" ]; then
+			_fn_n=$(_fn_strikes "$_FN_BAD"); _fn_ts=$(_fn_seen "$_FN_BAD")
+			case "$_fn_n$_fn_ts" in ''|*[!0-9]*) _fn_n=0; _fn_ts=0 ;; esac
+			[ "$(( _FN_NOW - _fn_ts ))" -gt 600 ] && _fn_n=0
+			_fn_n=$(( _fn_n + 1 ))
+			{ grep -v "^$_FN_BAD " "$_FN_SKIP" 2>/dev/null
+			  echo "$_FN_BAD $_fn_n $_FN_NOW"; } > "$_FN_SKIP.tmp" 2>/dev/null \
+				&& mv "$_FN_SKIP.tmp" "$_FN_SKIP" 2>/dev/null
+			[ "$_fn_n" -ge 2 ] && logger -t 5gmodem \
+				"FN990: $(_fn_cmd "$_FN_BAD") is not supported by this firmware - dropped from the metrics chain for an hour"
+		fi
+		;;
+esac
+
+_FN_C=$(printf '%s\n' "$O" | sed -n 's/^+CESQ: *//p' | head -1)
+if [ -n "$_FN_C" ]; then
+	_FN_RQ=$(printf '%s' "$_FN_C" | cut -d, -f5 | tr -dc '0-9')
+	_FN_RP=$(printf '%s' "$_FN_C" | cut -d, -f6 | tr -dc '0-9')
+	case "$_FN_RP" in
+		''|0|255) ;;
+		*) [ "$_FN_RP" -le 97 ] && RSRP=$(( _FN_RP - 141 )) ;;
+	esac
+	case "$_FN_RQ" in
+		''|255) ;;
+		*) [ "$_FN_RQ" -ge 1 ] && [ "$_FN_RQ" -le 34 ] && \
+			RSRQ=$(awk -v n="$_FN_RQ" 'BEGIN { printf "%.1f", n * 0.5 - 19.5 }' | sed 's/\.0$//') ;;
+	esac
+	case "$RSRP" in
+		''|-)
+			_FN_SQ=$(printf '%s' "$_FN_C" | cut -d, -f7 | tr -dc '0-9')
+			_FN_SP=$(printf '%s' "$_FN_C" | cut -d, -f8 | tr -dc '0-9')
+			_FN_SS=$(printf '%s' "$_FN_C" | cut -d, -f9 | tr -dc '0-9')
+			case "$_FN_SP" in
+				''|0|255) ;;
+				*) [ "$_FN_SP" -le 126 ] && RSRP=$(( _FN_SP - 157 )) ;;
+			esac
+			case "$_FN_SQ" in
+				''|0|255) ;;
+				*) [ "$_FN_SQ" -le 126 ] && \
+					RSRQ=$(awk -v n="$_FN_SQ" 'BEGIN { printf "%.1f", n * 0.5 - 43.5 }' | sed 's/\.0$//') ;;
+			esac
+			case "$_FN_SS" in
+				''|0|255) ;;
+				*) [ "$_FN_SS" -le 127 ] && \
+					SINR=$(awk -v n="$_FN_SS" 'BEGIN { printf "%.1f", n * 0.5 - 23.5 }' | sed 's/\.0$//') ;;
+			esac
+			;;
+	esac
+fi
+
+case "$RSSI" in
+	''|-)
+		case "$CSQ" in
+			''|-|*[!0-9]*) ;;
+			*) [ "$CSQ" -le 31 ] && RSSI=$(( CSQ * 2 - 113 )) ;;
+		esac
+		;;
+esac
+
+_FN_NR=$(printf '%s\n' "$O" | awk '
+	/^#CAINFOEXT:/ { nr = ($0 ~ /NR/) ? 1 : 0; next }
+	nr && /^(PCC|SCC[0-9]*)-/ {
+		if (match($0, /RX_CH:[ ]*[0-9]+/) && substr($0, RSTART + 6, RLENGTH - 6) + 0 > 0) { print 1; exit }
+	}
+')
+
+_FN_CA=$(printf '%s\n' "$O" | awk '
+	/^#CAINFOEXT:/ { rat = ($0 ~ /LTE/) ? "LTE" : ""; next }
+	rat == "LTE" && /^(PCC|SCC[0-9]*)-/ {
+		bc = ch = bw = pci = rsrp = rsrq = rssi = sinr = st = "-"
+		if (match($0, /BandClass:[ ]*[0-9]+/))   bc   = substr($0, RSTART + 11, RLENGTH - 11) + 0
+		if (match($0, /RX_CH:[ ]*[0-9]+/))       ch   = substr($0, RSTART + 6,  RLENGTH - 6) + 0
+		if (match($0, /DL_BW:[ ]*[0-9]+/))       bw   = substr($0, RSTART + 6,  RLENGTH - 6) + 0
+		if (match($0, /PCI:[ ]*[0-9]+/))         pci  = substr($0, RSTART + 4,  RLENGTH - 4) + 0
+		if (match($0, /RSRP:[ ]*-?[0-9]+/))      rsrp = substr($0, RSTART + 5,  RLENGTH - 5) + 0
+		if (match($0, /RSRQ:[ ]*-?[0-9]+/))      rsrq = substr($0, RSTART + 5,  RLENGTH - 5) + 0
+		if (match($0, /RSSI:[ ]*-?[0-9]+/))      rssi = substr($0, RSTART + 5,  RLENGTH - 5) + 0
+		if (match($0, /SINR:[ ]*-?[0-9]+/))      sinr = substr($0, RSTART + 5,  RLENGTH - 5) + 0
+		if (match($0, /STATE:[ ]*[0-9]+/))       st   = substr($0, RSTART + 6,  RLENGTH - 6) + 0
+		printf "%s:%s:%s:%s:%s:%s:%s:%s:%s\n", bc, ch, bw, pci, rsrp, rsrq, rssi, sinr, st
+	}
+')
+
+if [ -n "$_FN_CA" ]; then
+	_FN_I=0
+	_FN_ACT=0
+	_FN_MODE=""
+	_FN_SIFS="$IFS"; IFS='
+'
+	for _fn_l in $_FN_CA; do
+		IFS="$_FN_SIFS"
+		_fn_bc=$(printf '%s' "$_fn_l" | cut -d: -f1)
+		_fn_ch=$(printf '%s' "$_fn_l" | cut -d: -f2)
+		_fn_bwn=$(printf '%s' "$_fn_l" | cut -d: -f3)
+		_fn_pci=$(printf '%s' "$_fn_l" | cut -d: -f4)
+		_fn_rp=$(printf '%s' "$_fn_l" | cut -d: -f5)
+		_fn_rq=$(printf '%s' "$_fn_l" | cut -d: -f6)
+		_fn_rs=$(printf '%s' "$_fn_l" | cut -d: -f7)
+		_fn_sn=$(printf '%s' "$_fn_l" | cut -d: -f8)
+		_fn_st=$(printf '%s' "$_fn_l" | cut -d: -f9)
+		IFS='
+'
+		case "$_fn_ch" in ''|-|0) continue ;; esac
+		_fn_bn=$(_fn_lteb "$_fn_ch")
+		if [ -z "$_fn_bn" ]; then
+			case "$_fn_bc" in
+				''|-|*[!0-9]*) : ;;
+				*) [ "$_fn_bc" -gt 119 ] && _fn_bn=$(( _fn_bc - 119 )) ;;
+			esac
+		fi
+		[ -n "$_fn_bn" ] || continue
+		_fn_b=$(band4g "$_fn_bn")
+		_fn_bwt=$(_fn_bw "$_fn_bwn")
+		_fn_bf="$_fn_b"
+		[ -n "$_fn_bwt" ] && _fn_bf="$_fn_b @$_fn_bwt MHz"
+		case "$_fn_pci" in -|'') _fn_pci="" ;; esac
+		case "$_fn_rp" in -|'') _fn_rp="" ;; esac
+		case "$_fn_rq" in -|'') _fn_rq="" ;; esac
+		case "$_fn_rs" in -|'') _fn_rs="" ;; esac
+		case "$_fn_sn" in -|'') _fn_sn="" ;; esac
+		_fn_sn=$(_fn_sinr "$_fn_sn")
+		if [ "$_FN_I" = 0 ]; then
+			PBAND="$_fn_bf"
+			EARFCN="$_fn_ch"
+			[ -n "$_fn_pci" ] && PCI="$_fn_pci"
+			[ -n "$_fn_rp" ] && RSRP="$_fn_rp"
+			[ -n "$_fn_rq" ] && RSRQ="$_fn_rq"
+			[ -n "$_fn_rs" ] && RSSI="$_fn_rs"
+			[ -n "$_fn_sn" ] && SINR="$_fn_sn"
+			_FN_MODE="| $_fn_b"
+			_FN_ACT=1
+		else
+			_fn_ss="activated"
+			case "$_fn_st" in
+				''|-|2) _FN_MODE="$_FN_MODE + $_fn_b"; _FN_ACT=$(( _FN_ACT + 1 )) ;;
+				*) _fn_ss="deactivated"; _fn_sn="" ;;
+			esac
+			case "$_FN_I" in
+				1) S1BAND="$_fn_bf"; S1EARFCN="$_fn_ch"; S1PCI="$_fn_pci"
+				   S1RSRP="$_fn_rp"; S1RSRQ="$_fn_rq"; S1SINR="$_fn_sn"; S1STATE="$_fn_ss" ;;
+				2) S2BAND="$_fn_bf"; S2EARFCN="$_fn_ch"; S2PCI="$_fn_pci"
+				   S2RSRP="$_fn_rp"; S2RSRQ="$_fn_rq"; S2SINR="$_fn_sn"; S2STATE="$_fn_ss" ;;
+				3) S3BAND="$_fn_bf"; S3EARFCN="$_fn_ch"; S3PCI="$_fn_pci"
+				   S3RSRP="$_fn_rp"; S3RSRQ="$_fn_rq"; S3SINR="$_fn_sn"; S3STATE="$_fn_ss" ;;
+				4) S4BAND="$_fn_bf"; S4EARFCN="$_fn_ch"; S4PCI="$_fn_pci"
+				   S4RSRP="$_fn_rp"; S4RSRQ="$_fn_rq"; S4SINR="$_fn_sn"; S4STATE="$_fn_ss" ;;
+			esac
+		fi
+		_FN_I=$(( _FN_I + 1 ))
+	done
+	IFS="$_FN_SIFS"
+	if [ "$_FN_I" -gt 0 ]; then
+		if [ "$_FN_NR" = 1 ]; then
+			_FN_TECH="5G NSA"
+		elif [ "$_FN_ACT" -gt 1 ]; then
+			_FN_TECH="LTE-A"
+		else
+			_FN_TECH="LTE"
+		fi
+		MODE="$_FN_TECH $_FN_MODE"
+		_CA_FROM_PROFILE=1
+	fi
+elif [ "$_FN_NR" = 1 ]; then
+	MODE="5G SA"
+fi
+
+_FN_V=$(printf '%s\n' "$O" | sed -n 's/^#CQI: *\([0-9]\{1,\}\).*/\1/p' | head -1)
+[ -n "$_FN_V" ] && [ "$_FN_V" != 31 ] && CQI="$_FN_V"
+
+_FN_V=$(printf '%s\n' "$O" | sed -n 's/^#TEMPSENS: *[A-Za-z0-9_]*,\(-\{0,1\}[0-9]\{1,\}\).*/\1/p' \
+	| sort -n | tail -1)
+case "$_FN_V" in
+	''|*[!0-9-]*) ;;
+	*) TEMP="$_FN_V &deg;C" ;;
+esac
+
+_FN_V=$(printf '%s\n' "$O" | sed -n 's/^#TMLVL: *[A-Za-z0-9_]*,\([0-9]\{1,\}\).*/\1/p' \
+	| sort -n | tail -1)
+case "$_FN_V" in
+	''|*[!0-9]*) ;;
+	*) THERM="$_FN_V" ;;
+esac
+
+_FN_V=$(printf '%s\n' "$O" | sed -n 's/^#LAPS: *//p' | head -1)
+case "$_FN_V" in
+	*[!0-9,\ -]*) _FN_V="" ;;
+esac
+if [ -n "$_FN_V" ]; then
+	ANTPORTS=$(printf '%s' "$_FN_V" | awk -F, '{
+		out = ""
+		for (i = 1; i + 1 <= NF; i += 2) {
+			p = (i - 1) / 2
+			gsub(/ /, "", $i); gsub(/ /, "", $(i+1))
+			out = out (out == "" ? "" : " ") p ":" $i ":" $(i+1)
+		}
+		print out
+	}')
+fi
+
+_FN_RD=$(printf '%s\n' "$O" | sed -n 's/^#LRXDIV: *\([0-9]\).*/\1/p' | head -1)
+_FN_R4=$(printf '%s\n' "$O" | sed -n 's/^#4RXDIS: *\([0-9]\).*/\1/p' | head -1)
+case "$_FN_RD" in
+	1) RXDIV=2rx; [ "$_FN_R4" = "0" ] && RXDIV=4rx ;;
+	0) RXDIV=off ;;
+esac
+
+_FN_V=$(sms_tool -d "$DEVICE" at "AT+CGMM" 2>/dev/null | tr -d '\r' \
+	| grep -oE 'FN[0-9]{3,4}[A-Za-z0-9-]*' | head -1)
+[ -n "$_FN_V" ] && MODEL="Telit $_FN_V"
+_FN_V=$(sms_tool -d "$DEVICE" at "AT+CGMR" 2>/dev/null | tr -d '\r' \
+	| grep -vE '^AT\+|^OK$|^ERROR|^$' | head -1 | xargs)
+[ -n "$_FN_V" ] && FW="$_FN_V"
+
+_FN_NB_F="/tmp/5gmodem/moni_fn_$_FN_KEY"
+_FN_NB_AGE=999
+if [ -f "$_FN_NB_F.t" ]; then
+	_FN_NB_T=$(cat "$_FN_NB_F.t" 2>/dev/null)
+	case "$_FN_NB_T" in
+		''|*[!0-9]*) : ;;
+		*) _FN_NB_AGE=$(( _FN_NOW - _FN_NB_T )) ;;
+	esac
+fi
+_FN_NB_NEG=$(cat "$_FN_NB_F.no" 2>/dev/null)
+case "$_FN_NB_NEG" in *[!0-9]*) _FN_NB_NEG="" ;; esac
+_FN_NB_OK=1
+[ -n "$_FN_NB_NEG" ] && [ "$(( _FN_NOW - _FN_NB_NEG ))" -lt 600 ] && _FN_NB_OK=0
+
+if [ "$_FN_NB_AGE" -ge 30 ] 2>/dev/null && [ "$_FN_NB_OK" = 1 ]; then
+	_FN_NB_OUT=""
+	_FN_NB_N=1
+	while [ "$_FN_NB_N" -le 5 ]; do
+		sms_tool -d "$DEVICE" at "AT#MONI=$_FN_NB_N" >/dev/null 2>&1
+		_FN_NB_SET=$(sms_tool -d "$DEVICE" at "AT#MONI" 2>/dev/null | tr -d '\r' \
+			| grep "^#MONI: *RSRP")
+		[ -n "$_FN_NB_SET" ] || break
+		_FN_NB_OUT="$_FN_NB_OUT$_FN_NB_SET
+"
+		_FN_NB_N=$(( _FN_NB_N + 1 ))
+	done
+	sms_tool -d "$DEVICE" at "AT#MONI=0" >/dev/null 2>&1
+
+	_FN_NB_JSON=""
+	_FN_NB_SEEN=" "
+	_FN_SIFS="$IFS"; IFS='
+'
+	for _fn_nb in $_FN_NB_OUT; do
+		case "$_fn_nb" in *RSRP*) ;; *) continue ;; esac
+		IFS="$_FN_SIFS"
+		_fn_nb=$(printf '%s' "$_fn_nb" | sed 's/ NR_.*//')
+		_fn_ph=$(printf '%s' "$_fn_nb" | sed -n 's/.*Id:\([0-9A-Fa-f]*\).*/\1/p')
+		if [ -n "$_fn_ph" ]; then
+			_fn_p=$(printf '%d' "0x$_fn_ph" 2>/dev/null)
+			_fn_e=$(printf '%s' "$_fn_nb" | sed -n 's/.*EARFCN:\([0-9]*\).*/\1/p')
+			_fn_rp=$(printf '%s' "$_fn_nb" | sed -n 's/.*RSRP:\(-\{0,1\}[0-9]*\).*/\1/p')
+			_fn_rq=$(printf '%s' "$_fn_nb" | sed -n 's/.*RSRQ:\(-\{0,1\}[0-9]*\).*/\1/p')
+			_fn_rs=$(printf '%s' "$_fn_nb" | sed -n 's/.*PWR:\(-\{0,1\}[0-9]*\).*/\1/p')
+			case "$_FN_NB_SEEN" in *" $_fn_p:$_fn_e "*) _fn_p="" ;; esac
+			if [ -n "$_fn_p" ] && [ -n "$_fn_e" ] && \
+			   { [ "$_fn_p" != "$PCI" ] || [ "$_fn_e" != "$EARFCN" ]; }; then
+				_FN_NB_SEEN="$_FN_NB_SEEN$_fn_p:$_fn_e "
+				_fn_bn=$(_fn_lteb "$_fn_e")
+				_FN_NB_JSON="$_FN_NB_JSON${_FN_NB_JSON:+,}$(printf \
+					'{"band":"%s","earfcn":"%s","pci":"%s","rsrp":"%s","rsrq":"%s","rssi":"%s","serving":0}' \
+					"$_fn_bn" "$_fn_e" "$_fn_p" "$_fn_rp" "$_fn_rq" "$_fn_rs")"
+			fi
+		fi
+		IFS='
+'
+	done
+	IFS="$_FN_SIFS"
+
+	if [ -n "$_FN_NB_JSON" ]; then
+		rm -f "$_FN_NB_F.no" 2>/dev/null
+		printf '%s' "$_FN_NB_JSON" > "$_FN_NB_F" 2>/dev/null
+		printf '%s' "$_FN_NOW" > "$_FN_NB_F.t" 2>/dev/null
+	else
+		printf '%s' "$_FN_NOW" > "$_FN_NB_F.no" 2>/dev/null
+		printf '%s' "$_FN_NOW" > "$_FN_NB_F.t" 2>/dev/null
+	fi
+else
+	_FN_NB_JSON=$(cat "$_FN_NB_F" 2>/dev/null)
+fi
+
+if [ -n "$PCI" ] && [ -n "$EARFCN" ]; then
+	NEIGHBORS=$(printf '{"band":"%s","earfcn":"%s","pci":"%s","rsrp":"%s","rsrq":"%s","rssi":"%s","serving":1}' \
+		"$(_fn_lteb "$EARFCN")" "$EARFCN" "$PCI" "$RSRP" "$RSRQ" "$RSSI")
+	NEIGHBORS="$NEIGHBORS${_FN_NB_JSON:+,$_FN_NB_JSON}"
+else
+	NEIGHBORS="$_FN_NB_JSON"
+fi
+
+fi

@@ -1,0 +1,57 @@
+. "$RES/modem/usb/_quectel_common"
+
+_qc_temp3n
+
+if [ -z "$REG" ] || [ "x$MODE_NUM" = "x11" ]; then
+	_q5_c5greg awk
+fi
+
+if [ "$REGOK" = "1" ]; then
+
+O=$(sms_tool -d $DEVICE at "at+qnwinfo;+qcainfo;+qeng=\"servingcell\";+qspn")
+
+_qc_spn2
+
+_q5_core
+
+fi
+
+_qc_neighbours
+
+MODE=$(echo $MODE | sed 's,/,+,' | sed 's, / \(B[0-9]\), + \1,g'| sed 's,LTE B,LTE | B,')
+
+if [ "${LAC_DEC}" = "0" ]; then
+	LAC_DEC="-"
+	LAC_HEX="-"
+fi 
+
+GETNFO=$(gcom -d $DEVICE -s /usr/share/5gmodem/vendorproduct.gcom)
+FW=$(echo "$GETNFO" | awk -F [:] '/^\+CGMR:/{print $2}' | xargs)
+
+MVENDOR=$(echo "$GETNFO" | awk -F [:] '/^\+CGMI:/{print $2}' | xargs)
+MPRODUCT=$(echo "$GETNFO" | awk -F [:] '/^\+CGMM:/{print $2}' | xargs)
+MODEL="$MVENDOR "$MPRODUCT
+
+_qc_qslot
+
+NR_I=$(echo "$GETNFO" | awk -F [:] '/^\+CGSN:/{print $2}' | xargs)
+if [ -n "$NR_I" ]; then
+	NR_IMEI="$NR_I"
+fi
+
+NR_C=$(echo "$GETNFO" | awk -F [:] '/^\+CIMI:/{print $2}' | xargs)
+if [ -n "$NR_C" ]; then
+	NR_IMSI="$NR_C"
+fi
+
+NR_D=$(echo "$GETNFO" | awk -F [:] '/^\+ICCID: /{print $2}' | xargs)
+if [ -n "$NR_D" ]; then
+	NR_ICCID="$NR_D"
+fi
+
+_PV_V=$(cat "/sys/bus/usb/devices/$_POLL_AM/idVendor" 2>/dev/null)
+_PV_P=$(cat "/sys/bus/usb/devices/$_POLL_AM/idProduct" 2>/dev/null)
+_PV_ID="Vendor=${_PV_V:-2c7c} ProdID=${_PV_P:-0801}"
+_qc_proto "$_PV_ID" 1290
+
+. "$RES/modem/usb/_quectel_qrsrp"

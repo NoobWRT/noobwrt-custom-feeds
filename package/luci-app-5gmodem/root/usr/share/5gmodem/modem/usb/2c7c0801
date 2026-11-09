@@ -1,0 +1,71 @@
+. "$RES/modem/usb/_quectel_common"
+
+_qc_temp3n
+
+if [ -z "$REG" ] || [ "x$MODE_NUM" = "x11" ]; then
+	_q5_c5greg reset busybox awk
+fi
+
+if [ "$REGOK" = "1" ]; then
+
+O=$(sms_tool -d $DEVICE at "at+qnwinfo;+qcainfo;+qeng=\"servingcell\";+qspn")
+
+_qc_spn2
+
+if [ "$CID_HEX" = "0" ] || [ -z "$CID_HEX" ]; then
+	T=$(echo "$O" | tr -d '\r' | awk -F, '/^\+QENG: "servingcell",.*"LTE"/ {print $7; exit} /^\+QENG: "LTE",/ {print $5; exit}' | tr -cd '0-9A-Fa-f')
+	if [ -n "$T" ]; then
+		CID_HEX="$T"
+		CID_DEC=$(printf "%d" "0x$T" 2>/dev/null)
+	fi
+fi
+
+_q5_core mb nrn qnw scclev
+
+fi
+
+_qc_neighbours
+
+MODE=$(echo $MODE | sed 's,/,+,' | sed 's, / \(B[0-9]\), + \1,g' | sed 's,LTE B,LTE | B,' | sed 's,LTE_A,LTE-A,' | sed 's,LTE-A B,LTE-A | B,')
+
+if [ "${LAC_DEC}" = "0" ]; then
+	LAC_DEC="-"
+	LAC_HEX="-"
+fi
+
+_qc_gmr_fw
+T=$(sms_tool -d $DEVICE at "AT+QGMR?" 2>/dev/null | tr -d '\r' | awk '/^[A-Z][A-Z0-9]+_[0-9][0-9.]*$/ {print; exit}')
+[ -n "$T" ] && FW="$T"
+
+_qc_gmr_model
+
+_qc_qslot
+
+_qc_ids_sed
+
+_QPROTO=""
+if [ -n "$_POLL_AM" ] && [ -d "/sys/bus/usb/devices/$_POLL_AM" ]; then
+	for _qi in "/sys/bus/usb/devices/$_POLL_AM":*/driver; do
+		[ -L "$_qi" ] || continue
+		case "$(readlink "$_qi" 2>/dev/null)" in
+			*/qmi_wwan)  _QPROTO="qmi" ;;
+			*/cdc_mbim)  _QPROTO="mbim" ;;
+			*/cdc_ether) _QPROTO="ecm" ;;
+		esac
+		[ -n "$_QPROTO" ] && break
+	done
+fi
+if [ -z "$_QPROTO" ]; then
+	PV=$(cat /sys/kernel/debug/usb/devices 2>/dev/null)
+	PVCUT=$(echo $PV | awk -F 'Vendor=2c7c ProdID=0801' '{print $2}' | cut -c-1290)
+	if echo "$PVCUT" | grep -q "Driver=qmi_wwan"; then
+		_QPROTO="qmi"
+	elif echo "$PVCUT" | grep -q "Driver=cdc_mbim"; then
+		_QPROTO="mbim"
+	elif echo "$PVCUT" | grep -q "Driver=cdc_ether"; then
+		_QPROTO="ecm"
+	fi
+fi
+[ -n "$_QPROTO" ] && PROTO="$_QPROTO"
+                                                                                                                                                                                                                                         
+. "$RES/modem/usb/_quectel_qrsrp"

@@ -1,0 +1,195 @@
+#!/bin/sh
+[ -d /tmp/5gmodem ] || mkdir -p /tmp/5gmodem 2>/dev/null
+. /usr/share/libubox/jshn.sh
+
+DATEFMT="%Y-%m-%d %H:%M"
+JSONOUT=0
+CMD=""
+A1=""
+A2=""
+
+while [ $# -gt 0 ]; do
+	case "$1" in
+		-f) DATEFMT="$2"; shift 2 ;;
+		-j) JSONOUT=1; shift ;;
+		-s|-d|-b|-c|-p|-t|-C) shift 2 ;;
+		-*) shift ;;
+		*)
+			CMD="$1"
+			A1="$2"
+			A2="$3"
+			break
+			;;
+	esac
+done
+
+[ -n "$CMD" ] || { echo "usage: sms_tool_mm [flags] recv|status|send|delete ..." >&2; exit 1; }
+
+command -v mmcli >/dev/null 2>&1 || { echo "mmcli not found" >&2; exit 1; }
+
+MMIDX=$(/usr/share/5gmodem/modemswitch.sh mmindex ${MM_MODEM_PATH:+"$MM_MODEM_PATH"} 2>/dev/null)
+case "$MMIDX" in ''|*[!0-9]*) MMIDX=any ;; esac
+
+sms_index() {
+	echo "${1##*/}"
+}
+
+fmt_ts() {
+	TS="${1%%+*}"
+	TS="${TS%%-[0-9][0-9]:[0-9][0-9]}"
+	[ -n "$TS" ] || { echo ""; return; }
+	date -D '%Y-%m-%dT%H:%M:%S' -d "$TS" +"$DATEFMT" 2>/dev/null || echo "$1"
+}
+
+load_paths() {
+	[ -n "$LP_DONE" ] && return 0
+	LIST=$(mmcli -m "$MMIDX" --messaging-list-sms -J 2>/dev/null) || return 1
+	LP_OUT=$(jsonfilter -s "$LIST" -e '@["modem.messaging.sms"][*]' 2>/dev/null)
+	LP_DONE=1
+}
+
+list_paths() {
+	load_paths || return 1
+	printf '%s\n' "$LP_OUT"
+}
+
+SMS_CACHE=/tmp/5gmodem/mmsms
+MMPID=$(pidof ModemManager 2>/dev/null | cut -d' ' -f1)
+mkdir -p "$SMS_CACHE" 2>/dev/null
+for _f in "$SMS_CACHE"/*; do
+	[ -f "$_f" ] || continue
+	case "${_f##*/}" in "$MMPID".*) ;; *) rm -f "$_f" ;; esac
+done
+
+sms_json() {
+	_sc="$SMS_CACHE/$MMPID.${1##*/}"
+	[ -n "$MMPID" ] && [ -s "$_sc" ] && { cat "$_sc"; return 0; }
+	_sj=$(mmcli -s "$1" -J 2>/dev/null) || return 1
+	[ -n "$MMPID" ] && [ "$(jsonfilter -s "$_sj" -e '@.sms.properties.state' 2>/dev/null)" = received ] \
+		&& printf '%s' "$_sj" > "$_sc" 2>/dev/null
+	printf '%s' "$_sj"
+}
+
+STALE_RX_SECS=120
+RX_MARK_DIR=/tmp/5gmodem/smsrx
+cleanup_stale_rx() {
+	NOW=$(cut -d. -f1 /proc/uptime)
+	mkdir -p "$RX_MARK_DIR" 2>/dev/null
+	for P in $(list_paths); do
+		SJ=$(sms_json "$P") || continue
+		STATE=$(jsonfilter -s "$SJ" -e '@.sms.properties.state' 2>/dev/null)
+		IDX=$(sms_index "$P")
+		if [ "$STATE" != "receiving" ]; then
+			rm -f "$RX_MARK_DIR/$IDX" 2>/dev/null
+			continue
+		fi
+		SEEN=$(cat "$RX_MARK_DIR/$IDX" 2>/dev/null)
+		case "$SEEN" in
+			''|*[!0-9]*)
+				printf '%s' "$NOW" > "$RX_MARK_DIR/$IDX" 2>/dev/null
+				continue ;;
+		esac
+		[ "$((NOW - SEEN))" -gt "$STALE_RX_SECS" ] || continue
+		logger -t sms_tool_mm "dropping stale partial SMS $IDX (stuck in receiving state, blocks reception)"
+		mmcli -m "$MMIDX" --messaging-delete-sms="$IDX" >/dev/null 2>&1
+		rm -f "$RX_MARK_DIR/$IDX" 2>/dev/null
+	done
+}
+
+case "$CMD" in
+
+recv)
+	load_paths
+	cleanup_stale_rx
+	[ "$JSONOUT" = "1" ] && {
+		json_init
+		json_add_array msg
+	}
+	for P in $(list_paths); do
+		SJ=$(sms_json "$P") || continue
+		TYPE=$(jsonfilter -s "$SJ" -e '@.sms.properties["pdu-type"]' 2>/dev/null)
+		[ "$TYPE" = "deliver" ] || continue
+		STATE=$(jsonfilter -s "$SJ" -e '@.sms.properties.state' 2>/dev/null)
+		[ "$STATE" = "received" ] || continue
+		NUM=$(jsonfilter -s "$SJ" -e '@.sms.content.number' 2>/dev/null)
+		TEXT=$(jsonfilter -s "$SJ" -e '@.sms.content.text' 2>/dev/null)
+		TS=$(fmt_ts "$(jsonfilter -s "$SJ" -e '@.sms.properties.timestamp' 2>/dev/null)")
+		IDX=$(sms_index "$P")
+		if [ "$JSONOUT" = "1" ]; then
+			json_add_object ""
+			json_add_int index "$IDX"
+			json_add_string sender "$NUM"
+			json_add_string timestamp "$TS"
+			json_add_string tz local
+			json_add_string content "$TEXT"
+			json_close_object
+		else
+			printf 'MSG: %s\nFrom: %s\nDate/Time: %s\n%s\n\n' "$IDX" "$NUM" "$TS" "$TEXT"
+		fi
+	done
+	[ "$JSONOUT" = "1" ] && {
+		json_close_array
+		json_dump
+	}
+	;;
+
+status)
+	load_paths
+	cleanup_stale_rx
+	USED=0
+	for P in $(list_paths); do
+		SJ=$(sms_json "$P") || continue
+		TYPE=$(jsonfilter -s "$SJ" -e '@.sms.properties["pdu-type"]' 2>/dev/null)
+		STATE=$(jsonfilter -s "$SJ" -e '@.sms.properties.state' 2>/dev/null)
+		[ "$TYPE" = "deliver" ] && [ "$STATE" = "received" ] && USED=$((USED + 1))
+	done
+	printf 'Storage type: MT, used: %d, total: 255\n' "$USED"
+	;;
+
+send)
+	PHONE="$A1"
+	TEXT="$A2"
+	[ -n "$PHONE" ] && [ -n "$TEXT" ] || { echo "sms not sent, command error" >&2; exit 1; }
+
+	case "$TEXT" in
+		*"'"*) _AP=$(printf '\342\200\231'); TEXT=$(printf '%s' "$TEXT" | sed "s/'/$_AP/g") ;;
+	esac
+
+	OUT=$(mmcli -m "$MMIDX" --messaging-create-sms="text='$TEXT',number='$PHONE'" 2>&1)
+	P=$(printf '%s' "$OUT" | grep -o '/org/freedesktop/ModemManager1/SMS/[0-9]*' | head -1)
+	[ -n "$P" ] || { echo "sms not sent, command error" >&2; echo "$OUT" >&2; exit 1; }
+
+	if ERR=$(mmcli -s "$P" --send 2>&1); then
+		# see docs/subsystems/sms.md#success-line
+		echo "sms sent sucessfully: $(sms_index "$P")"
+		mmcli -m "$MMIDX" --messaging-delete-sms="$(sms_index "$P")" >/dev/null 2>&1
+	else
+		mmcli -m "$MMIDX" --messaging-delete-sms="$(sms_index "$P")" >/dev/null 2>&1
+		CODE=$(printf '%s' "$ERR" | sed -n 's/.*Error\.\([^:]*\):.*/\1/p' | head -1)
+		[ -n "$CODE" ] || CODE=$(printf '%s' "$ERR" | head -1)
+		echo "sms not sent, code: $CODE" >&2
+		printf '%s\n' "$ERR" >&2
+		exit 1
+	fi
+	;;
+
+delete)
+	if [ "$A1" = "all" ]; then
+		N=0
+		for P in $(list_paths); do
+			mmcli -m "$MMIDX" --messaging-delete-sms="$(sms_index "$P")" >/dev/null 2>&1 && N=$((N + 1))
+		done
+		echo "delete msg from 0 to $N"
+	else
+		mmcli -m "$MMIDX" --messaging-delete-sms="$A1" >/dev/null 2>&1
+		echo "delete msg from $A1 to $A1"
+	fi
+	;;
+
+*)
+	echo "sms_tool_mm: unsupported command: $CMD" >&2
+	exit 1
+	;;
+esac
+
+exit 0

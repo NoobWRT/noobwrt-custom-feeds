@@ -1,0 +1,453 @@
+msgid ""
+msgstr "Content-Type: text/plain; charset=UTF-8"
+
+#: applications/luci-app-5gmodem/luasrc/controller/modem/5gmodem.lua:9
+msgid "Information about 3G/4G connection"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/controller/modem/5gmodem.lua:10
+msgid "Details"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/controller/modem/5gmodem.lua:11
+msgid "Configuration"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/view/modem5g/3gdetail.lua:110
+msgid "Status:"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/view/modem5g/3gdetail.lua:111
+msgid "Connection time:"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/view/modem5g/3gdetail.lua:112
+msgid "Downloaded:"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/view/modem5g/3gdetail.lua:113
+msgid "Uploaded:"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/view/modem5g/3gdetail.lua:114
+msgid "Mode:"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/view/modem5g/3gdetail.lua:115
+msgid "Operator:"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/view/modem5g/3gdetail.lua:117
+msgid "Signal strength:"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/view/modem5g/3gdetail.lua:119
+msgid "Modem type:"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/view/modem5g/3gdetail.lua:124
+msgid "Additional information"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/model/cbi/modem/3gconfig.lua:11
+msgid "Configuration 5gmodem"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/model/cbi/modem/3gconfig.lua:12
+msgid "Configuration panel for the 5gmodem application."
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/model/cbi/modem/3gconfig.lua:17
+msgid "Network"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/model/cbi/modem/3gconfig.lua:20
+msgid "Device"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/model/cbi/modem/3gconfig.lua:28
+msgid "SIM PIN (optional)"
+msgstr ""
+
+#: applications/luci-app-5gmodem/luasrc/model/cbi/modem/3gconfig.lua:31
+msgid "Language"
+msgstr ""
+
+msgid "Data has not been updated for %d s (shown from the last snapshot)"
+msgstr ""
+
+msgid "Data has not been updated for %d min (shown from the last snapshot)"
+msgstr ""
+
+msgid "(initialisation #%d)"
+msgstr ""
+
+msgid "Delete this row"
+msgstr ""
+
+msgid "Could not read messages - will retry on the next refresh"
+msgstr ""
+
+msgid ""
+"This modem is currently the only internet source, and the download must take "
+"the modem offline to reach the eSIM chip. The profile download needs "
+"internet at that very moment, so it cannot finish. Connect the router to "
+"another source first (Wi-Fi, cable, or a phone hotspot) and try again."
+msgstr ""
+
+msgid ""
+"An empty chip is a special case: some modems cannot work with a profile-less "
+"eSIM (the modem keeps resetting or the slot stays unusable). Loading any "
+"public test profile usually settles it - see the list of known test profiles:"
+msgstr ""
+
+msgid "Download anyway"
+msgstr ""
+
+msgid "Saved and applied."
+msgstr ""
+
+msgid "Switching to the modem…"
+msgstr ""
+
+msgid "mwan3-compatible metrics"
+msgstr ""
+
+msgid ""
+"Uplink metrics start at 10 (10, 20, 30...) as mwan3 expects. When off they "
+"start at 100 (100, 110, 120...), leaving 1-99 free for tunnels. Takes effect "
+"on the next priority change."
+msgstr ""
+
+msgid "Delete this traffic row? This cannot be undone."
+msgstr ""
+
+msgid ""
+"The modem keeps reconnecting over USB (%d times in 10 minutes) - usually not "
+"enough power: try another port, a shorter cable or a powered hub."
+msgstr ""
+
+msgid "This modem is managed by ModemManager, and its control channel belongs to MM. Opening a second eSIM session on the same channel can crash the modem firmware (seen live on T99W175 - the modem reboots). To manage eSIM, enable \"Hide from ModemManager\" in the modem settings (or switch the interface protocol), then come back here."
+msgstr ""
+
+msgid "Internet is working (%s ms)"
+msgstr ""
+
+msgid "No internet on this link"
+msgstr ""
+
+msgid "Checking…"
+msgstr ""
+
+msgid "Internet watchdog settings"
+msgstr ""
+
+msgid "Internet watchdog"
+msgstr ""
+
+msgid "Pings each uplink through its own device. A link is marked down after several consecutive failures and up again after several successes, so single lost packets do not flip the state. Health lamps are shown on the cards; traffic switching is optional and enabled below."
+msgstr ""
+
+msgid "Enable watching"
+msgstr ""
+
+msgid "Check interval, s"
+msgstr ""
+
+msgid "Ping targets (comma-separated)"
+msgstr ""
+
+msgid "Failures before down"
+msgstr ""
+
+msgid "Successes before up"
+msgstr ""
+
+msgid "Switch traffic to a backup link when one goes down"
+msgstr ""
+
+msgid "Heal a modem while its link is down"
+msgstr ""
+
+msgid "Steps are tried from mild to strong, at most once per 5 minutes, 6 attempts total; the ladder resets when the link recovers."
+msgstr ""
+
+msgid "Do nothing"
+msgstr ""
+
+msgid "Reconnect the interface"
+msgstr ""
+
+msgid "...plus reboot the module"
+msgstr ""
+
+msgid "...plus USB power cycle"
+msgstr ""
+
+msgid "When a link recovers"
+msgstr ""
+
+msgid "Return its priority"
+msgstr ""
+
+msgid "Keep it last"
+msgstr ""
+
+msgid "Reconnecting"
+msgstr ""
+
+msgid "Rebooting the module"
+msgstr ""
+
+msgid "USB power cycle"
+msgstr ""
+
+msgid "Device is gone"
+msgstr ""
+
+msgid "sec"
+msgstr ""
+
+msgid "Rebooting"
+msgstr ""
+
+msgid "Ping targets"
+msgstr ""
+
+msgid "Also heal the Wi-Fi uplink"
+msgstr ""
+
+msgid "Open %s"
+msgstr ""
+
+msgid "No modem connected"
+msgstr ""
+
+msgid "Heal the Wi-Fi uplink while it is down"
+msgstr ""
+
+msgid "Release a cell lock when the network is lost"
+msgstr ""
+
+msgid "If the modem stays without network registration for 10 minutes while a cell or frequency lock set here is on, the lock is removed so the modem can use any cell. The lock is not set again automatically. Works even when watching is off."
+msgstr ""
+
+msgid "If at least one target responds"
+msgstr ""
+
+msgid "%d more bands supported by the modem, %d of them enabled"
+msgstr ""
+
+msgid "(%d enabled)"
+msgstr ""
+
+msgid "Hide bands not used by operators in this country"
+msgstr ""
+
+msgid "Show fewer"
+msgstr ""
+
+msgid "Signal quality. On LTE %d dB or better is excellent, below %d dB is poor; on 5G below %d dB is poor."
+msgstr ""
+
+msgid "Signal strength received from the cell tower. On LTE and 5G %d dBm or better is excellent, below %d dBm is poor."
+msgstr ""
+
+msgid "Signal-to-noise ratio. On LTE and 5G %d dB or better is excellent, below %d dB is poor."
+msgstr ""
+
+msgid "The modem is on the USB bus, but its AT port is not answering: it is busy or the modem is stuck. If this lasts, restart the modem with the Restart modem buttons below."
+msgstr ""
+
+msgid "Total power received in the channel, including noise and interference. On LTE %d dBm or better is excellent, below %d dBm is poor."
+msgstr ""
+
+msgid "cell quality · good from %d dB"
+msgstr ""
+
+msgid "signal power · good from %d dBm"
+msgstr ""
+
+msgid "signal-to-noise · good from %d dB"
+msgstr ""
+
+msgid "Arrange blocks"
+msgstr ""
+
+msgid "Reset order"
+msgstr ""
+
+msgid "Done"
+msgstr ""
+
+msgid "Hide"
+msgstr ""
+
+msgid "Drag to move, or use the arrow keys"
+msgstr ""
+
+msgid "Could not save the block order"
+msgstr ""
+
+msgid "Hi! I really like your app. How can I thank you?"
+msgstr ""
+
+msgid "Signal"
+msgstr ""
+
+msgid "More"
+msgstr ""
+
+msgid "Carriers"
+msgstr ""
+
+msgid "New mobile view"
+msgstr ""
+
+msgid "On phones the Network page gets a summary bar, tabs and signal tiles. Turn off to get the previous layout back."
+msgstr ""
+
+msgid "Modem status LED"
+msgstr ""
+
+msgid "Blue: LTE and the connection is up. Green: registered on 3G or 2G. Blinking red: no service or no connection. Applies immediately, no Save needed."
+msgstr ""
+
+msgid "Delete from the modem after forwarding"
+msgstr ""
+
+msgid "A message is deleted from the modem once every enabled channel (Telegram, ntfy, webhook) has delivered it and, if enabled, the SMS commands have seen it. Without \"Keep messages in router memory\" it then disappears from the Inbox too."
+msgstr ""
+
+msgid "MediaTek built-in modem (CCMNI)"
+msgstr ""
+
+msgid "Registration timeout, s"
+msgstr ""
+
+msgid "The active eSIM has no profile: switch to the physical SIM or download a profile"
+msgstr ""
+
+msgid "As set in the modem"
+msgstr ""
+
+msgid "Not enough free space in /tmp to download the update."
+msgstr ""
+
+msgid "Could not download the update from GitHub. Check the internet connection and try again."
+msgstr ""
+
+msgid "The download was interrupted: the file is incomplete. Try again."
+msgstr ""
+
+msgid "The package manager refuses to install anything: /etc/apk/world lists %s, which apk cannot find (usually a package installed from a file). If that package is no longer installed, delete its line from /etc/apk/world; otherwise install it again from its file. Then try the update again."
+msgstr ""
+
+msgid "The package manager could not install the update."
+msgstr ""
+
+msgid "The package was installed, but the version did not change. The release file looks broken."
+msgstr ""
+
+
+msgid "Downloading: %d of %d KB"
+msgstr ""
+
+msgid "Downloading: %d KB"
+msgstr ""
+
+msgid "Finishing: refreshing translations and caches…"
+msgstr ""
+
+msgid "Preparing: reading the release…"
+msgstr ""
+
+msgid "Lost contact with the router during the update."
+msgstr ""
+
+msgid "Could not reach GitHub"
+msgstr ""
+
+msgid "Unpacking the package…"
+msgstr ""
+
+msgid "Refreshing package lists…"
+msgstr ""
+
+msgid "Restarting background services…"
+msgstr ""
+
+msgid "Applying system settings…"
+msgstr ""
+
+msgid "Reloading network settings…"
+msgstr ""
+
+msgid "Checking modems and ports…"
+msgstr ""
+
+msgid "Registering connection protocols…"
+msgstr ""
+
+msgid "Starting LEDs and antenna control…"
+msgstr ""
+
+msgid "Refreshing the page cache…"
+msgstr ""
+
+msgid "The network closed the USSD session without a text reply. Some operators send the answer by SMS: check the incoming messages."
+msgstr ""
+
+msgid "Select configuration"
+msgstr ""
+
+msgid "Configuration switch failed"
+msgstr ""
+
+msgid "Apply and restart"
+msgstr ""
+
+msgid "SSClash configuration"
+msgstr ""
+
+msgid "Active configuration"
+msgstr ""
+
+msgid "No YAML profiles found in /opt/clash/"
+msgstr ""
+
+msgid "SSClash is not installed"
+msgstr ""
+
+msgid "Invalid profile"
+msgstr ""
+
+msgid "Profile does not exist"
+msgstr ""
+
+msgid "A profile switch is already running"
+msgstr ""
+
+msgid "Clash rejected the profile; current configuration was kept"
+msgstr ""
+
+msgid "Service restart failed; previous configuration restored"
+msgstr ""
+
+msgid "Profile applied, but its name could not be saved"
+msgstr ""
+
+msgid "Could not back up the current configuration; switching cancelled"
+msgstr ""
+
+msgid "The latest config.yaml is saved in config.yaml-backup and can be restored by selecting config.yaml."
+msgstr ""
+
+msgid "Service is restarting…"
+msgstr ""
+
+msgid "Restarting…"
+msgstr ""
+
+msgid "Download the package for your OpenWrt version, upload it in System → Software, then refresh this page."
+msgstr ""

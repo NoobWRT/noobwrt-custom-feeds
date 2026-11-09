@@ -1,0 +1,272 @@
+O=$(sms_tool -d $DEVICE at "at+xlec?;+rsrp?;+rsrq?;+xmci=1")
+_XMCI_RAW="$O"
+  
+eval "$(printf '%s\n' "$O" | tr -d '\r' | awk -F, '
+	function e2b(e) {
+		if (e < 0) return ""
+		if (e <= 599) return 1;   if (e <= 1199) return 2
+		if (e <= 1949) return 3;  if (e <= 2399) return 4
+		if (e <= 2649) return 5
+		if (e >= 2750 && e <= 3449) return 7
+		if (e >= 3450 && e <= 3799) return 8
+		if (e >= 5010 && e <= 5179) return 12
+		if (e >= 5180 && e <= 5279) return 13
+		if (e >= 5730 && e <= 5849) return 17
+		if (e >= 6150 && e <= 6449) return 20
+		if (e >= 8040 && e <= 8689) return 25
+		if (e >= 9210 && e <= 9659) return 28
+		if (e >= 9770 && e <= 9869) return 30
+		if (e >= 9870 && e <= 9919) return 31
+		if (e >= 37750 && e <= 38249) return 38
+		if (e >= 38650 && e <= 39649) return 40
+		if (e >= 39650 && e <= 41589) return 41
+		if (e >= 66436 && e <= 67335) return 66
+		if (e >= 68586 && e <= 68935) return 71
+		return ""
+	}
+	function hex2dec(h,   i, c, n) {
+		gsub(/^0[xX]/, "", h); h = toupper(h); n = 0
+		if (h == "" || h ~ /[^0-9A-F]/) return -1
+		for (i = 1; i <= length(h); i++) {
+			c = index("0123456789ABCDEF", substr(h, i, 1))
+			n = n * 16 + c - 1
+		}
+		return n
+	}
+	function bwmhz(c) {
+		if (c == "0") return "1.4"; if (c == "1") return "3"; if (c == "2") return "5"
+		if (c == "3") return "10";  if (c == "4") return "15"; if (c == "5") return "20"
+		return ""
+	}
+	function num(v) { gsub(/[^0-9.-]/, "", v); return v }
+	/^\+XLEC:/ {
+		s = $0; sub(/^\+XLEC:[ ]*/, "", s); gsub(/ /, "", s)
+		n = split(s, x, ","); hasx = 1; nc = x[2] + 0
+		for (i = 1; i <= nc; i++) bw[i] = x[2 + i]
+		for (i = 3 + nc; i <= n; i++) {
+			v = x[i]
+			if (v ~ /^BAND_LTE_/) { gsub(/[^0-9]/, "", v); if (pb == "") pb = v; else sb[++ns] = v + 0; continue }
+			if (v ~ /^[0-9]+$/ && v + 0 > 0) sb[++ns] = v + 0
+		}
+	}
+	/^\+RSRP:/ {
+		s = $0; sub(/^\+RSRP:[ ]*/, "", s); gsub(/ /, "", s)
+		m = split(s, r, ",")
+		for (i = 1; i + 1 <= m; i += 3) { nr++; rp[nr] = r[i] + 0; re[nr] = r[i + 1] + 0; rv[nr] = r[i + 2] }
+	}
+	/^\+RSRQ:/ {
+		s = $0; sub(/^\+RSRQ:[ ]*/, "", s); gsub(/ /, "", s)
+		m = split(s, r, ",")
+		for (i = 1; i + 1 <= m; i += 3) { nq++; qp[nq] = r[i] + 0; qe[nq] = r[i + 1] + 0; qv[nq] = r[i + 2] }
+	}
+	/^\+XMCI: *4,/ {
+		s = $0; gsub(/"/, "", s); gsub(/ /, "", s); split(s, f, ",")
+		xp = hex2dec(f[6]); xe = hex2dec(f[7])
+	}
+	END {
+		if (hasx && nc < 1) exit
+		pci = ""; ear = ""
+		if (xp >= 0 && xp <= 503 && xe > 0 && xe <= 262143) { pci = xp; ear = xe }
+		else if (nr >= 1) { pci = rp[1]; ear = re[1] }
+		for (i = 1; i <= nr; i++) if (pci != "" && rp[i] == pci && re[i] == ear) { used[i] = 1; if (rv[i] != "") printf "SRSRP=%.0f\n", rv[i]; break }
+		for (i = 1; i <= nq; i++) if (pci != "" && qp[i] == pci && qe[i] == ear) { if (qv[i] != "") printf "SRSRQ=%.0f\n", qv[i]; break }
+		if (pb == "" && ear != "") pb = e2b(ear)
+		printf "PB=%s\nPBW=%s\nPCI=%s\nEARFCN=%s\n", num(pb), num(bwmhz(bw[1])), num(pci), num(ear)
+		k = 0
+		for (j = 1; j < nc && j <= 4; j++) {
+			b = (j <= ns) ? sb[j] : ""; hit = 0
+			for (i = 1; i <= nr; i++) {
+				if (used[i] || re[i] == ear || busy[re[i]]) continue
+				if (b != "" && e2b(re[i]) != b) continue
+				used[i] = 1; busy[re[i]] = 1; hit = i; break
+			}
+			if (b == "" && hit) b = e2b(re[hit])
+			if (b == "" && !hit) continue
+			k++
+			printf "SB%d=%s\nSBW%d=%s\n", k, num(b), k, num(bwmhz(bw[j + 1]))
+			if (hit) printf "SPCI%d=%s\nSEARFCN%d=%s\n", k, num(rp[hit]), k, num(re[hit])
+		}
+		printf "NSCC=%d\n", k
+	}
+')"
+
+RSRP=$(echo "$O" | awk -F [:,] '/\+RSRP:/{printf "%.0f\n", $4}')
+[ -n "$SRSRP" ] && RSRP="$SRSRP"
+
+BWDL=$(echo "$O" | awk -F [:,] '/\+XLEC:/{gsub("\r","",$4); print $4}')
+		case $BWDL in
+			1) NP=15 ;;
+			2) NP=25 ;;
+			3) NP=50 ;;
+			4) NP=75 ;;
+			5) NP=100 ;;
+			0) NP=6 ;;
+			*) NP=0 ;;
+		esac
+		
+CSQ=$(echo $RSRP $NP | awk '{printf "%.0f\n", (($1+10*log(12*$2)/log(10))+113)/2}')
+[ "x$CSQ" = "x" ] && CSQ=-1                                                                    
+if [ "$CSQ" -ge 0 -a "$CSQ" -le 31 ]; then                                                         
+	CSQ_PER=$(($CSQ * 100/31))                                                                                            
+	RSSI=$((2 * CSQ - 113))                                                
+elif [ "$CSQ" -ge 32 -a "$CSQ" -le 50 ]; then                                                                              
+	RSSI=$((2 * CSQ - 113))
+	CSQ_PER="100"
+	CSQ="31"
+else                                                        
+	CSQ_PER="0"                                                                              
+fi
+
+RSRQ=$(echo "$O" | awk -F [:,] '/\+RSRQ:/{printf "%.0f\n", $4}')
+[ -n "$SRSRQ" ] && RSRQ="$SRSRQ"
+SINR=$(echo "$O" | awk -F [:,] '/\+XMCI: 4/{gsub(/"/,""); if ($13+0 != 255) printf "%.0f\n", $13/4+5}')
+
+if [ -n "$PB" ]; then
+	PBAND="$(band4g $PB "")"
+	[ -n "$PBW" ] && PBAND="$PBAND @$PBW MHz"
+	MODE="LTE | $(band4g $PB "")"
+fi
+_k=1
+while [ "$_k" -le "${NSCC:-0}" ]; do
+	eval "_b=\$SB$_k _w=\$SBW$_k _p=\$SPCI$_k _e=\$SEARFCN$_k"
+	_sb="$(band4g $_b "")"
+	MODE="${MODE/LTE |/LTE-A |} / $_sb"
+	[ -n "$_w" ] && _sb="$_sb @$_w MHz"
+	eval "S${_k}BAND=\"\$_sb\" S${_k}PCI=\"\$_p\" S${_k}EARFCN=\"\$_e\""
+	_k=$((_k + 1))
+done
+
+MODE=$(echo $MODE | sed 's,/,+,' | sed 's, / \(B[0-9]\), + \1,g')
+
+OT=$(sms_tool -d $DEVICE at "AT+XCCINFO=1;+XCCINFO?")
+if [ -n "$OT" ]; then
+	T=$(echo "$OT" | awk -F[,:] '/^\+XCCINFO:/{print $11}' | xargs)
+	if [ -n "$T" ]; then
+		T_DEC=$(printf "%d" "0x$T")
+	fi
+		if [ -z "$T_HEX" ]; then
+		[ -n "$T_DEC" ] && T_HEX=$(printf %0X $T_DEC)
+		fi
+fi
+
+_ANT=$(sms_tool -d $DEVICE at "at@errc:pcell_scell_measurement_info()" 2>/dev/null)
+if echo "$_ANT" | grep -q 'rsrp\['; then
+	_ant_rnd() { [ -n "$1" ] && awk "BEGIN{printf \"%.0f\", $1}" 2>/dev/null; }
+	_r0=$(_ant_rnd "$(echo "$_ANT" | sed -n 's/.*rsrp\[\([^,]*\),.*/\1/p' | head -1)")
+	_r1=$(_ant_rnd "$(echo "$_ANT" | sed -n 's/.*rsrp\[[^,]*,\([^]]*\)\].*/\1/p' | head -1)")
+	_q0=$(_ant_rnd "$(echo "$_ANT" | sed -n 's/.*rsrq\[\([^,]*\),.*/\1/p' | head -1)")
+	_q1=$(_ant_rnd "$(echo "$_ANT" | sed -n 's/.*rsrq\[[^,]*,\([^]]*\)\].*/\1/p' | head -1)")
+	if [ -n "$_r0" ] && [ -n "$_q0" ] && [ -n "$_r1" ] && [ -n "$_q1" ]; then
+		ANTPORTS="0:$_r0:$_q0 1:$_r1:$_q1"
+		if [ "$_r1" -gt -130 ] 2>/dev/null; then RXDIV="2rx"; else RXDIV="off"; fi
+	fi
+fi
+
+if [ "$REG" == "6" ]; then
+REG="1"
+fi
+
+FWA=$(sms_tool -d $DEVICE at "AT+GTPKGVER?" | xargs)
+FW=$(echo "$FWA" | cut -d ":" -f2 | xargs)
+
+_atval() {
+	printf '%s\n' "$1" | tr -d '\r' | awk '
+		{ sub(/^[ \t]+/,""); sub(/[ \t]+$/,"") }
+		/^$/ || /^AT/ || /^OK$/ || /ERROR/ { next }
+		{ sub(/^\+[A-Za-z0-9]+:[ \t]*/,""); gsub(/"/,""); print; exit }'
+}
+MANUF=$(_atval "$(sms_tool -d $DEVICE at 'AT+CGMI')")
+CGMM_V=$(_atval "$(sms_tool -d $DEVICE at 'AT+CGMM')")
+SHORT=$(echo "$CGMM_V" | awk -F',' '{print $NF}' | xargs)
+[ -n "$SHORT" ] || SHORT="$CGMM_V"
+if [ -n "$MANUF" ]; then
+	case "$MANUF" in
+		*"$SHORT"*) MODEL="$MANUF" ;;
+		*)          MODEL="$MANUF $SHORT" ;;
+	esac
+else
+	MODEL="$SHORT"
+fi
+MODEL=$(echo "$MODEL" | xargs)
+
+O=$(sms_tool -d $DEVICE at "AT+CGSN" | xargs)
+NR_I=$(echo "$O" | sed s/"AT+CGSN "//)
+if [ -n "$NR_I" ]; then
+	NR_IMEI="$NR_I"
+fi
+
+O=$(sms_tool -d $DEVICE at "AT+CIMI" | xargs)
+NR_C=$(echo "$O" | sed s/"AT+CIMI "//)
+if [ -n "$NR_C" ]; then
+	NR_IMSI="$NR_C"
+fi
+
+O=$(sms_tool -d $DEVICE at "AT+CCID")
+NR_D=$(echo "$O" | awk -F [:] '/^\+CCID: /{print $2}' | xargs)
+if [ -n "$NR_D" ]; then
+	NR_ICCID="$NR_D"
+fi
+
+PV=$(cat /sys/kernel/debug/usb/devices 2>/dev/null)
+PVCAX=$(echo $PV | awk -F"Vendor=2cb7 ProdID=0007" '{print $2}')
+PVCA=$(echo "$PVCAX" | cut -c-2453)
+
+if [ -n "$PVCA" ]; then
+	case $PVCA in
+	*"Driver=qmi_wwan"*)
+		PROTO="qmi"
+    	;;
+	*"Driver=cdc_ncm"*)
+		PROTO="ncm"
+	;;
+	*"Driver=cdc_mbim"*)
+		PROTO="mbim"
+	;;
+	*"Driver=cdc_ether"*)
+		PROTO="ecm"
+	;;
+	esac
+fi
+
+_XN=$(printf '%s' "$_XMCI_RAW" | tr -d '\r' | awk -F, '
+	function e2b(e) {
+		if (e <= 599) return 1;   if (e <= 1199) return 2
+		if (e <= 1949) return 3;  if (e <= 2399) return 4
+		if (e <= 2649) return 5
+		if (e >= 2750 && e <= 3449) return 7
+		if (e >= 3450 && e <= 3799) return 8
+		if (e >= 6150 && e <= 6449) return 20
+		if (e >= 9210 && e <= 9659) return 28
+		if (e >= 37750 && e <= 38249) return 38
+		if (e >= 38650 && e <= 39649) return 40
+		if (e >= 39650 && e <= 41589) return 41
+		return ""
+	}
+	function hex2dec(h,   i, c, n) {
+		gsub(/^0[xX]/, "", h); h = toupper(h); n = 0
+		if (h == "" || h ~ /[^0-9A-F]/) return -1
+		for (i = 1; i <= length(h); i++) {
+			c = index("0123456789ABCDEF", substr(h, i, 1))
+			n = n * 16 + c - 1
+		}
+		return n
+	}
+	/^\+XMCI: 5,/ {
+		gsub(/"/, ""); gsub(/ /, "")
+		pci = hex2dec($6); earfcn = hex2dec($7)
+		rsrp = $10 + 0; rsrq = $11 + 0
+		if (pci < 0 || pci > 503 || earfcn <= 0 || earfcn > 262143) next
+		if (rsrp <= 0 || rsrp > 200) next
+		printf "%s{\"band\":\"%s\",\"earfcn\":\"%d\",\"pci\":\"%d\",\"rsrp\":\"%d\",\"rsrq\":\"%.1f\",\"rssi\":\"\",\"serving\":0}",
+			(n++ ? "," : ""), e2b(earfcn), earfcn, pci, rsrp - 141, (rsrq - 45) / 2
+	}
+')
+if [ -n "$PCI" ] && [ -n "$EARFCN" ]; then
+	_xn_e=$(echo $EARFCN | xargs); _xn_p=$(echo $PCI | xargs)
+	_xn_b=$(printf '%s' "$PBAND" | sed -n 's/^B\([0-9]\{1,\}\).*/\1/p')
+	NEIGHBORS=$(printf '{"band":"%s","earfcn":"%s","pci":"%s","rsrp":"%s","rsrq":"%s","rssi":"%s","serving":1}' \
+		"$_xn_b" "$_xn_e" "$_xn_p" "$RSRP" "$RSRQ" "$RSSI")
+	NEIGHBORS="$NEIGHBORS${_XN:+,$_XN}"
+else
+	NEIGHBORS="$_XN"
+fi

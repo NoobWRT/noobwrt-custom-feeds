@@ -1,0 +1,53 @@
+# AT templates — '## group' starts a section, a '# description' line describes
+# the command below it, and the command line is sent to the modem as-is.
+# '#' lines are never sent. Full help is in generic.user. Edit freely.
+
+## Signal and cell
+
+# Carrier aggregation
+AT^CA_INFO?
+
+# Temperature
+AT^TEMP?
+
+## Bands and modes
+
+# Network mode (read)
+AT^SLMODE?
+
+# LTE bands
+AT^BAND_PREF?
+
+## SIM slots
+
+# SIM slot (read)
+AT^switch_slot?
+
+# Slot: physical SIM1
+AT^switch_slot=0
+
+# Slot: eSIM (SIM2)
+AT^switch_slot=1
+
+## Vendor / debug
+
+# USB speed
+AT^USBTYPE?
+
+# Debug
+AT^DEBUG?
+
+# Vendor customer
+AT^CUSTOMER?
+
+# Supported bands (LTE list)
+AT^SLBAND=?
+
+# Uplink carrier aggregation
+AT^ULCA?
+
+# 5G cell lock
+AT^NR5G_LOCK?
+
+# Carrier aggregation enable
+AT^CA_ENABLE?

@@ -1,0 +1,342 @@
+_mv32_at() {
+	_m32_o=$(sms_tool -d $DEVICE at "AT+$1" 2>&1 | tr -d '\r')
+	case "$_m32_o" in
+		''|*ERROR*) _m32_o=$(sms_tool -d $DEVICE at "AT^$1" 2>&1 | tr -d '\r') ;;
+	esac
+	printf '%s\n' "$_m32_o"
+}
+
+_MT=$(_mv32_at "TEMP?")
+_MTV=$(printf '%s\n' "$_MT" | awk '
+	/^(TSENS|PA|Skin Sensor):/ {
+		v = $NF
+		gsub(/[^0-9.-]/, "", v)
+		if (v ~ /^-?[0-9]+(\.[0-9]+)?$/ && (n == 0 || v + 0 > m)) { m = v + 0; n = 1 }
+	}
+	END { if (n) printf "%.0f", m }')
+[ -n "$_MTV" ] && TEMP="$_MTV &deg;C"
+
+_MTC="/tmp/5gmodem/nothermlvl_$(printf '%s' "${DEVICE##*/}" | tr -c 'A-Za-z0-9' '_')"
+if [ -z "$THERM" ] && [ ! -f "$_MTC" ]; then
+	_MTL=$(_mv32_at "THERM_LVL?")
+	case "$_MTL" in
+		*MDM\ LVL*)
+			THERM=$(printf '%s\n' "$_MTL" | awk '
+				function bucket(kind, v) {
+					if (v == "") return -1
+					v = v + 0
+					if (kind == "LTE") {
+						if (v >= 254) return 3
+						if (v == 0) return 0
+						if (v <= 3) return 1
+						if (v <= 8) return 2
+						return 3
+					}
+					if (v >= 254) return 3
+					if (v == 0) return 0
+					if (v <= 2) return 1
+					if (v <= 7) return 2
+					return 3
+				}
+				/LTE MDM LVL/ { v = $NF; gsub(/[^0-9]/, "", v); b = bucket("LTE", v); if (b > best) best = b; seen = 1 }
+				/NR MDM LVL/  { v = $NF; gsub(/[^0-9]/, "", v); b = bucket("NR",  v); if (b > best) best = b; seen = 1 }
+				END { if (seen) print best + 0 }')
+			;;
+		*) : > "$_MTC" 2>/dev/null ;;
+	esac
+fi
+
+if [ "$REGOK" = "1" ]; then
+
+_DBG=$(_mv32_at "DEBUG?")
+
+eval "$(printf '%s\n' "$_DBG" | sed 's/([^)]*)/ /g' | awk '
+BEGIN { sn = 0; nn = 0 }
+{
+	gsub(/[,\t\r]/, " ")
+	n = split($0, tok, / +/)
+	for (i = 1; i <= n; i++) {
+		t = tok[i]
+		if (t == "") continue
+		if (t ~ /^pcell:/)             { sec = "p";  sub(/^pcell:/, "", t) }
+		else if (t ~ /^scell:/)        { sec = "s"; sn++; sub(/^scell:/, "", t) }
+		else if (t ~ /^nr_scc[0-9]*:/) { nn++; sub(/^nr_scc[0-9]*:/, "", t) }
+		else if (t ~ /^cell[0-9]+:/)   { sub(/^cell[0-9]+:/, "", t) }
+		if (t == "") continue
+		if (want_rat) { want_rat = 0; if (t ~ /^[A-Za-z0-9_+]+$/) { g["RAT"] = t; continue } }
+		p = index(t, ":")
+		if (p < 2) continue
+		k = substr(t, 1, p - 1)
+		v = substr(t, p + 1)
+		if (k == "RAT" && v == "") { want_rat = 1; continue }
+		gsub(/(dBm|dB|MHz|C)$/, "", v)
+		if (v == "" || v == "NA") continue
+		if (k ~ /^nr_(band|band_width|channel|pci|rsrp|rsrq|rssi|snr)$/) {
+			sub(/^nr_/, "", k)
+			if (k == "band") { if (v !~ /^n?[0-9]+$/) continue; sub(/^n/, "", v) }
+			else if (v !~ /^-?[0-9]+(\.[0-9]+)?$/) continue
+			nc[nn "_" k] = v
+			continue
+		}
+		if (k == "RAT") { if (v ~ /^[A-Za-z0-9_+]+$/) g["RAT"] = v; continue }
+		if (v !~ /^-?[0-9]+(\.[0-9]+)?$/) continue
+		if (k == "lte_rsrp") k = "rsrp"
+		if (k == "lte_rssi") k = "rssi"
+		if (k == "lte_snr")  k = "snr"
+		if (k == "lte_band")       k = "band"
+		if (k == "lte_band_width") k = "band_width"
+		if (k ~ /^(band|band_width|channel|pci|rsrp|rsrq|rssi|snr)$/) {
+			if (sec == "s") sc[sn "_" k] = v
+			else            pc[k] = v      # 3G и 5G SA секций не печатают вовсе
+			continue
+		}
+		if (k ~ /^(mcc|mnc|lac|psc|rscp|ecio|tx_pwr|cell_id|lte_cell_id|lte_tac|lte_tx_pwr|nr_cell_id|nr_tac|nr_tx_pwr)$/)
+			g[k] = v
+	}
+}
+END {
+	for (k in g)  printf "_D_%s=%s\n", k, g[k]
+	for (k in pc) printf "_DP_%s=%s\n", k, pc[k]
+	for (k in sc) printf "_DS%s_%s=%s\n", substr(k, 1, index(k, "_") - 1), substr(k, index(k, "_") + 1), sc[k]
+	for (k in nc) printf "_DN%s_%s=%s\n", substr(k, 1, index(k, "_") - 1), substr(k, index(k, "_") + 1), nc[k]
+	printf "_D_SCELLS=%d\n_D_NRSCC=%d\n", sn + 0, nn + 0
+}')"
+
+_MIS3G=0
+case "$_D_RAT" in
+	*WCDMA*|*UMTS*|*HSPA*|*HSDPA*|*GSM*) _MIS3G=1 ;;
+esac
+
+_MTECH=""
+if [ "$_MIS3G" = 0 ]; then
+	case "$_D_RAT" in
+		NR5G_SA*) _MTECH="5G SA" ;;
+	esac
+	if [ -z "$_MTECH" ]; then
+		if [ -n "$_DN0_band" ]; then
+			_MTECH="5G NSA"
+		elif [ "${_D_SCELLS:-0}" -gt 0 ] 2>/dev/null; then
+			_MTECH="LTE-A"
+		elif [ -n "$_DP_band" ]; then
+			_MTECH="LTE"
+		fi
+	fi
+fi
+[ -n "$_MTECH" ] && MODE="$_MTECH |"
+
+_MTAC="$_D_lte_tac"; [ -n "$_MTAC" ] || _MTAC="$_D_nr_tac"
+if [ -n "$_MTAC" ]; then
+	TAC_DEC="$_MTAC"
+	TAC_HEX=$(printf "%X" "$_MTAC" 2>/dev/null)
+fi
+case "$LAC_DEC" in
+	''|0)
+		case "$_D_lac" in
+			''|*[!0-9]*) ;;
+			*) LAC_DEC="$_D_lac"; LAC_HEX=$(printf "%X" "$_D_lac" 2>/dev/null) ;;
+		esac
+		;;
+esac
+_MCID="$_D_lte_cell_id"; [ -n "$_MCID" ] || _MCID="$_D_nr_cell_id"
+[ -n "$_MCID" ] || _MCID="$_D_cell_id"
+case "$CID_DEC" in
+	''|0)
+		case "$_MCID" in
+			''|*[!0-9]*) ;;
+			*) CID_DEC="$_MCID"; CID_HEX=$(printf "%X" "$_MCID" 2>/dev/null) ;;
+		esac
+		;;
+esac
+_MTXP="$_D_lte_tx_pwr"; [ -n "$_MTXP" ] || _MTXP="$_D_nr_tx_pwr"
+[ -n "$_MTXP" ] || _MTXP="$_D_tx_pwr"
+[ -n "$_MTXP" ] && [ -z "$TXPOWER" ] && TXPOWER="$_MTXP dBm"
+
+_M4=""
+_M5=""
+_MIDX=0
+_MNR0=0
+if [ "$_MIS3G" = 1 ]; then
+	[ -n "$_D_rscp" ] && [ -z "$RSCP" ] && RSCP="$_D_rscp"
+	[ -n "$_D_ecio" ] && [ -z "$ECIO" ] && ECIO="$_D_ecio"
+	[ -n "$_DP_rssi" ] && [ -z "$RSSI" ] && RSSI="$_DP_rssi"
+	[ -n "$_DP_channel" ] && [ -z "$EARFCN" ] && EARFCN="$_DP_channel"
+elif [ "$_D_RAT" = "NR5G_SA" ] && [ -n "$_DN0_band" ]; then
+	PBAND="$(band5g "$_DN0_band")${_DN0_band_width:+ @$_DN0_band_width MHz}"
+	_M5="$(band5g "$_DN0_band")"
+	_MNR0=1
+	[ -n "$_DN0_band_width" ] && BANDWIDTH="$_DN0_band_width"
+	[ -n "$_DN0_pci" ] && PCI="$_DN0_pci"
+	[ -n "$_DN0_channel" ] && EARFCN="$_DN0_channel"
+	[ -n "$_DN0_rsrp" ] && RSRP="$_DN0_rsrp"
+	[ -n "$_DN0_rsrq" ] && RSRQ="$_DN0_rsrq"
+	[ -n "$_DN0_snr" ] && SINR="$_DN0_snr"
+elif [ -n "$_DP_band" ]; then
+	PBAND="$(band4g "$_DP_band")${_DP_band_width:+ @$_DP_band_width MHz}"
+	_M4="$(band4g "$_DP_band")"
+	[ -n "$_DP_band_width" ] && BANDWIDTH="$_DP_band_width"
+	[ -n "$_DP_pci" ] && PCI="$_DP_pci"
+	[ -n "$_DP_channel" ] && EARFCN="$_DP_channel"
+	[ -n "$_DP_rsrp" ] && RSRP="$_DP_rsrp"
+	[ -n "$_DP_rsrq" ] && RSRQ="$_DP_rsrq"
+	[ -n "$_DP_rssi" ] && RSSI="$_DP_rssi"
+	[ -n "$_DP_snr" ] && SINR="$_DP_snr"
+fi
+
+_msec() {
+	case "$1" in
+		1) S1BAND="$2"; S1PCI="$3"; S1EARFCN="$4"; S1RSRP="$5"; S1RSRQ="$6"; S1SINR="$7" ;;
+		2) S2BAND="$2"; S2PCI="$3"; S2EARFCN="$4"; S2RSRP="$5"; S2RSRQ="$6"; S2SINR="$7" ;;
+		3) S3BAND="$2"; S3PCI="$3"; S3EARFCN="$4"; S3RSRP="$5"; S3RSRQ="$6"; S3SINR="$7" ;;
+		4) S4BAND="$2"; S4PCI="$3"; S4EARFCN="$4"; S4RSRP="$5"; S4RSRQ="$6"; S4SINR="$7" ;;
+	esac
+}
+
+if [ "$_MIS3G" = 0 ]; then
+	_MVI=1
+	while [ "$_MVI" -le "${_D_SCELLS:-0}" ] 2>/dev/null; do
+		eval "_MB=\$_DS${_MVI}_band; _MW=\$_DS${_MVI}_band_width; _MP=\$_DS${_MVI}_pci"
+		eval "_MC=\$_DS${_MVI}_channel; _MR=\$_DS${_MVI}_rsrp; _MQ=\$_DS${_MVI}_rsrq; _MS=\$_DS${_MVI}_snr"
+		if [ -n "$_MB" ]; then
+			_MIDX=$((_MIDX + 1))
+			[ "$_MIDX" -le 4 ] && _msec "$_MIDX" "$(band4g "$_MB")${_MW:+ @$_MW MHz}" "$_MP" "$_MC" "$_MR" "$_MQ" "$_MS"
+			_M4="$_M4${_M4:+ + }$(band4g "$_MB")"
+		fi
+		_MVI=$((_MVI + 1))
+	done
+
+	_MVI=$_MNR0
+	while [ "$_MVI" -le "${_D_NRSCC:-0}" ] 2>/dev/null; do
+		eval "_MB=\$_DN${_MVI}_band; _MW=\$_DN${_MVI}_band_width; _MP=\$_DN${_MVI}_pci"
+		eval "_MC=\$_DN${_MVI}_channel; _MR=\$_DN${_MVI}_rsrp; _MQ=\$_DN${_MVI}_rsrq; _MS=\$_DN${_MVI}_snr"
+		if [ -n "$_MB" ]; then
+			_MIDX=$((_MIDX + 1))
+			[ "$_MIDX" -le 4 ] && _msec "$_MIDX" "$(band5g "$_MB")${_MW:+ @$_MW MHz}" "$_MP" "$_MC" "$_MR" "$_MQ" "$_MS"
+			_M5="$_M5${_M5:+ + }$(band5g "$_MB")"
+		fi
+		_MVI=$((_MVI + 1))
+	done
+fi
+
+if [ -n "$_MTECH" ]; then
+	MODE="$_MTECH |"
+	[ -n "$_M4" ] && MODE="$MODE $_M4"
+	[ -n "$_M5" ] && { [ -n "$_M4" ] && MODE="$MODE /"; MODE="$MODE $_M5"; }
+fi
+
+if [ -z "$ANTPORTS" ]; then
+	_MFLAT=$(printf '%s\n' "$_DBG" | tr '\n' ' ')
+	_MAL=$(printf '%s\n' "$_MFLAT" | sed -n 's/.*lte_ant_rsrp:rx_diversity:\([0-9]*\)[^(]*(\([^)]*\)).*/\1|\2/p' | head -1)
+	[ -n "$_MAL" ] || _MAL=$(printf '%s\n' "$_MFLAT" | sed -n 's/.*nr_rsrp:[^(]*rx_diversity:[ ]*\([0-9]*\)[^(]*(\([^)]*\)).*/\1|\2/p' | head -1)
+	[ "$_MIS3G" = 0 ] && [ -z "$_MAL" ] && \
+		_MAL=$(printf '%s\n' "$_MFLAT" | sed -n 's/.*rx_diversity:[ ]*\([0-9]*\)[^(]*(\([^)]*\)).*/\1|\2/p' | head -1)
+	if [ -n "$_MAL" ]; then
+		_MMASK="${_MAL%%|*}"; _MVALS="${_MAL#*|}"
+		_MAI=0; _MAOK=0
+		for _MAV in $(printf '%s\n' "$_MVALS" | tr ',' ' '); do
+			_MAV=$(printf '%s' "$_MAV" | sed 's/dBm//g' | tr -d ' ')
+			case "$_MAV" in ''|*[!0-9.-]*) _MAI=$((_MAI + 1)); continue ;; esac
+			_MAR=$(awk "BEGIN{printf \"%.0f\", $_MAV}" 2>/dev/null)
+			case "$_MAR" in ''|*[!0-9-]*) _MAI=$((_MAI + 1)); continue ;; esac
+			if [ "$_MAR" -le -160 ] 2>/dev/null || [ "$_MAR" -ge -20 ] 2>/dev/null; then
+				_MAI=$((_MAI + 1)); continue
+			fi
+			ANTPORTS="$ANTPORTS${ANTPORTS:+ }$_MAI:$_MAR:"
+			_MAOK=$((_MAOK + 1))
+			_MAI=$((_MAI + 1))
+		done
+		ANTPORTS=$(printf '%s\n' "$ANTPORTS" | tr ' ' '\n' | sort -n | tr '\n' ' ' | sed 's/ *$//')
+		if [ "$_MAOK" -ge 2 ]; then
+			case "$_MMASK" in
+				''|*[!0-9]*) ;;
+				*) _MAN=0
+				   for _MAB in 1 2 4 8; do [ $(( _MMASK & _MAB )) -ne 0 ] && _MAN=$((_MAN + 1)); done
+				   case "$_MAN" in
+					   1) RXDIV="off" ;;
+					   2) RXDIV="2rx" ;;
+					   3|4) RXDIV="4rx" ;;
+				   esac ;;
+			esac
+		fi
+	fi
+fi
+
+_MVC="/tmp/5gmodem/novzw_$(printf '%s' "${DEVICE##*/}" | tr -c 'A-Za-z0-9' '_')"
+if [ -z "$NEIGHBORS" ] && [ ! -f "$_MVC" ]; then
+	_MVP=$(_mv32_at "VZWRSRP?")
+	case "$_MVP" in
+		*VZWRSRP:*) ;;
+		*) : > "$_MVC" 2>/dev/null ;;
+	esac
+	if printf '%s\n' "$_MVP" | grep -q "VZWRSRP:"; then
+		_MVQ=$(_mv32_at "VZWRSRQ?")
+		NEIGHBORS=$(printf '%s\n@@RSRQ@@\n%s\n' "$_MVP" "$_MVQ" | awk '
+			function num(v) {   # "-1082" -> -108.2 -> -108
+				gsub(/"/, "", v); gsub(/[ \t]/, "", v)
+				if (v !~ /^-?[0-9]+$/) return ""
+				return sprintf("%.0f", v / 10)
+			}
+			/@@RSRQ@@/ { part = 2; next }
+			{
+				line = $0
+				sub(/^.*VZWRSRP:[[:space:]]*/, "", line)
+				sub(/^.*VZWRSRQ:[[:space:]]*/, "", line)
+				gsub(/[ \t]/, "", line)
+				if (line == "" || line == "OK") next
+				n = split(line, a, ",")
+				for (i = 1; i + 2 <= n; i += 3) {
+					pc = a[i]; ef = a[i+1]; vl = num(a[i+2])
+					if (pc !~ /^[0-9]+$/ || ef !~ /^[0-9]+$/) continue
+					key = pc "_" ef
+					if (part == 2) { rq[key] = vl; continue }
+					if (!(key in seen)) { seen[key] = ++cnt; kp[cnt] = pc; ke[cnt] = ef; kr[cnt] = vl }
+				}
+			}
+			END {
+				for (i = 1; i <= cnt; i++) {
+					key = kp[i] "_" ke[i]
+					printf "%s{\"band\":\"\",\"earfcn\":\"%s\",\"pci\":\"%s\",\"rsrp\":\"%s\",\"rsrq\":\"%s\",\"rssi\":\"\",\"serving\":%s}",
+						(o++ ? "," : ""), ke[i], kp[i], kr[i], (key in rq ? rq[key] : ""), (i == 1 ? 1 : 0)
+				}
+			}')
+	fi
+fi
+
+fi
+
+_mv32_first_clean() {
+	printf '%s\n' "$1" | tr -d '\r' | awk '
+		/^AT/ { next }
+		/^\+/ { next }
+		/^\^/ { next }
+		/^(OK|ERROR)$/ { next }
+		/^[[:space:]]*$/ { next }
+		{ print; exit }
+	'
+}
+_MMDL=$(_mv32_first_clean "$(sms_tool -d $DEVICE at "AT+CGMM")")
+_MVEN=$(_mv32_first_clean "$(sms_tool -d $DEVICE at "AT+CGMI")")
+[ -n "$_MMDL$_MVEN" ] && MODEL=$(printf '%s %s' "$_MVEN" "$_MMDL" | xargs)
+
+_MFW=$(_mv32_first_clean "$(sms_tool -d $DEVICE at "AT+CGMR")")
+[ -n "$_MFW" ] && FW="$_MFW"
+
+_MVX=$(digits_of "$(sms_tool -d $DEVICE at "AT+CGSN" | xargs)" 15 17)
+[ -n "$_MVX" ] && NR_IMEI="$_MVX"
+
+_MVX=$(digits_of "$(sms_tool -d $DEVICE at "AT+CIMI" | xargs)" 14 16)
+[ -n "$_MVX" ] && NR_IMSI="$_MVX"
+
+_MVX=$(_mv32_at "ICCID" | sed -n 's/.*ICCID:[[:space:]]*//p' | head -1 | tr -cd '0-9')
+[ -n "$_MVX" ] && NR_ICCID="$_MVX"
+
+if [ -z "$PROTO" ] && [ -n "$_POLL_AM" ] && [ -d "/sys/bus/usb/devices/$_POLL_AM" ]; then
+	for _MIF in "/sys/bus/usb/devices/$_POLL_AM":*; do
+		[ -e "$_MIF/driver" ] || continue
+		case "$(readlink -f "$_MIF/driver" 2>/dev/null)" in
+			*/qmi_wwan)  PROTO="qmi";  break ;;
+			*/cdc_mbim)  PROTO="mbim"; break ;;
+			*/cdc_ncm)   PROTO="ncm";  break ;;
+			*/cdc_ether) PROTO="ecm";  break ;;
+		esac
+	done
+fi

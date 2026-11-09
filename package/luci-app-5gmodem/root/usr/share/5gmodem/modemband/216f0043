@@ -1,0 +1,4 @@
+. "$RES/_altair_lte_common"
+getinfo() {
+	echo "Yota 4G LTE"
+}

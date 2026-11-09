@@ -1,0 +1,201 @@
+_BAND_VIA=mmcli
+_MMIDX=$(/usr/share/5gmodem/modemswitch.sh mmindex 2>/dev/null); [ -n "$_MMIDX" ] || _MMIDX=any
+_DEFAULT_LTE_BANDS="1 2 3 4 5 7 8 12 13 14 17 18 19 20 25 26 28 29 30 32 34 38 39 40 41 42 43 46 48 66 71"
+_DEFAULT_5GNSA_BANDS="1 2 3 5 7 8 12 14 20 25 28 38 40 41 48 66 71 77 78 79"
+
+getinfo() {
+	echo "Compal RXM-G1"
+}
+
+_QWDM=$(/usr/share/5gmodem/modemswitch.sh wdm 2>/dev/null)
+[ -c "$_QWDM" ] || _QWDM=/dev/cdc-wdm0
+
+_qmi_ssp() {
+	[ -c "$_QWDM" ] || return 0
+	command -v qmicli >/dev/null 2>&1 || return 0
+	if ! pidof ModemManager >/dev/null 2>&1; then
+		command -v qmi_channel_free >/dev/null 2>&1 && ! qmi_channel_free && return 0
+	fi
+	qmicli -d "$_QWDM" -p --nas-get-system-selection-preference 2>/dev/null
+}
+
+_qmi_bands_of() {
+	echo "$_SSP" | sed -n "s/^[[:space:]]*$1: *'\([^']*\)'.*/\1/p" | head -1 \
+		| tr ',' ' ' | tr ' ' '\n' | while read -r _b; do
+			[ -n "$_b" ] && printf '%s%s ' "$2" "$_b"
+		done
+}
+
+_qmi_current_bands() {
+	_SSP=$(_qmi_ssp)
+	[ -n "$_SSP" ] || return 0
+	_l=$(_qmi_bands_of "LTE band preference (extended)" "eutran-")
+	[ -n "$_l" ] || _l=$(_qmi_bands_of "LTE band preference" "eutran-")
+	_n=$(_qmi_bands_of "NR5G NSA band preference" "ngran-")
+	echo "$_l $_n" | xargs
+}
+
+_mm_current_bands() {
+	_r=$(mmcli -m "$_MMIDX" -K 2>/dev/null | awk -F': *' '/^modem\.generic\.current-bands\.value/{print $2}' | xargs)
+	[ -n "$_r" ] || _r=$(_qmi_current_bands)
+	echo "$_r"
+}
+
+_mm_other_bands() {
+	PREFIX="$1"
+	for B in $(_mm_current_bands); do
+		case "$B" in
+			${PREFIX}*) ;;
+			*) printf "%s " "$B" ;;
+		esac
+	done
+}
+
+_mm_join_pipe() {
+	OUT=""
+	for B in "$@"; do
+		[ -z "$B" ] && continue
+		OUT="${OUT}${OUT:+|}${B}"
+	done
+	echo "$OUT"
+}
+
+getsupportedbands() {
+	echo "$_DEFAULT_LTE_BANDS"
+}
+
+getbands() {
+	for B in $(_mm_current_bands); do
+		case "$B" in
+			eutran-*) echo "${B#eutran-}";;
+		esac
+	done | xargs
+}
+
+setbands() {
+	BANDS="$1"
+	[ "$BANDS" = "default" ] && BANDS="$_DEFAULT_LTE_BANDS"
+
+	NEW_EUTRAN=""
+	for BAND in $BANDS; do
+		case $BAND in
+			''|*[!0-9]*) continue ;;
+		esac
+		NEW_EUTRAN="${NEW_EUTRAN}${NEW_EUTRAN:+|}eutran-${BAND}"
+	done
+	[ -z "$NEW_EUTRAN" ] && return 1
+
+	OTHER=$(_mm_other_bands "eutran-")
+	FULL=$(_mm_join_pipe $OTHER)
+	FULL="${FULL}${FULL:+|}${NEW_EUTRAN}"
+
+	mmcli -m "$_MMIDX" "--set-current-bands=$FULL"
+}
+
+getsupportedbands5gnsa() {
+	echo "$_DEFAULT_5GNSA_BANDS"
+}
+
+_MODES="1:Auto 2:3G 3:3G+4G 4:4G 5:4G+5G 6:5G"
+
+_mm_modes_for_id() {
+	case "$1" in
+		1) echo "2g|3g|4g|5g 5g" ;;
+		2) echo "3g" ;;
+		3) echo "3g|4g 4g" ;;
+		4) echo "4g" ;;
+		5) echo "4g|5g 5g" ;;
+		6) echo "5g" ;;
+	esac
+}
+
+getsupportedmodes() {
+	echo "$_MODES"
+}
+
+getmode() {
+	AL=""
+	_MP=$(_qmi_ssp | sed -n "s/^[[:space:]]*Mode preference: *'\([^']*\)'.*/\1/p" | head -1)
+	if [ -z "$_MP" ]; then
+		AL=$(mmcli -m "$_MMIDX" -K 2>/dev/null \
+			| sed -n 's/^modem\.generic\.current-modes *: *//p' | head -1 \
+			| sed -n 's/.*allowed: *\([^;]*\).*/\1/p' | tr -d ' ')
+	fi
+	if [ -z "$AL" ]; then
+		if [ -n "$_MP" ]; then
+			_a=""
+			case "$_MP" in *gsm*)  _a="${_a}2g,";; esac
+			case "$_MP" in *umts*) _a="${_a}3g,";; esac
+			case "$_MP" in *lte*)  _a="${_a}4g,";; esac
+			case "$_MP" in *5gnr*) _a="${_a}5g,";; esac
+			AL="${_a%,}"
+		fi
+	fi
+	case "$AL" in
+		*2g*3g*4g*5g*|3g,4g,5g) echo 1 ;;
+		3g,4g)         echo 3 ;;
+		4g,5g)         echo 5 ;;
+		3g)            echo 2 ;;
+		4g)            echo 4 ;;
+		5g)            echo 6 ;;
+		*)             echo "" ;;
+	esac
+}
+
+_qmi_setmode() {
+	case "$1" in
+		1) _qs_m="gsm|umts|lte|5gnr" ;;
+		2) _qs_m="umts" ;;
+		3) _qs_m="umts|lte" ;;
+		4) _qs_m="lte" ;;
+		5) _qs_m="lte|5gnr" ;;
+		6) _qs_m="5gnr" ;;
+		*) return 1 ;;
+	esac
+	[ -c "$_QWDM" ] || return 1
+	command -v qmicli >/dev/null 2>&1 || return 1
+	if ! pidof ModemManager >/dev/null 2>&1; then
+		command -v qmi_channel_free >/dev/null 2>&1 && ! qmi_channel_free && return 1
+	fi
+	qmicli -d "$_QWDM" -p "--nas-set-system-selection-preference=$_qs_m" 2>&1 | grep -q "set successfully"
+}
+
+setmode() {
+	MP=$(_mm_modes_for_id "$1"); [ -n "$MP" ] || return 1
+	M=$(echo "$MP" | awk '{print $1}')
+	P=$(echo "$MP" | awk '{print $2}')
+	_qmi_setmode "$1" && return 0
+	if [ -n "$P" ]; then
+		mmcli -m "$_MMIDX" --set-allowed-modes="$M" --set-preferred-mode="$P"
+	else
+		mmcli -m "$_MMIDX" --set-allowed-modes="$M"
+	fi
+}
+
+getbands5gnsa() {
+	for B in $(_mm_current_bands); do
+		case "$B" in
+			ngran-*) echo "${B#ngran-}";;
+		esac
+	done | xargs
+}
+
+setbands5gnsa() {
+	BANDS="$1"
+	[ "$BANDS" = "default" ] && BANDS="$_DEFAULT_5GNSA_BANDS"
+
+	NEW_NGRAN=""
+	for BAND in $BANDS; do
+		case $BAND in
+			''|*[!0-9]*) continue ;;
+		esac
+		NEW_NGRAN="${NEW_NGRAN}${NEW_NGRAN:+|}ngran-${BAND}"
+	done
+	[ -z "$NEW_NGRAN" ] && return 1
+
+	OTHER=$(_mm_other_bands "ngran-")
+	FULL=$(_mm_join_pipe $OTHER)
+	FULL="${FULL}${FULL:+|}${NEW_NGRAN}"
+
+	mmcli -m "$_MMIDX" "--set-current-bands=$FULL"
+}

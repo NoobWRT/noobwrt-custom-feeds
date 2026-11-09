@@ -1,0 +1,67 @@
+_DEVICE=""
+_DEFAULT_LTE_BANDS="1 2 3 4 5 7 8 12 13 14 17 18 19 20 25 26 28 29 30 32 38 39 40 41 42 43 46 48 66"
+
+getinfo() {
+	echo "Dell DW5821e"
+}
+
+getsupportedmodes() {
+	echo "4:Auto 14:3G 30:4G 35:3G+4G"
+}
+
+getmode() {
+	sms_tool -d $_DEVICE at "AT^SLMODE?" 2>/dev/null | tr -d '\r' \
+		| sed -n 's/^\^SLMODE: *[0-9]*, *\([0-9][0-9]*\).*/\1/p' | head -n 1
+}
+
+setmode() {
+	M="$1"
+	case "$M" in
+		''|*[!0-9]*) return 1 ;;
+	esac
+	sms_tool -d $_DEVICE at "AT^SLMODE=1,$M"
+}
+
+. $RES/_foxconn_common1
+
+getsupportedbands() {
+	_gs_o=$(sms_tool -d $_DEVICE at "at^slband=?" 2>/dev/null | tr -d '\r' | grep -v '^AT')
+	_gs_l=$(printf '%s\n' "$_gs_o" | awk '
+		/SLBAND:.*LTE,/ {
+			p = index($0, "LTE,")
+			s = substr($0, p + 4)
+			gsub(/[()]/, "", s)
+			gsub(/,/, " ", s)
+			print s
+			exit
+		}')
+	_gs_u=""
+	for _gs_b in $_gs_l; do
+		case "$_gs_b" in ''|*[!0-9]*) continue ;; esac
+		case " $_gs_u " in *" $_gs_b "*) continue ;; esac
+		_gs_u="$_gs_u$_gs_b "
+	done
+	_gs_u=$(printf '%s' "$_gs_u" | tr ' ' '\n' | sort -n | tr '\n' ' ' | sed 's/ *$//')
+	[ -n "$_gs_u" ] && { echo "$_gs_u"; return; }
+	echo "$_DEFAULT_LTE_BANDS"
+}
+
+getulca() {
+	_gu_o=$(sms_tool -d $_DEVICE at "at^ulca?" 2>/dev/null | tr -d '\r ' | grep -v '^AT')
+	case "$_gu_o" in
+		*[Uu][Ll][Cc][Aa]*[Dd][Ii][Ss][Aa][Bb][Ll][Ee][Dd]*) echo "off" ;;
+		*[Uu][Ll][Cc][Aa]*[Ee][Nn][Aa][Bb][Ll][Ee][Dd]*)     echo "on" ;;
+		*) echo "Unsupported" ;;
+	esac
+}
+
+setulca() {
+	[ "$1" = "on" ] || { echo "Unsupported"; return 1; }
+	_su_o=$(sms_tool -d $_DEVICE at "at^ulca" 2>&1 | tr -d '\r')
+	case "$_su_o" in
+		*ERROR*)
+			logger -t 5gmodem "ulca: firmware rejected AT^ULCA: $(echo "$_su_o" | tr '\n' ' ' | head -c 120)"
+			echo "Unsupported"; return 1 ;;
+	esac
+	return 0
+}

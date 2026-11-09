@@ -1,0 +1,5 @@
+. "${RES:-/usr/share/5gmodem/modemband}/119990d3"
+
+getinfo() {
+	echo "Sierra Wireless EM9291"
+}

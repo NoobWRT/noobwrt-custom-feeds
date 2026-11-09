@@ -1,0 +1,22 @@
+MODEL="Qualcomm CDMA Technologies MSM"
+
+FWA=$(sms_tool -d $DEVICE at "AT+CGMR")
+FW=$(echo $FWA | sed 's/^.*AT+CGMR *//; s/OK$//' | xargs)
+
+O=$(sms_tool -d $DEVICE at "AT+GSN" | xargs)
+NR_I=$(digits_of "$O" 15 17)
+if [ -n "$NR_I" ]; then
+	NR_IMEI="$NR_I"
+fi
+
+O=$(sms_tool -d $DEVICE at "AT+CIMI" | xargs)
+NR_C=$(digits_of "$O" 14 16)
+if [ -n "$NR_C" ]; then
+	NR_IMSI="$NR_C"
+fi
+
+O=$(sms_tool -d $DEVICE at "AT+ICCID")
+NR_D=$(echo "$O" | awk -F [:] '/^\ICCID:/{print $2}' | sed s/"OK"// | xargs)
+if [ -n "$NR_D" ]; then
+	NR_ICCID="$NR_D"
+fi

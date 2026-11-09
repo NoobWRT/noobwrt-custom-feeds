@@ -1,0 +1,2052 @@
+#!/bin/sh
+[ -d /tmp/5gmodem ] || mkdir -p /tmp/5gmodem 2>/dev/null
+
+INTERVAL=""; TWARG=""
+for _a in "$@"; do
+	case "$_a" in
+		''|*[!0-9]*) continue ;;
+	esac
+	if [ -z "$INTERVAL" ]; then INTERVAL="$_a"; else [ -z "$TWARG" ] && TWARG="$_a"; fi
+done
+[ -n "$INTERVAL" ] || INTERVAL=5
+[ "$INTERVAL" -lt 1 ] && INTERVAL=1
+
+_lang="en"
+for _a in "$@"; do
+	case "$_a" in
+		ru|RU) _lang="ru" ;;
+		en|EN) _lang="en" ;;
+	esac
+done
+
+T_MODEM="Modem";            T_MODEL="Model"
+T_OPERATOR="Operator";      T_LEVEL="Level"
+T_PHONE="Phone";            T_TEMP="Temp."
+T_SIGNAL="Signal";          T_CELL="Cell"
+T_CELLSIG="Cell / Signal";  T_MODE="Mode"
+T_BAND="Band";              T_BW="Bandwidth"
+T_ENB="eNB";                T_EXTIP="Public IP"
+T_TIME="Time";              T_SPEED="Speed"
+T_DL="Download";            T_UL="Upload"
+T_UPLINK="Uplink";          T_CA="Aggregation"
+T_NOCA="no aggregation";    T_NETPRI="Internet priority"
+T_STATUS="Status";          T_COUNTRY="Country"
+T_SERVICE="Service";        T_TEST="Test"
+T_TESTING="Testing";        T_TRAFFIC="Traffic"
+T_COLLECTING="collecting data...";  T_MBPS="Mbps"
+T_DL_LC="download";         T_UL_LC="upload"
+T_ONLINE="online";          T_ROAM="(roam.)"
+T_NOREG="no reg.";          T_RUNNING="running"
+T_PRESS_S="press t";        T_PRESS_S_LONG="press t to start"
+T_AGO_H="h ago";            T_AGO_M="m ago";      T_AGO_S="s ago"
+T_D="d"
+T_K_QUIT="quit";            T_K_REFRESH="refresh"
+T_K_TEST="test";            T_K_PRI="priority";   T_K_MODEM="modem"
+T_ERR_NOSRC="not found";    T_ERR_NOJF="jsonfilter required"
+T_TAB_NET="Network";        T_TAB_CELL="Cell info"
+T_TAB_MODEM="Modem";        T_TAB_SMS="SMS"
+T_TAB_ESIM="eSIM";          T_ESIM_NA="eSIM not available on this modem"
+T_TAB_USSD="USSD";          T_TAB_AT="AT console"
+T_SLOT="SIM slot";          T_K_SLOT="SIM slot"
+T_SLOT_SW="switching SIM slot..."
+T_ENTER_USSD="USSD code";   T_ENTER_AT="AT command"
+T_SENDING="sending...";     T_K_INPUT="enter"
+T_NOPORT="port not set";    T_USSD_NA="USSD does not work on this modem (verified)"
+T_ESIM_LOAD="reading profiles...";  T_ESIM_ON="active"
+T_ESIM_HINT="digit - switch profile"
+T_ESIM_ADD="activation code (LPA:1$...)"
+T_ESIM_DL="downloading profile..."
+T_NOSMS="no messages";      T_SMSLOAD="reading messages..."
+T_PORTS="Ports";            T_STORAGE="Storage"
+T_K_TAB="next tab";         T_SIM="SIM"
+T_K_WIDTH="width"
+T_IMEI="IMEI";              T_IMSI="IMSI";        T_ICCID="ICCID"
+T_FW="Firmware";            T_PROTO="Protocol";   T_LOC="Location"
+T_LAC="LAC";                T_TAC="TAC";          T_CID="CID"
+T_PATHLOSS="Path loss";     T_TXPOWER="TX power"
+T_CQI="CQI";                T_UECAT="UE cat.";    T_VOLTE="VoLTE"
+T_CSQ="CSQ";                T_ANT="Antenna ports";  T_PORT="Port"
+T_RXDIV="RX diversity";     T_THROTTLE="Throttling";
+T_TH0="Normal"; T_TH1="Warm"; T_TH2="Hot"; T_TH3="Critical"
+T_REGCS="CS reg.";
+T_KIB="KiB"; T_MIB="MiB"; T_GIB="GiB"; T_TIB="TiB"
+T_RXDIV_4="on, 4RX";        T_RXDIV_2="on (2RX)";   T_RXDIV_OFF="off";  T_RXDIV_NOANT="no 2nd antenna"
+T_TAB_ENG="Engineering";    T_NEIGH="neighbours";   T_MODELOG="mode log"
+T_NOSERVICE="no service";   T_NODATA="no modem data"
+T_CC_ON="on";               T_CC_STBY="standby"
+T_K_SAVE="dump";            T_SAVED="saved to"
+T_TS_NET="Net";   T_TS_CELL="Cell";  T_TS_MODEM="Modem"; T_TS_AT="AT";  T_TS_ENG="Eng"
+
+case "$_lang" in
+	ru)
+		T_MODEM="Модем";            T_MODEL="Модель"
+		T_OPERATOR="Оператор";      T_LEVEL="Уровень"
+		T_PHONE="Телефон";          T_TEMP="Темп."
+		T_SIGNAL="Сигнал";          T_CELL="Сота"
+		T_CELLSIG="Сота / Сигнал";  T_MODE="Режим"
+		T_BAND="Диапазон";          T_BW="Полоса"
+		T_ENB="Баз.ст.";            T_EXTIP="Внешний IP"
+		T_TIME="Время";             T_SPEED="Скорость"
+		T_DL="Приём";               T_UL="Отдача"
+		T_UPLINK="Аплинк";          T_CA="Агрегация"
+		T_NOCA="нет агрегации";     T_NETPRI="Приоритет интернета"
+		T_STATUS="Статус";          T_COUNTRY="Страна"
+		T_SERVICE="Сервис";         T_TEST="Тест"
+		T_TESTING="Идёт тест";      T_TRAFFIC="Трафик"
+		T_COLLECTING="сбор данных...";  T_MBPS="Мбит/с"
+		T_DL_LC="приём";            T_UL_LC="отдача"
+		T_ONLINE="в сети";          T_ROAM="(роум.)"
+		T_NOREG="нет рег.";         T_RUNNING="идёт"
+		T_PRESS_S="нажмите t";      T_PRESS_S_LONG="нажмите t для запуска"
+		T_AGO_H="ч назад";          T_AGO_M="м назад";    T_AGO_S="с назад"
+		T_D="д"
+		T_K_QUIT="выход";           T_K_REFRESH="обновить"
+		T_K_TEST="тест";            T_K_PRI="приоритет";  T_K_MODEM="модем"
+		T_ERR_NOSRC="не найден";    T_ERR_NOJF="нужен jsonfilter"
+		T_TAB_NET="Сеть";           T_TAB_CELL="Сота"
+		T_TAB_MODEM="Модем";        T_TAB_SMS="SMS"
+		T_TAB_ESIM="eSIM";          T_ESIM_NA="eSIM на этом модеме недоступна"
+		T_TAB_USSD="USSD";          T_TAB_AT="AT-консоль"
+		T_SLOT="Слот SIM";          T_K_SLOT="слот SIM"
+		T_SLOT_SW="переключаю слот SIM..."
+		T_ENTER_USSD="USSD-код";    T_ENTER_AT="AT-команда"
+		T_SENDING="отправляю...";   T_K_INPUT="ввод"
+		T_NOPORT="порт не задан";   T_USSD_NA="USSD на этом модеме не работает (проверено)"
+		T_ESIM_LOAD="читаю профили...";    T_ESIM_ON="активен"
+		T_ESIM_HINT="цифра - переключить профиль"
+		T_ESIM_ADD="код активации (LPA:1$...)"
+		T_ESIM_DL="загружаю профиль..."
+		T_NOSMS="нет сообщений";    T_SMSLOAD="читаю сообщения..."
+		T_PORTS="Порты";            T_STORAGE="Хранилище"
+		T_K_TAB="вкладка";          T_SIM="SIM"
+		T_K_WIDTH="ширина"
+		T_IMEI="IMEI";              T_IMSI="IMSI";        T_ICCID="ICCID"
+		T_FW="Прошивка";            T_PROTO="Протокол";   T_LOC="Страна"
+		T_LAC="LAC";                T_TAC="TAC";          T_CID="CID"
+		T_PATHLOSS="Потери";        T_TXPOWER="Мощн. TX"
+		T_CQI="CQI";                T_UECAT="Кат. UE";    T_VOLTE="VoLTE"
+		T_CSQ="CSQ";                T_ANT="Антенны";      T_PORT="Порт"
+		T_RXDIV="Разнесение";       T_THROTTLE="Троттлинг";
+		T_TH0="В норме"; T_TH1="Тёплый"; T_TH2="Горячий"; T_TH3="Критично"
+		T_REGCS="Рег. CS"
+		T_KIB="КиБ"; T_MIB="МиБ"; T_GIB="ГиБ"; T_TIB="ТиБ"
+		T_RXDIV_4="вкл, 4RX";       T_RXDIV_2="вкл (2RX)";  T_RXDIV_OFF="выкл";  T_RXDIV_NOANT="нет 2-й антенны"
+		T_TAB_ENG="Инженерный";     T_NEIGH="соседи";       T_MODELOG="журнал режима"
+		T_NOSERVICE="нет сети";     T_NODATA="нет данных модема"
+		T_CC_ON="вкл";              T_CC_STBY="ожидание"
+		T_K_SAVE="выгрузить";       T_SAVED="сохранено в"
+		T_TS_NET="Сеть";  T_TS_CELL="Сота";  T_TS_MODEM="Модем"; T_TS_AT="AT";  T_TS_ENG="Инж"
+		;;
+esac
+
+SRC="/usr/share/5gmodem/5gmodem.sh"
+[ -x "$SRC" ] || { echo "$T_ERR_NOSRC $SRC" >&2; exit 1; }
+command -v jsonfilter >/dev/null 2>&1 || { echo "$T_ERR_NOJF" >&2; exit 1; }
+
+ESC=$(printf '\033')
+TABCH=$(printf '\t')
+BSCH=$(printf '\010')
+C_RST="${ESC}[0m";  C_DIM="${ESC}[90m";  C_B="${ESC}[1m"
+C_GRN="${ESC}[32m"; C_YEL="${ESC}[33m";  C_RED="${ESC}[31m"
+C_CYA="${ESC}[36m"; C_BLU="${ESC}[34m"
+case "$TERM" in
+	*256color*|*truecolor*|*kitty*|alacritty*|foot*|wezterm*)
+		C_DIM="${ESC}[38;5;245m"
+		C_Q1="${ESC}[38;5;41m"; C_Q2="${ESC}[38;5;149m"; C_Q3="${ESC}[38;5;220m"; C_Q4="${ESC}[38;5;203m" ;;
+	*)
+		C_Q1="${ESC}[92m"; C_Q2="${ESC}[32m"; C_Q3="${ESC}[33m"; C_Q4="${ESC}[31m" ;;
+esac
+
+DATA="/tmp/5gmodem/5gtop.$$"
+STFILE="/tmp/5gmodem/speedtest.json"
+NPFILE="$DATA.np"
+
+np_active_idx() {
+	_ai_best=""; _ai_bm=""; _ai_bip=0; _ai_n=0
+	while [ "$_ai_n" -lt 8 ]; do
+		_ai_if=$(printf '%s' "$1" | jsonfilter -e "@[$_ai_n].iface" 2>/dev/null)
+		[ -n "$_ai_if" ] || break
+		_ai_m=$(printf '%s' "$1" | jsonfilter -e "@[$_ai_n].metric" 2>/dev/null)
+		case "$_ai_m" in ''|*[!0-9]*) _ai_m=0 ;; esac
+		_ai_ip=$(printf '%s' "$1" | jsonfilter -e "@[$_ai_n].ip" 2>/dev/null)
+		_ai_hip=0; [ -n "$_ai_ip" ] && _ai_hip=1
+		if [ -z "$_ai_bm" ] || [ "$_ai_m" -lt "$_ai_bm" ] \
+		   || { [ "$_ai_m" -eq "$_ai_bm" ] && [ "$_ai_hip" = 1 ] && [ "$_ai_bip" = 0 ]; }; then
+			_ai_bm="$_ai_m"; _ai_best="$_ai_n"; _ai_bip="$_ai_hip"
+		fi
+		_ai_n=$((_ai_n + 1))
+	done
+	printf '%s' "$_ai_best"
+}
+SMSFILE="$DATA.sms"
+ESFILE="$DATA.esim"
+OUTFILE="$DATA.out"
+DLBUSY="$DATA.dlbusy"
+OUTBUSY="$DATA.outbusy"
+ESBUSY="$DATA.esbusy"
+SMSBUSY="$DATA.smsbusy"
+FETCHING="$DATA.busy"
+W=78
+ROW_END=39
+STTY_SAVE=$(stty -g 2>/dev/null)
+cleanup() {
+	rm -f "$DATA" "$FETCHING" "$DATA.tmp" "$NPFILE" "$NPFILE.tmp" \
+		"$SMSFILE" "$SMSFILE.tmp" "$SMSFILE.raw" "$SMSFILE.raw.fix" "$SMSBUSY" \
+		"$ESFILE" "$ESFILE.tmp" "$ESBUSY" "$DATA.wrap" "$DATA.hint" \
+		"$DATA.out" "$DATA.out.ussd" "$DATA.out.at" "$DATA.outbusy.ussd" "$DATA.outbusy.at" \
+		"$DATA.owrap" "$DLBUSY" "$DATA.dlog" "$DATA.scr" "$DATA.eng" "$DATA.engl"
+	printf '%s[%d;1H%s[?25h%s\n' "$ESC" "$ROW_END" "$ESC" "$C_RST"
+	stty "$STTY_SAVE" 2>/dev/null
+	exit 0
+}
+trap cleanup INT TERM HUP
+
+_spin=0
+J=""
+g() { printf '%s' "$J" | jsonfilter -e "@.$1" 2>/dev/null; }
+v() {
+	_x=$(g "$1")
+	[ -n "$_x" ] && [ "$_x" != "-" ] || { printf '%s' "-"; return; }
+	printf '%s' "$_x" | sed -e 's/ *&deg;/°/g' -e 's/&deg;/°/g' -e 's/&nbsp;/ /g' -e 's/&amp;/\&/g' -e 's/&lt;/</g' -e 's/&gt;/>/g'
+}
+
+_therm_suffix() {
+	_th=$(g mtherm)
+	case "$_th" in
+		''|0|-) return ;;
+	esac
+	printf ' %s' "[$T_THROTTLE $_th]"
+}
+
+_therm_word() {
+	case "$(g mtherm)" in
+		0) printf '%s' "$T_TH0" ;;
+		1) printf '%s' "$T_TH1" ;;
+		2) printf '%s' "$T_TH2" ;;
+		3) printf '%s' "$T_TH3" ;;
+		*) printf '%s' "-" ;;
+	esac
+}
+
+_temp_cell() {
+	case "$1" in
+		''|-) _therm_word ;;
+		*)    printf '%s%s' "$1" "$(_therm_suffix)" ;;
+	esac
+}
+
+_temp_cell_plain() {
+	case "$1" in
+		''|-) _therm_word ;;
+		*)    printf '%s' "$1" ;;
+	esac
+}
+
+_phone_or_loc() {
+	_ph=$(g phone)
+	if [ -n "$_ph" ] && [ "$_ph" != "-" ]; then v phone; return; fi
+	_lc=$(g location)
+	if [ -n "$_lc" ] && [ "$_lc" != "-" ]; then v location; return; fi
+	printf '%s' "-"
+}
+
+_operator_plmn() {
+	_op=$(v operator_name)
+	_mc=$(g operator_mcc); _mn=$(g operator_mnc)
+	case "$_mc$_mn" in
+		''|*-*) printf '%s' "$_op"; return ;;
+	esac
+	printf '%s (%s-%s)' "$_op" "$_mc" "$_mn"
+}
+
+_bytes_l10n() {
+	printf '%s' "$1" | sed -e "s/\bKiB\b/$T_KIB/" -e "s/\bMiB\b/$T_MIB/" \
+		-e "s/\bGiB\b/$T_GIB/" -e "s/\bTiB\b/$T_TIB/"
+}
+
+clen() {
+	_cs="$1"; _cx=0
+	while :; do
+		case "$_cs" in
+			*"$ESC["*) ;;
+			*) break ;;
+		esac
+		_cp="${_cs%%"$ESC["*}"; _cq="${_cs#*"$ESC["}"
+		_ca="${_cq%%[!0-9;]*}"; _cq="${_cq#"$_ca"}"
+		_cf="${_cq%"${_cq#?}"}"; _cq="${_cq#?}"
+		[ "$_cf" = C ] && case "$_ca" in ''|*[!0-9]*) _cx=$((_cx + 1)) ;; *) _cx=$((_cx + _ca)) ;; esac
+		_cs="$_cp$_cq"
+	done
+	[ -n "$_cs" ] || { printf '%s' "$_cx"; return; }
+	printf '%s' "$(( $(printf '%s' "$_cs" | tr -d '\200-\277' | wc -c) + _cx ))"
+}
+
+if [ "${TOP_ASCII:-0}" = 1 ]; then
+	GL_FULL='#'; GL_EMPTY='.'; GL_LINE='-'
+	GL_S='. : | I H'
+else
+	GL_FULL='█'; GL_EMPTY='░'; GL_LINE='─'
+	GL_S='▁ ▃ ▅ ▇ █'
+fi
+pad() {
+	_l=$(clen "$1"); printf '%s' "$1"
+	_n=$(( $2 - _l ))
+	[ "$_n" -gt 0 ] && printf '%s[%dX%s[%dC' "$ESC" "$_n" "$ESC" "$_n"
+	return 0
+}
+rep() { _i=0; while [ "$_i" -lt "$2" ]; do printf '%s' "$1"; _i=$((_i+1)); done; }
+
+clr() { [ "$1" -gt 0 ] 2>/dev/null && printf '%s[%dX' "$ESC" "$1"; }
+
+UCUT_AWK='
+function ulen(s,   t, n) { t = s; n = gsub(/[\200-\277]/, "", t); return length(s) - n }
+function ucut(s, w,   i, c, n, o) {
+	n = 0; o = ""
+	for (i = 1; i <= length(s); i++) {
+		c = substr(s, i, 1)
+		if (c !~ /[\200-\277]/) { if (n >= w) break; n++ }
+		o = o c
+	}
+	return o
+}
+'
+wrap() {
+	printf '%s' "$1" | awk -v w="$2" "$UCUT_AWK"'
+	{
+		line = ""
+		n = split($0, word, " ")
+		for (i = 1; i <= n; i++) {
+			t = word[i]
+			if (t == "") continue
+			while (ulen(t) > w) {
+				if (line != "") { print line; line = "" }
+				h = ucut(t, w)
+				print h
+				t = substr(t, length(h) + 1)
+			}
+			if (line == "") { line = t }
+			else if (ulen(line) + 1 + ulen(t) <= w) { line = line " " t }
+			else { print line; line = t }
+		}
+		if (line != "") print line
+	}'
+}
+
+fit() {
+	_s="$1"; _w="$2"; _l=$(clen "$_s")
+	if [ "$_l" -gt "$_w" ]; then
+		_s=$(printf '%s' "$_s" | awk -v w=$((_w - 1)) "$UCUT_AWK"'{ print ucut($0, w) }')
+		printf '%s~' "$_s"; _l=$(clen "$_s~")
+	else
+		printf '%s' "$_s"
+	fi
+	_n=$(( _w - _l ))
+	[ "$_n" -gt 0 ] && printf '%s[%dX%s[%dC' "$ESC" "$_n" "$ESC" "$_n"
+	return 0
+}
+
+band_fit() {
+	_bf="$1"
+	[ "$(clen "$_bf")" -gt "$2" ] && _bf=$(printf '%s' "$_bf" | sed 's/ *([^)]*)//g')
+	fit "$_bf" "$2"
+}
+
+qcolor() {
+	_n=$(printf '%s' "$2" | tr -d '+' | cut -d. -f1)
+	case "$_n" in ''|*[!0-9-]*|-) printf '%s' "$C_DIM"; return ;; esac
+	case "$_n" in *[0-9]*) : ;; *) printf '%s' "$C_DIM"; return ;; esac
+	case "$1" in
+		rsrp) [ "$_n" -ge -90 ] && printf '%s' "$C_GRN" || { [ "$_n" -ge -105 ] && printf '%s' "$C_YEL" || printf '%s' "$C_RED"; } ;;
+		rsrq) [ "$_n" -ge -12 ] && printf '%s' "$C_GRN" || { [ "$_n" -ge -16 ] && printf '%s' "$C_YEL" || printf '%s' "$C_RED"; } ;;
+		sinr) [ "$_n" -ge 13 ]  && printf '%s' "$C_GRN" || { [ "$_n" -ge 0 ]   && printf '%s' "$C_YEL" || printf '%s' "$C_RED"; } ;;
+		rssi) [ "$_n" -ge -65 ] && printf '%s' "$C_GRN" || { [ "$_n" -ge -85 ] && printf '%s' "$C_YEL" || printf '%s' "$C_RED"; } ;;
+		*) printf '%s' "$C_RST" ;;
+	esac
+}
+
+bar() {
+	_p=$(printf '%s' "$1" | tr -cd '0-9'); [ -n "$_p" ] || _p=0
+	[ "$_p" -gt 100 ] && _p=100
+	_w=${2:-14}; _f=$((_p * _w / 100))
+	if   [ "$_p" -ge 60 ]; then _c="$C_GRN"
+	elif [ "$_p" -ge 30 ]; then _c="$C_YEL"
+	else _c="$C_RED"; fi
+	printf '%s' "$_c"; rep "$GL_FULL" "$_f"
+	printf '%s' "$C_DIM"; rep "$GL_EMPTY" "$((_w - _f))"
+	printf '%s' "$C_RST"
+}
+
+sigbars() {
+	_p=$(printf '%s' "$1" | tr -cd '0-9'); [ -n "$_p" ] || _p=0
+	[ "$_p" -gt 100 ] && _p=100
+	if   [ "$_p" -ge 60 ]; then _c="$C_GRN"
+	elif [ "$_p" -ge 30 ]; then _c="$C_YEL"
+	else _c="$C_RED"; fi
+	_n=$(( _p * 5 / 100 ))
+	[ "$_p" -gt 0 ] && [ "$_n" -lt 1 ] && _n=1
+	_i=1
+	for _g in $GL_S; do
+		[ "$_i" -le "$_n" ] && printf '%s%s' "$_c" "$_g" || printf '%s%s' "$C_DIM" "$_g"
+		_i=$((_i + 1))
+	done
+	printf '%s' "$C_RST"
+}
+
+mbar() {
+	_w=${3:-8}
+	_n=$(printf '%s' "$2" | tr -d '+' | cut -d. -f1)
+	case "$_n" in ''|*[!0-9-]*|-) printf '%s' "$C_DIM"; rep "$GL_EMPTY" "$_w"; printf '%s' "$C_RST"; return ;; esac
+	case "$_n" in *[0-9]*) : ;; *) printf '%s' "$C_DIM"; rep "$GL_EMPTY" "$_w"; printf '%s' "$C_RST"; return ;; esac
+	case "$1" in
+		rsrp) _lo=-130; _hi=-80 ;;
+		rsrq) _lo=-20;  _hi=-3  ;;
+		sinr) _lo=-10;  _hi=20  ;;
+		rssi) _lo=-110; _hi=-50 ;;
+		*) return ;;
+	esac
+	_p=$(( (_n - _lo) * 100 / (_hi - _lo) ))
+	[ "$_p" -lt 0 ] && _p=0; [ "$_p" -gt 100 ] && _p=100
+	_f=$((_p * _w / 100))
+	printf '%s' "$(qcolor "$1" "$2")"; rep "$GL_FULL" "$_f"
+	printf '%s' "$C_DIM"; rep "$GL_EMPTY" "$((_w - _f))"
+	printf '%s' "$C_RST"
+}
+
+ca_compact() {
+	_cb=$(printf '%s' "$(v pband)" | sed -n 's/^\(B[0-9]\{1,\}\).*/\1/p')
+	[ -n "$_cb" ] || return 0
+	_cn=1
+	for _ci in 1 2 3 4; do
+		_cs=$(v "s${_ci}band")
+		[ "$_cs" = "-" ] && continue
+		_cs=$(printf '%s' "$_cs" | sed -n 's/^\(B[0-9]\{1,\}\).*/\1/p')
+		[ -n "$_cs" ] || continue
+		_cb="$_cb+$_cs"; _cn=$((_cn + 1))
+	done
+	[ "$_cn" -gt 1 ] && printf '%dCA %s' "$_cn" "$_cb" || printf '%s' "$_cb"
+}
+
+uptime_str() {
+	_b=$(g conn_time_sec)
+	case "$_b" in ''|*[!0-9]*) printf '%s' "$(v conn_time)"; return ;; esac
+	_age=0
+	if [ -f "$DATA" ]; then
+		_now=$(date +%s); _mt=$(date -r "$DATA" +%s 2>/dev/null || echo "$_now")
+		_age=$((_now - _mt)); [ "$_age" -lt 0 ] && _age=0
+	fi
+	_s=$((_b + _age))
+	_d=$((_s / 86400)); _h=$(((_s % 86400) / 3600))
+	_m=$(((_s % 3600) / 60)); _x=$((_s % 60))
+	if   [ "$_d" -gt 0 ]; then printf "%d$T_D %d:%02d:%02d" "$_d" "$_h" "$_m" "$_x"
+	elif [ "$_h" -gt 0 ]; then printf '%d:%02d:%02d' "$_h" "$_m" "$_x"
+	else printf '%d:%02d' "$_m" "$_x"; fi
+}
+
+box_top() {
+	_bt=$1
+	_bn=$(( ${W:-78} - 5 - $(clen "$_bt") ))
+	[ "$_bn" -lt 0 ] && _bn=0
+	printf '%s%s%s %s %s%s\n' "$C_B$C_YEL" "$GL_LINE$GL_LINE" "$C_RST$C_B$C_YEL" "$_bt" \
+		"$(printf '%s' "$C_RST$C_DIM"; rep "$GL_LINE" "$_bn")" "$C_RST"
+}
+box_mid()  { printf '\n'; }
+box_end()  { printf '\n'; }
+
+keyhint() {
+	_kh() { printf '%s   ' "$(hl_name "$2" "$1" "$C_DIM")"; }
+	[ "${TINY:-0}" = 1 ] && printf ' ' || printf '\n '
+	_kh "q" "$T_K_QUIT"
+	_kh "r" "$T_K_REFRESH"
+	if [ -n "$1" ]; then
+		printf '%s\n' "$1" | while IFS="$(printf '\t')" read -r _kk _kl; do
+			[ -n "$_kk" ] || continue
+			printf '%s   ' "$(hl_name "$_kl" "$_kk" "$C_DIM")"
+		done
+	fi
+	[ "$MCOUNT" -gt 1 ] && _kh "Tab" "$T_K_MODEM"
+	[ "${TINY:-0}" = 1 ] && printf '%s' "$(hl_name "$T_K_TAB" "BkSp" "$C_DIM")" \
+		|| printf '%s\n' "$(hl_name "$T_K_TAB" "BkSp" "$C_DIM")"
+}
+
+frame() {
+	printf '%s[2J%s[H' "$ESC" "$ESC"
+	[ "$TINY" = 1 ] && { frame_tiny; return; }
+	[ "$NARROW" = 1 ] && { frame_narrow; return; }
+	printf ' %s%s5gtop%s  %s%s\n' "$C_B" "$C_CYA" "$C_RST" "$C_DIM" "$C_RST"
+	bar_modems
+	bar_tabs
+	box_top "$T_MODEM"
+	box_mid; box_mid; box_mid; box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_CELLSIG"
+	box_mid; box_mid; box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_SPEED"
+	box_mid; box_mid
+	box_end
+	box_top "$T_NETPRI"
+	box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_CA"
+	box_mid; box_mid
+	box_end
+	_ent=""
+	[ "$HAS_STTY" = 1 ] || _ent=" ${C_DIM}(+Enter)${C_RST}"
+	_kslot=""
+	[ "$SLOT_CNT" -gt 1 ] && _kslot=$(printf '\nk\t%s' "$T_K_SLOT")
+	keyhint "t	$T_K_TEST
+1-3	$T_K_PRI$_kslot
++/-	$T_K_WIDTH"
+	ROW_END=37
+}
+
+TAB_IDS="net cell modem sms ussd at eng"
+if [ -x /usr/share/5gmodem/esim.sh ]; then
+	_esc="/tmp/5gmodem/esimstat_$(uci -q get 5gmodem.@5gmodem[0].active_modem 2>/dev/null)"
+	if [ -s "$_esc" ]; then
+		grep -q '"available":1' "$_esc" 2>/dev/null && TAB_IDS="net cell modem sms esim ussd at eng"
+	else
+		( /usr/share/5gmodem/esim.sh status > /tmp/5gmodem/5gtop.es.$$ 2>/dev/null ) &
+		_esp=$!; _esn=0
+		while kill -0 "$_esp" 2>/dev/null; do
+			_esn=$((_esn + 1))
+			[ "$_esn" -ge 3 ] && { kill "$_esp" 2>/dev/null; break; }
+			sleep 1
+		done
+		grep -q '"available":1' "/tmp/5gmodem/5gtop.es.$$" 2>/dev/null && TAB_IDS="net cell modem sms esim ussd at eng"
+		rm -f "/tmp/5gmodem/5gtop.es.$$"
+	fi
+fi
+TAB="${TAB:-1}"
+case "$TAB" in
+	''|*[!0-9]*) TAB=1 ;;
+esac
+[ "$TAB" -lt 1 ] 2>/dev/null && TAB=1
+
+tab_name() {
+	case "$1" in
+		net)   printf '%s' "$T_TAB_NET" ;;
+		cell)  printf '%s' "$T_TAB_CELL" ;;
+		modem) printf '%s' "$T_TAB_MODEM" ;;
+		sms)   printf '%s' "$T_TAB_SMS" ;;
+		esim)  printf '%s' "$T_TAB_ESIM" ;;
+		ussd)  printf '%s' "$T_TAB_USSD" ;;
+		at)    printf '%s' "$T_TAB_AT" ;;
+		eng)   printf '%s' "$T_TAB_ENG" ;;
+		*)    printf '%s' "$1" ;;
+	esac
+}
+
+tab_key() {
+	case "$1" in
+		net)   printf 'n' ;;
+		cell)  printf 'c' ;;
+		modem) printf 'm' ;;
+		sms)   printf 's' ;;
+		esim)  printf 'e' ;;
+		ussd)  printf 'u' ;;
+		at)    printf 'a' ;;
+		eng)   printf 'g' ;;
+	esac
+}
+
+tab_num() {
+	_i=0
+	for _t in $TAB_IDS; do
+		_i=$((_i + 1))
+		[ "$_t" = "$1" ] && { printf '%s' "$_i"; return; }
+	done
+}
+
+tab_id() {
+	_i=0
+	for _t in $TAB_IDS; do
+		_i=$((_i + 1))
+		[ "$_i" = "$1" ] && { printf '%s' "$_t"; return; }
+	done
+}
+
+tab_count() { printf '%s' "$(printf '%s\n' $TAB_IDS | grep -c .)"; }
+
+hl_name() {
+	awk -v s="$1" -v k="$2" -v cn="$3" -v ck="$C_B$C_YEL" -v cr="$C_RST" 'BEGIN {
+		p = index(s, toupper(k)); if (p == 0) p = index(s, tolower(k))
+		if (p == 0) { printf "%s%s%s %s%s%s", ck, k, cr, cn, s, cr; exit }
+		printf "%s%s%s%s%s%s%s%s", cn, substr(s, 1, p-1), cr, ck, substr(s, p, 1), cr, cn, substr(s, p+1)
+		printf "%s", cr
+	}'
+}
+
+tab_short() {
+	case "$1" in
+		net)   printf '%s' "$T_TS_NET" ;;
+		cell)  printf '%s' "$T_TS_CELL" ;;
+		modem) printf '%s' "$T_TS_MODEM" ;;
+		at)    printf '%s' "$T_TS_AT" ;;
+		eng)   printf '%s' "$T_TS_ENG" ;;
+		*)     tab_name "$1" ;;
+	esac
+}
+
+bar_tabs_line() {
+	printf ' '
+	_i=0
+	for _t in $TAB_IDS; do
+		_i=$((_i + 1))
+		if [ "$_i" = "$TAB" ]; then
+			printf '%s  ' "$(hl_name "$($1 "$_t")" "$(tab_key "$_t")" "$C_CYA$C_B")"
+		else
+			printf '%s  ' "$(hl_name "$($1 "$_t")" "$(tab_key "$_t")" "$C_DIM")"
+		fi
+	done
+}
+bar_tabs() {
+	_btl=$(bar_tabs_line tab_name); _btl="${_btl%  }"
+	if [ "$(clen "$_btl")" -gt "$TW" ]; then
+		_btl=$(bar_tabs_line tab_short); _btl="${_btl%  }"
+	fi
+	printf '%s\n' "$_btl"
+	[ "${_tight:-0}" = 1 ] || printf '\n'
+}
+
+bar_modems() {
+	[ "$MCOUNT" -gt 0 ] || { printf '\n'; [ "${_tight:-0}" = 1 ] || printf '\n'; return; }
+	_cur=$(uci -q get 5gmodem.@5gmodem[0].active_modem)
+	printf ' '
+	_dups=$(for _m in $MODEMS; do uci -q get "5gmodem.$_m.model"; done | sort | uniq -d)
+
+	for _m in $MODEMS; do
+		_p=$(uci -q get "5gmodem.$_m.path")
+		_n=$(uci -q get "5gmodem.$_m.model")
+		[ -n "$_n" ] || _n=$(uci -q get "5gmodem.$_m.product")
+		[ -n "$_n" ] || _n="$_p"
+		if [ -n "$_n" ] && [ -n "$_dups" ] && printf '%s\n' "$_dups" | grep -qxF "$_n"; then
+			_n="$_n ($_p)"
+		fi
+		if [ "$_p" = "$_cur" ]; then
+			printf '%s* %s%s  ' "$C_GRN$C_B" "$_n" "$C_RST"
+		else
+			printf '%s  %s%s  ' "$C_DIM" "$_n" "$C_RST"
+		fi
+	done
+	printf '\n'
+	[ "${_tight:-0}" = 1 ] || printf '\n'
+}
+
+at() { printf '%s[%d;%dH%s' "$ESC" "$1" "$2" "$3"; }
+lab() { at "$1" "$2" "${C_DIM}$(pad "$3" "$4")${C_RST}$(pad "$5" "$6")"; }
+
+frame_narrow() {
+	printf ' %s%s5gtop%s\n' "$C_B" "$C_CYA" "$C_RST"
+	bar_modems
+	bar_tabs
+	box_top "$T_MODEM"
+	box_mid; box_mid; box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_SIGNAL"
+	box_mid; box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_CELL"
+	box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_SPEED"
+	box_mid; box_mid
+	box_end
+	box_top "$T_UPLINK"
+	box_mid; box_mid
+	box_end
+	box_top "$T_CA"
+	box_mid; box_mid
+	box_end
+	_ent=""
+	[ "$HAS_STTY" = 1 ] || _ent=" ${C_DIM}+Enter${C_RST}"
+	printf '\n %sq r s 1-3%s%s%s\n' "$C_DIM" "$MKEY" "$C_RST" "$_ent"
+	ROW_END=36
+}
+
+frame_tiny() {
+	printf ' %s%s5gtop%s\n' "$C_B" "$C_CYA" "$C_RST"
+	_tight=1; bar_modems; bar_tabs; _tight=0
+	box_top "$T_MODEM"
+	box_mid; box_mid; box_mid; box_mid; box_mid
+	box_top "$T_SIGNAL"
+	box_mid; box_mid; box_mid; box_mid
+	box_top "$T_CELL"
+	box_mid; box_mid; box_mid
+	box_top "$T_SPEED"
+	box_mid; box_mid
+	keyhint "t	$T_K_TEST"
+	ROW_END=22
+}
+
+frame_cell() {
+	printf '%s[2J%s[H' "$ESC" "$ESC"
+	printf ' %s%s5gtop%s\n' "$C_B" "$C_CYA" "$C_RST"
+	bar_modems
+	bar_tabs
+	box_top "$T_CELL"
+	box_mid; box_mid; box_mid; box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_SIGNAL"
+	box_mid; box_mid; box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_CA"
+	box_mid; box_mid; box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_ANT"
+	box_mid; box_mid; box_mid; box_mid; box_mid
+	box_end
+	keyhint "t	$T_K_TEST
++/-	$T_K_WIDTH"
+	ROW_END=35
+}
+
+draw_cell() {
+	_r=$(( 6 + $(bar_modems >/dev/null; echo 0) ))
+	_row=7
+	lab $((_row))   2  "$T_LAC"      10 "$(fit "$(v lac_hex) / $(v lac_dec)" 26)" 26
+	lab $((_row))   40 "$T_CID"      10 "$(fit "$(v cid_hex) / $(v cid_dec)" 26)" 26
+	lab $((_row+1)) 2  "$T_TAC"      10 "$(fit "$(v tac_hex) / $(v tac_dec)" 26)" 26
+	lab $((_row+1)) 40 "$T_ENB"      10 "$(fit "$(v enbid)" 26)" 26
+	lab $((_row+2)) 2  'PCI'         10 "$(fit "$(v pci)" 26)" 26
+	lab $((_row+2)) 40 'EARFCN'      10 "$(fit "$(v earfcn)" 26)" 26
+	lab $((_row+3)) 2  "$T_BAND"     10 "$(fit "$(v pband)" 26)" 26
+	lab $((_row+3)) 40 "$T_BW"       10 "$(fit "$(v bandwidth)" 26)" 26
+	lab $((_row+4)) 2  "$T_PATHLOSS" 10 "$(fit "$(v pathloss)" 26)" 26
+	lab $((_row+4)) 40 "$T_TXPOWER"  10 "$(fit "$(v txpower)" 26)" 26
+	lab $((_row+5)) 2  "$T_CQI"      10 "$(fit "$(v cqi)" 26)" 26
+	lab $((_row+5)) 40 "$T_UECAT"    10 "$(fit "$(v uecat)" 26)" 26
+
+	_row=$((_row + 8))
+	_a=$(v rsrp); _b=$(v rsrq); _c=$(v sinr); _e=$(v rssi)
+	lab $((_row))   2  'RSRP' 8 "$(qcolor rsrp "$_a")$(pad "$_a" 8)${C_RST}${C_DIM}[${C_RST}$(mbar rsrp "$_a" 12)${C_DIM}]${C_RST}" 30
+	lab $((_row))   40 'RSRQ' 8 "$(qcolor rsrq "$_b")$(pad "$_b" 8)${C_RST}${C_DIM}[${C_RST}$(mbar rsrq "$_b" 12)${C_DIM}]${C_RST}" 30
+	lab $((_row+1)) 2  'SINR' 8 "$(qcolor sinr "$_c")$(pad "$_c" 8)${C_RST}${C_DIM}[${C_RST}$(mbar sinr "$_c" 12)${C_DIM}]${C_RST}" 30
+	lab $((_row+1)) 40 'RSSI' 8 "$(qcolor rssi "$_e")$(pad "$_e" 8)${C_RST}${C_DIM}[${C_RST}$(mbar rssi "$_e" 12)${C_DIM}]${C_RST}" 30
+	lab $((_row+2)) 2  "$T_CSQ"   8 "$(fit "$(v csq)" 20)" 20
+	lab $((_row+2)) 40 "$T_VOLTE" 8 "$(fit "$(v volte)" 20)" 20
+	_rc=$(g rscp); _ei=$(g ecio)
+	if { [ -n "$_rc" ] && [ "$_rc" != "-" ]; } || { [ -n "$_ei" ] && [ "$_ei" != "-" ]; }; then
+		lab $((_row+3)) 2  'RSCP' 8 "$(fit "$(v rscp)" 20)" 20
+		lab $((_row+3)) 40 'EcIo' 8 "$(fit "$(v ecio)" 20)" 20
+	fi
+	_rg=$(g registration_cs)
+	if [ -n "$_rg" ] && [ "$_rg" != "-" ]; then
+		lab $((_row+4)) 2 "$T_REGCS" 8 "$(fit "$(v registration_cs)" 20)" 20
+	fi
+
+	_row=$((_row + 7))
+	lab $((_row)) 2 '' 0 "${C_DIM}$(pad 'CC' 6)$(pad "$T_BAND" 20)$(pad 'PCI' 8)$(pad 'EARFCN' 10)$(pad 'RSRP' 8)$(pad 'MIMO' 6)$(pad 'MOD' 8)${C_RST}" 68
+	at $((_row+1)) 2 "$(pad 'PCC' 6)$(band_fit "$(v pband)" 19) $(fit "$(v pci)" 7) $(fit "$(v earfcn)" 9) $(fit "$(v rsrp)" 7) $(fit "$(v pmimo)" 5) $(fit "$(v pmod)" 8)"
+	_i=1
+	while [ "$_i" -le 3 ]; do
+		_b=$(v "s${_i}band")
+		if [ -n "$_b" ] && [ "$_b" != "-" ]; then
+			at $((_row+1+_i)) 2 "$(pad "SCC$_i" 6)$(band_fit "$_b" 19) $(fit "$(v "s${_i}pci")" 7) $(fit "$(v "s${_i}earfcn")" 9) $(fit "$(v "s${_i}rsrp")" 7) $(fit "$(v "s${_i}mimo")" 5) $(fit "$(v "s${_i}mod")" 8)"
+		else
+			at $((_row+1+_i)) 2 "$(pad '' 68)"
+		fi
+		_i=$((_i + 1))
+	done
+
+	_row=$((_row + 7))
+	lab $((_row)) 2 '' 0 "${C_DIM}$(pad "$T_PORT" 8)$(pad 'RSRP' 24)RSRQ${C_RST}" 54
+	_i=0
+	for _ap in $(v antports); do
+		[ "$_i" -ge 3 ] && break
+		[ "$_ap" = "-" ] && continue
+		_pn=$(printf '%s' "$_ap" | cut -d: -f1)
+		_pr=$(printf '%s' "$_ap" | cut -d: -f2)
+		_pq=$(printf '%s' "$_ap" | cut -d: -f3)
+		at $((_row+1+_i)) 2 "$(pad "$_pn" 8)$(qcolor rsrp "$_pr")$(pad "$_pr" 8)${C_RST}${C_DIM}[${C_RST}$(mbar rsrp "$_pr" 12)${C_DIM}]${C_RST}  $(qcolor rsrq "$_pq")$(pad "$_pq" 8)${C_RST}${C_DIM}[${C_RST}$(mbar rsrq "$_pq" 12)${C_DIM}]${C_RST}"
+		_i=$((_i + 1))
+	done
+	_rd=$(g rxdiv)
+	if [ -n "$_rd" ]; then
+		case "$_rd" in
+			4rx) _rdt="$T_RXDIV_4"; _rdc="$C_GRN" ;;
+			2rx) _rdt="$T_RXDIV_2"; _rdc="$C_GRN" ;;
+			off) _rdt="$T_RXDIV_OFF"; _rdc="$C_RED" ;;
+			noant) _rdt="$T_RXDIV_NOANT"; _rdc="$C_RED" ;;
+			*)   _rdt="$_rd"; _rdc="" ;;
+		esac
+		lab $((_row + 4)) 2 "$T_RXDIV" 14 "${_rdc}$(fit "$_rdt" 20)${C_RST}" 20
+	fi
+	while [ "$_i" -lt 3 ]; do
+		at $((_row+1+_i)) 2 "$(pad '' 54)"
+		_i=$((_i + 1))
+	done
+}
+
+frame_cell_narrow() {
+	printf '%s[2J%s[H' "$ESC" "$ESC"
+	printf ' %s%s5gtop%s\n' "$C_B" "$C_CYA" "$C_RST"
+	_tight="$TINY"; bar_modems; bar_tabs; _tight=0
+	box_top "$T_CELL"
+	box_mid; box_mid; box_mid; box_mid; box_mid; box_mid; box_mid; box_mid
+	[ "$TINY" = 1 ] || box_end
+	box_top "$T_SIGNAL"
+	box_mid; box_mid; box_mid; box_mid; box_mid
+	[ "$TINY" = 1 ] || box_end
+	box_top "$T_CA"
+	box_mid; box_mid
+	[ "$TINY" = 1 ] || { box_mid; box_end; }
+	keyhint "+/-	$T_K_WIDTH"
+	ROW_END=28
+	[ "$TINY" = 1 ] && ROW_END=22
+}
+
+draw_cell_narrow() {
+	_w=$((W - 14))
+	_o1=0; _o2=0; _rmax=24; _o0=2
+	[ "$TINY" = 1 ] && { _o1=1; _o2=2; _rmax=21; _o0=0; }
+	_n() { printf '%s[%d;2H%s%s%s%s' "$ESC" "$(($1 + _o0))" "$C_DIM" "$(pad "$2" 11)" "$C_RST" "$3"; }
+	_n 5  "$T_LAC"      "$(fit "$(v lac_hex) / $(v lac_dec)" $_w)"
+	_n 6  "$T_CID"      "$(fit "$(v cid_hex) / $(v cid_dec)" $_w)"
+	_n 7  "$T_TAC"      "$(fit "$(v tac_hex) / $(v tac_dec)" $_w)"
+	_n 8  "$T_ENB"      "$(fit "$(v enbid)" $_w)"
+	_n 9  'PCI/EARFCN'  "$(fit "$(v pci) / $(v earfcn)" $_w)"
+	_n 10 "$T_BAND"     "$(band_fit "$(v pband)" $_w)"
+	_n 11 "$T_BW"       "$(fit "$(v bandwidth)" $_w)"
+	_n 12 "$T_CQI"      "$(fit "$(v cqi)  $T_UECAT $(v uecat)" $_w)"
+
+	_a=$(v rsrp); _b=$(v rsrq); _c=$(v sinr); _e=$(v rssi)
+	_n $((15 - _o1)) 'RSRP' "$(qcolor rsrp "$_a")$(pad "$_a" 8)${C_RST}$(mbar rsrp "$_a")"
+	_n $((16 - _o1)) 'RSRQ' "$(qcolor rsrq "$_b")$(pad "$_b" 8)${C_RST}$(mbar rsrq "$_b")"
+	_n $((17 - _o1)) 'SINR' "$(qcolor sinr "$_c")$(pad "$_c" 8)${C_RST}$(mbar sinr "$_c")"
+	_n $((18 - _o1)) 'RSSI' "$(qcolor rssi "$_e")$(pad "$_e" 8)${C_RST}$(mbar rssi "$_e")"
+	_n $((19 - _o1)) "$T_TXPOWER" "$(fit "$(v txpower)" $_w)"
+
+	_r=$((22 - _o2)); _any=0
+	for _i in 1 2 3; do
+		_sb=$(v "s${_i}band")
+		[ "$_sb" = "-" ] && continue
+		[ "$_r" -gt "$_rmax" ] && break
+		_n "$_r" "SCC$_i" "$(fit "$_sb" $_w)"
+		_r=$((_r + 1)); _any=1
+	done
+	[ "$_any" = 0 ] && { _n $((22 - _o2)) '' "${C_DIM}$(fit "$T_NOCA" $_w)${C_RST}"; _r=$((23 - _o2)); }
+	while [ "$_r" -le "$_rmax" ]; do _n "$_r" '' "$(fit '' $_w)"; _r=$((_r + 1)); done
+}
+
+frame_modem() {
+	printf '%s[2J%s[H' "$ESC" "$ESC"
+	printf ' %s%s5gtop%s\n' "$C_B" "$C_CYA" "$C_RST"
+	bar_modems
+	bar_tabs
+	box_top "$T_MODEM"
+	box_mid; box_mid; box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_SIM"
+	box_mid; box_mid; box_mid
+	box_end
+	box_top "$T_PORTS"
+	box_mid; box_mid; box_mid
+	[ "$TINY" = 1 ] || box_end
+	keyhint "+/-	$T_K_WIDTH"
+	ROW_END=23
+	[ "$TINY" = 1 ] && ROW_END=22
+}
+
+draw_modem() {
+	_w=$((W - 26))
+	lab 7  2 "$T_MODEL"  14 "$(fit "$(v modem)" $_w)" $_w
+	lab 8  2 "$T_FW"     14 "$(fit "$(v firmware)" $_w)" $_w
+	lab 9  2 "$T_IMEI"   14 "$(fit "$(v imei)" $_w)" $_w
+	lab 10  2 "$T_TEMP"   14 "$(fit "$(_temp_cell "$(v mtemp)")" $_w)" $_w
+	lab 11  2 "$T_PROTO"  14 "$(fit "$(v protocol)" $_w)" $_w
+
+	lab 14 2 "$T_SIM"    14 "$(fit "$(v simslot)" $_w)" $_w
+	lab 15 2 "$T_IMSI"   14 "$(fit "$(v imsi)" $_w)" $_w
+	lab 16 2 "$T_ICCID"  14 "$(fit "$(v iccid)" $_w)" $_w
+
+	lab 19 2 'AT'          14 "$(fit "$(v cport)" $_w)" $_w
+	lab 20 2 'SMS'         14 "$(fit "$(uci -q get 5gmodem.sms.readport)" $_w)" $_w
+	lab 21 2 "$T_STORAGE"  14 "$(fit "$(uci -q get 5gmodem.sms.storage)" $_w)" $_w
+}
+
+SMS_ROWS_DEF=24
+SMS_ROWS=$SMS_ROWS_DEF
+SMS_TEXT_LINES=2
+
+frame_sms() {
+	printf '%s[2J%s[H' "$ESC" "$ESC"
+	printf ' %s%s5gtop%s\n' "$C_B" "$C_CYA" "$C_RST"
+	bar_modems
+	bar_tabs
+	box_top "$T_TAB_SMS"
+	_i=0
+	while [ "$_i" -lt "$SMS_ROWS" ]; do box_mid; _i=$((_i + 1)); done
+	box_end
+	keyhint "+/-	$T_K_WIDTH"
+	ROW_END=$((SMS_ROWS + 8))
+}
+
+draw_sms() {
+	_r=7
+	if [ ! -e "$SMSFILE" ]; then
+		at $_r 4 "${C_DIM}$(fit "$T_SMSLOAD" $((W - 6)))${C_RST}"
+		_r=$((_r + 1))
+	elif [ ! -s "$SMSFILE" ]; then
+		at $_r 4 "${C_DIM}$(fit "$T_NOSMS" $((W - 6)))${C_RST}"
+		_r=$((_r + 1))
+	else
+		_n=0
+		while IFS="$(printf '\t')" read -r _sn _ts _tx; do
+			[ -n "$_sn" ] || continue
+			[ "$_r" -gt $((6 + SMS_ROWS - 1)) ] && break
+			at $_r 4 "${C_B}$(fit "$_sn" 24)${C_RST}${C_DIM}$(fit "$_ts" $((W - 32)))${C_RST}"
+			_r=$((_r + 1))
+			_ln=0
+			wrap "$_tx" $((W - 6)) > "$DATA.wrap"
+			_wn=$(grep -c '' "$DATA.wrap")
+			while read -r _wl; do
+				[ "$_ln" -ge "$SMS_TEXT_LINES" ] && break
+				[ "$_r" -gt $((6 + SMS_ROWS)) ] && break
+				_ln=$((_ln + 1))
+				[ "$_ln" = "$SMS_TEXT_LINES" ] && [ "$_wn" -gt "$_ln" ] && _wl="$_wl ~"
+				at $_r 4 "$(fit "$_wl" $((W - 6)))"
+				_r=$((_r + 1))
+			done < "$DATA.wrap"
+			_r=$((_r + 1))
+			_n=$((_n + 1))
+		done < "$SMSFILE"
+		[ "$_n" = 0 ] && { at 7 4 "${C_DIM}$(fit "$T_NOSMS" $((W - 6)))${C_RST}"; _r=8; }
+	fi
+	while [ "$_r" -le $((6 + SMS_ROWS)) ]; do
+		at $_r 4 "$(fit '' $((W - 6)))"
+		_r=$((_r + 1))
+	done
+}
+
+ESIM_ROWS=8
+
+frame_esim() {
+	printf '%s[2J%s[H' "$ESC" "$ESC"
+	printf ' %s%s5gtop%s\n' "$C_B" "$C_CYA" "$C_RST"
+	bar_modems
+	bar_tabs
+	box_top "$T_TAB_ESIM"
+	_i=0
+	while [ "$_i" -lt "$ESIM_ROWS" ]; do box_mid; _i=$((_i + 1)); done
+	box_end
+	keyhint "1-6	$T_ESIM_HINT
+Enter	$T_ESIM_ADD
++/-	$T_K_WIDTH"
+	ROW_END=16
+}
+
+draw_esim() {
+	_r=7
+	if [ -f "$DLBUSY" ]; then
+		at $_r 4 "${C_YEL}$(fit "$T_ESIM_DL" $((W - 6)))${C_RST}"
+		_r=$((_r + 1))
+		/usr/share/5gmodem/esim.sh progress 2>/dev/null \
+			| sed -n 's/.*"message"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' \
+			| tail -6 > "$DATA.dlog" 2>/dev/null
+		while read -r _dl; do
+			[ "$_r" -gt $((6 + ESIM_ROWS)) ] && break
+			at $_r 4 "${C_DIM}$(fit "$_dl" $((W - 6)))${C_RST}"
+			_r=$((_r + 1))
+		done < "$DATA.dlog"
+		while [ "$_r" -le $((6 + ESIM_ROWS)) ]; do
+			at $_r 4 "$(fit '' $((W - 6)))"
+			_r=$((_r + 1))
+		done
+		return
+	fi
+	if [ ! -s "$ESFILE" ]; then
+		at $_r 4 "${C_DIM}$(fit "$T_ESIM_LOAD" $((W - 6)))${C_RST}"
+		_r=$((_r + 1))
+	elif [ "$(jsonfilter -i "$ESFILE" -e '@.unavailable' 2>/dev/null)" = "1" ]; then
+		at $_r 4 "${C_DIM}$(fit "$T_ESIM_NA" $((W - 6)))${C_RST}"
+		_r=$((_r + 1))
+	else
+		_n=0
+		while [ "$_n" -lt 6 ]; do
+			_ic=$(jsonfilter -i "$ESFILE" -e "@.profiles.payload.data[$_n].iccid" 2>/dev/null)
+			[ -n "$_ic" ] || break
+			_st=$(jsonfilter -i "$ESFILE" -e "@.profiles.payload.data[$_n].profileState" 2>/dev/null)
+			_nk=$(jsonfilter -i "$ESFILE" -e "@.profiles.payload.data[$_n].profileNickname" 2>/dev/null)
+			[ -n "$_nk" ] && [ "$_nk" != "null" ] || \
+				_nk=$(jsonfilter -i "$ESFILE" -e "@.profiles.payload.data[$_n].serviceProviderName" 2>/dev/null)
+			[ -n "$_nk" ] && [ "$_nk" != "null" ] || _nk="$_ic"
+			[ "$_r" -gt $((6 + ESIM_ROWS)) ] && break
+			if [ "$_st" = "enabled" ]; then
+				_mk="${C_GRN}*${C_RST}"; _nm="${C_B}${_nk}${C_RST}"; _sf="${C_GRN}${T_ESIM_ON}${C_RST}"
+			else
+				_mk="${C_DIM} ${C_RST}"; _nm="${C_DIM}${_nk}${C_RST}"; _sf=""
+			fi
+			at $_r 4 "$_mk ${C_YEL}$((_n + 1))${C_RST} $(pad "$_nm" 28)${C_DIM}$(pad "$_ic" $((W - 46)))${C_RST}$_sf"
+			_r=$((_r + 1)); _n=$((_n + 1))
+		done
+		[ "$_n" = 0 ] && { at 7 4 "${C_DIM}$(fit "$T_ESIM_NA" $((W - 6)))${C_RST}"; _r=8; }
+	fi
+	while [ "$_r" -le $((6 + ESIM_ROWS)) ]; do
+		at $_r 4 "$(fit '' $((W - 6)))"
+		_r=$((_r + 1))
+	done
+}
+
+esim_download() {
+	[ -n "$1" ] || return
+	: > "$DLBUSY"
+	( /usr/share/5gmodem/esim.sh progress reset >/dev/null 2>&1
+	  /usr/share/5gmodem/esim.sh download "$1" > "$OUTFILE" 2>&1
+	  rm -f "$ESFILE"
+	  rm -f "$DLBUSY" ) >/dev/null 2>&1 </dev/null &
+}
+
+esim_switch() {
+	[ -s "$ESFILE" ] || return
+	_i=$(( $1 - 1 ))
+	_ic=$(jsonfilter -i "$ESFILE" -e "@.profiles.payload.data[$_i].iccid" 2>/dev/null)
+	[ -n "$_ic" ] || return
+	_st=$(jsonfilter -i "$ESFILE" -e "@.profiles.payload.data[$_i].profileState" 2>/dev/null)
+	[ "$_st" = "enabled" ] && return
+	at 6 4 "${C_YEL}$(fit "$T_ESIM_LOAD" $((W - 6)))${C_RST}"
+	( /usr/share/5gmodem/esim.sh enable "$_ic" >/dev/null 2>&1
+	  /usr/share/5gmodem/esim.sh reapply >/dev/null 2>&1
+	  rm -f "$ESFILE" ) >/dev/null 2>&1 </dev/null &
+}
+
+CON_ROWS=12
+
+frame_console() {
+	printf '%s[2J%s[H' "$ESC" "$ESC"
+	printf ' %s%s5gtop%s\n' "$C_B" "$C_CYA" "$C_RST"
+	bar_modems
+	bar_tabs
+	box_top "$1"
+	_i=0
+	while [ "$_i" -lt "$CON_ROWS" ]; do box_mid; _i=$((_i + 1)); done
+	box_end
+	keyhint "Enter	$2"
+	ROW_END=20
+}
+
+frame_ussd() { frame_console "$T_TAB_USSD" "$T_ENTER_USSD"; }
+frame_at()   { frame_console "$T_TAB_AT"   "$T_ENTER_AT"; }
+
+draw_console() {
+	_r=7
+	if [ -f "$OUTBUSY" ]; then
+		at $_r 4 "${C_YEL}$(fit "$T_SENDING" $((W - 6)))${C_RST}"
+		_r=$((_r + 1))
+	elif [ -s "$OUTFILE" ]; then
+		tr -d '\r' < "$OUTFILE" | while read -r _ol; do
+			printf '%s\n' "$_ol"
+		done | while read -r _ol; do
+			wrap "$_ol" $((W - 6))
+		done > "$DATA.owrap"
+		while read -r _ol; do
+			[ "$_r" -gt $((6 + CON_ROWS)) ] && break
+			at $_r 4 "$(fit "$_ol" $((W - 6)))"
+			_r=$((_r + 1))
+		done < "$DATA.owrap"
+	fi
+	while [ "$_r" -le $((6 + CON_ROWS)) ]; do
+		at $_r 4 "$(fit '' $((W - 6)))"
+		_r=$((_r + 1))
+	done
+}
+
+draw_ussd() { OUTFILE="$DATA.out.ussd"; OUTBUSY="$DATA.outbusy.ussd"; draw_console; }
+draw_at()   { OUTFILE="$DATA.out.at";   OUTBUSY="$DATA.outbusy.at";   draw_console; }
+
+ENG_KEYS="error modem operator_name operator_mcc operator_mnc tac_dec enbid bs_distance registration pband bandwidth pci earfcn rsrp rsrq sinr rssi pmimo pmod"
+for _i in 1 2 3 4; do
+	for _f in band pci earfcn rsrp rsrq sinr rssi mimo mod state; do ENG_KEYS="$ENG_KEYS s$_i$_f"; done
+done
+ENG_ROWS=16
+ENG_MSG=""; ENG_MSGN=0
+ENG_ARROW="→"
+[ "${TOP_ASCII:-0}" = 1 ] && ENG_ARROW="->"
+ENG_FILE="/tmp/5gmodem/5gtop-console.txt"
+
+mlog_path() {
+	MLOG="/tmp/5gmodem/5gtop_modelog_$(uci -q get 5gmodem.@5gmodem[0].active_modem 2>/dev/null | tr -c 'A-Za-z0-9\n' '_')"
+}
+mlog_path
+
+modelog_update() {
+	[ -s "$DATA" ] || return 0
+	M_error=""; M_mode=""; M_registration=""; M_pband=""
+	M_s1band=""; M_s1state=""; M_s2band=""; M_s2state=""
+	M_s3band=""; M_s3state=""; M_s4band=""; M_s4state=""
+	eval "$(jsonfilter -i "$DATA" -e 'M_error=@.error' -e 'M_mode=@.mode' \
+		-e 'M_registration=@.registration' -e 'M_pband=@.pband' \
+		-e 'M_s1band=@.s1band' -e 'M_s1state=@.s1state' -e 'M_s2band=@.s2band' -e 'M_s2state=@.s2state' \
+		-e 'M_s3band=@.s3band' -e 'M_s3state=@.s3state' -e 'M_s4band=@.s4band' -e 'M_s4state=@.s4state' 2>/dev/null)"
+	[ -z "$M_error" ] || return 0
+	_ml=$(printf '%s\n' "$M_mode" "$M_registration" "$M_pband" \
+		"$M_s1band" "$M_s1state" "$M_s2band" "$M_s2state" \
+		"$M_s3band" "$M_s3state" "$M_s4band" "$M_s4state" | awk \
+		-v last="$(tail -n 1 "$MLOG" 2>/dev/null)" -v now="$(date '+%Y-%m-%d %H:%M:%S')" '
+		function bn(b,   a) { split(b, a, " "); return a[1] }
+		NR == 1 { mode = $0 }
+		NR == 2 { reg = $0 }
+		NR == 3 { pb = $0 }
+		NR >= 4 && NR % 2 == 0 { sb[NR] = $0 }
+		NR >= 5 && NR % 2 == 1 { ss[NR - 1] = $0 }
+		END {
+			tech = mode; sub(/[|].*$/, "", tech); gsub(/^ +| +$/, "", tech)
+			if (tech == "-") tech = ""
+			if (pb == "" || pb == "-") {
+				if (reg !~ /^[0234]$/) exit
+				sig = "-"
+			} else {
+				n = 1; bl = bn(pb)
+				for (i = 4; i <= 10; i += 2)
+					if (sb[i] != "" && sb[i] != "-" && ss[i] != "deactivated") { bl = bl "+" bn(sb[i]); n++ }
+				sig = (n > 1) ? (tech " " n "CA (" bl ")") : (tech " " bl)
+				gsub(/^ +/, "", sig)
+			}
+			split(last, a, "|")
+			if (last != "" && sig == a[3]) exit
+			print now "|" a[3] "|" sig
+		}')
+	[ -n "$_ml" ] || return 0
+	printf '%s\n' "$_ml" >> "$MLOG"
+	[ "$(wc -l < "$MLOG")" -gt 60 ] && tail -n 40 "$MLOG" > "$MLOG.$$" && mv "$MLOG.$$" "$MLOG"
+	return 0
+}
+
+ENG_AWK='
+function sp(n,   o) { o = ""; while (n-- > 0) o = o " "; return o }
+function val(k,   v) { v = (k in D) ? D[k] : ""; if (v == "-" || v == "null") v = ""; return v }
+function num(s) {
+	sub(/^[ \t]+/, "", s); sub(/[^0-9.+-].*$/, "", s)
+	return (s ~ /^[+-]?[0-9]+([.][0-9]+)?$/) ? s : ""
+}
+function lv(k, v, nr) {
+	v += 0
+	if (k == "rsrp") { if (v >= -80) return 1; if (v >= -90) return 2; if (v >= -100) return 3; return 4 }
+	if (k == "rsrq" && nr) { if (v >= -10) return 1; if (v >= -13) return 2; if (v >= -15) return 3; return 4 }
+	if (k == "rsrq") { if (v >= -10) return 1; if (v >= -15) return 2; if (v >= -20) return 3; return 4 }
+	if (k == "sinr") { if (v >= 20) return 1; if (v >= 13) return 2; if (v >= 0) return 3; return 4 }
+	if (k == "rssi") { if (v > -65) return 1; if (v > -75) return 2; if (v > -85) return 3; return 4 }
+	return 0
+}
+function qc(k, v, nr,   l) {
+	l = lv(k, v, nr)
+	if (l == 1) return q1 v cr
+	if (l == 2) return q2 v cr
+	if (l == 3) return q3 v cr
+	return q4 v cr
+}
+function bname(b,   a, n, d) {
+	split(b, a, " "); n = a[1]
+	if (n ~ /^[Bn][0-9]+$/) return n
+	if (match(b, /[Bb][Aa][Nn][Dd] *[0-9]+/)) {
+		d = substr(b, RSTART, RLENGTH); gsub(/[^0-9]/, "", d)
+		return ((b ~ /NR|5G/) ? "n" : "B") d
+	}
+	return n
+}
+function blab(b, fb,   n, bw) {
+	n = bname(b); bw = ""
+	if (index(b, " @")) bw = substr(b, index(b, " @") + 2)
+	else if (fb != "") bw = fb
+	sub(/ .*$/, "", bw); sub(/MHz$/, "", bw)
+	if (bw !~ /^[0-9]+([.][0-9]+)?$/) return n
+	return (length(n) < 3 ? n sp(3 - length(n)) : n) "@" bw
+}
+function trip(a, b, c, nr,   last) {
+	MP = ""; MC = ""
+	last = (c != "") ? 3 : (b != "") ? 2 : (a != "") ? 1 : 0
+	if (last >= 1) { if (a != "") { MP = a; MC = qc("rsrp", a, nr) } else { MP = "?"; MC = cd "?" cr } }
+	if (last >= 2) {
+		MP = MP "/"; MC = MC cd "/" cr
+		if (b != "") { MP = MP b; MC = MC qc("rsrq", b, nr) } else { MP = MP "?"; MC = MC cd "?" cr }
+	}
+	if (last >= 3) { MP = MP "/" c; MC = MC cd "/" cr qc("sinr", c, nr) }
+}
+function cc(lab, b, fb, e, p, rp, rq, sn, rs, mi, mo, st,   bl, nr, ep) {
+	NC++
+	bl = blab(b, fb); nr = (bl ~ /^n[0-9]/)
+	FP[NC, 1] = lab; FC[NC, 1] = ca lab cr
+	FP[NC, 2] = bl; FC[NC, 2] = bl
+	ep = (e != "" && p != "") ? e "/" p : (e != "") ? e : (p != "") ? "/" p : ""
+	FP[NC, 3] = ep; FC[NC, 3] = ep
+	trip(num(rp), num(rq), num(sn), nr); FP[NC, 4] = MP; FC[NC, 4] = MC
+	if (mi ~ /^[0-9]+$/) mi = mi "L"
+	FP[NC, 5] = mi; FC[NC, 5] = mi
+	FP[NC, 6] = mo; FC[NC, 6] = mo
+	if (st == "activated" || st == "on") { FP[NC, 7] = ton; FC[NC, 7] = ton }
+	else if (st == "deactivated") { FP[NC, 7] = tsb; FC[NC, 7] = cd tsb cr }
+	else { FP[NC, 7] = st; FC[NC, 7] = st }
+	rs = num(rs)
+	if (rs != "") { FP[NC, 8] = "RSSI " rs; FC[NC, 8] = cd "RSSI " cr qc("rssi", rs, nr) }
+	else { FP[NC, 8] = ""; FC[NC, 8] = "" }
+}
+function out(p, c) { if (NO >= R) return; NO++; sub(/ +$/, "", p); print p "\t" c cr }
+function sep(t,   s) { s = ln ln ln ln " " t " " ln ln ln ln; out(s, cd s) }
+BEGIN { split("6 8 12 18 6 8 10 0", MINW, " ") }
+/^K / { k = substr($0, 3); i = index(k, "="); D[substr(k, 1, i - 1)] = substr(k, i + 1); next }
+/^[{]/ { NBL[++NN] = $0; next }
+/^[0-9]/ { LOG[++NL] = $0; next }
+function jget(s, k,   r) {
+	if (!match(s, "\"" k "\": *\"?[^\",}]*")) return ""
+	r = substr(s, RSTART, RLENGTH); sub(/^[^:]*: */, "", r); gsub(/"/, "", r); sub(/ +$/, "", r)
+	return r
+}
+END {
+	split(now, NW, " ")
+	HN = 0; HP[++HN] = NW[2]
+	if (val("modem") != "") HP[++HN] = val("modem")
+	op = val("operator_name"); gsub(/&amp;/, "\\&", op)
+	pl = (val("operator_mcc") != "" && val("operator_mnc") != "") ? val("operator_mcc") "-" val("operator_mnc") : ""
+	if (pl != "" && op != "") HP[++HN] = pl " " op
+	else if (pl op != "") HP[++HN] = pl op
+	if (val("tac_dec") != "") HP[++HN] = "TAC " val("tac_dec")
+	if (val("enbid") != "") HP[++HN] = "eNB " val("enbid")
+	d = num(val("bs_distance")) + 0
+	if (d > 0) HP[++HN] = "TA ~" ((d < 100) ? int(d) " m" : sprintf("%.1f km", d / 1000))
+	h = ""; hl = 0
+	for (i = 1; i <= HN; i++) {
+		if (h != "" && ulen(h) + 2 + ulen(HP[i]) > W && hl == 0) { out(h, cd h); h = ""; hl = 1 }
+		h = (h == "") ? HP[i] : h "  " HP[i]
+	}
+	if (ulen(h) > W) h = ucut(h, W)
+	out(h, cd h)
+
+	NC = 0
+	if (val("error") == "" && val("pband") != "")
+		cc("PCC", val("pband"), val("bandwidth"), val("earfcn"), val("pci"), val("rsrp"), val("rsrq"), val("sinr"), val("rssi"), val("pmimo"), val("pmod"), "on")
+	for (i = 1; i <= 4 && val("error") == ""; i++) {
+		s = "s" i
+		if (val(s "band") == "") continue
+		cc("SCC" i, val(s "band"), "", val(s "earfcn"), val(s "pci"), val(s "rsrp"), val(s "rsrq"), val(s "sinr"), val(s "rssi"), val(s "mimo"), val(s "mod"), val(s "state"))
+	}
+	if (NC == 0) {
+		if (wt) m = tcol
+		else if (val("error") != "") m = tnd " (" val("error") ")"
+		else if (val("registration") ~ /^[0234]$/) m = tns
+		else m = tnd
+		out(ucut(m, W), cd ucut(m, W))
+	}
+	for (c = 1; c <= 8; c++) {
+		CW[c] = 0
+		for (r = 1; r <= NC; r++) if (ulen(FP[r, c]) + 2 > CW[c]) CW[c] = ulen(FP[r, c]) + 2
+		if (CW[c] > 0 && CW[c] < MINW[c]) CW[c] = MINW[c]
+	}
+	split("1 2 3 4 7 5 6 8", PRI, " ")
+	x = 0
+	for (i = 1; i <= 8; i++) {
+		c = PRI[i]; USE[c] = 0
+		if (CW[c] == 0) continue
+		if (x + CW[c] - 2 > W) continue
+		USE[c] = 1; x += CW[c]
+	}
+	for (r = 1; r <= NC; r++) {
+		p = ""; q = ""
+		for (c = 1; c <= 8; c++) {
+			if (!USE[c]) continue
+			l = ulen(FP[r, c])
+			p = p FP[r, c] sp(CW[c] - l); q = q FC[r, c] sp(CW[c] - l)
+		}
+		out(p, q)
+	}
+
+	nn = 0
+	for (i = 1; i <= NN; i++) {
+		s = NBL[i]
+		if (jget(s, "serving") ~ /^(1|true)$/) continue
+		b = jget(s, "band"); if (b ~ /^[0-9]+$/) b = "B" b
+		e = jget(s, "earfcn"); p = jget(s, "pci")
+		ep = (e != "" && p != "") ? e "/" p : e p
+		nr = (b ~ /^n[0-9]/)
+		trip(num(jget(s, "rsrp")), num(jget(s, "rsrq")), "", nr)
+		nn++
+		np = sprintf("%-5s", b) sprintf("%-12s", ep) MP
+		nc = sprintf("%-5s", b) sprintf("%-12s", ep) MC
+		NP[nn] = np; NQ[nn] = nc
+	}
+	per = int((W + 3) / 31); if (per < 1) per = 1
+	nbl = int((nn + per - 1) / per); if (nbl > 2) nbl = 2
+	rem = R - NO
+	if (nn > 0 && rem >= 2) {
+		k = nbl
+		if (NL > 0 && rem - 1 - k < 2) k = rem - 3
+		if (k < 1) k = 1
+		if (k > rem - 1) k = rem - 1
+		sep(tn)
+		j = 1
+		for (r = 1; r <= k; r++) {
+			p = ""; q = ""
+			for (c = 1; c <= per && j <= nn; c++) {
+				pd = (c < per && j < nn) ? sp(31 - ulen(NP[j])) : ""
+				p = p NP[j] pd; q = q NQ[j] pd; j++
+			}
+			if (ulen(p) > W) { p = ucut(p, W); q = p }
+			out(p, q)
+		}
+	}
+	rem = R - NO
+	if (NL > 0 && rem >= 2) {
+		sep(tl)
+		for (i = NL; i >= 1 && NO < R; i--) {
+			split(LOG[i], a, "|"); split(a[1], t, " ")
+			ts = (t[1] == NW[1]) ? t[2] : substr(t[1], 6) " " substr(t[2], 1, 5)
+			o = (a[2] == "-") ? tns : a[2]; n = (a[3] == "-") ? tns : a[3]
+			p = ts "  " ((o != "") ? o " " ar " " : "") n
+			q = cd ts cr "  " ((o != "") ? o " " cd ar cr " " : "") n
+			if (ulen(p) > W) { p = ucut(p, W); q = p }
+			out(p, q)
+		}
+	}
+}'
+
+eng_lines() {
+	_ew="$1"; _eh="$2"; _ewt=0
+	[ -n "$J" ] || _ewt=1
+	set --
+	for _ek in $ENG_KEYS; do
+		eval "E_$_ek=''"
+		set -- "$@" -e "E_$_ek=@.$_ek"
+	done
+	[ -n "$J" ] && eval "$(printf '%s' "$J" | jsonfilter "$@" 2>/dev/null)"
+	{
+		for _ek in $ENG_KEYS; do
+			eval "_ev=\$E_$_ek"
+			printf 'K %s=%s\n' "$_ek" "$_ev"
+		done
+		[ -n "$J" ] && printf '%s' "$J" | jsonfilter -e '@.neighbors[*]' 2>/dev/null
+		[ -s "$MLOG" ] && tail -n 40 "$MLOG"
+	} | tr '\r\t' '  ' | awk -v W="$_ew" -v R="$_eh" -v now="$(date '+%Y-%m-%d %H:%M:%S')" \
+		-v q1="$C_Q1" -v q2="$C_Q2" -v q3="$C_Q3" -v q4="$C_Q4" \
+		-v cd="$C_DIM" -v ca="$C_CYA" -v cr="$C_RST" -v ln="$GL_LINE" -v ar="$ENG_ARROW" \
+		-v tn="$T_NEIGH" -v tl="$T_MODELOG" -v tns="$T_NOSERVICE" -v tnd="$T_NODATA" \
+		-v ton="$T_CC_ON" -v tsb="$T_CC_STBY" -v tcol="$T_COLLECTING" -v wt="$_ewt" "$UCUT_AWK$ENG_AWK"
+}
+
+frame_eng() {
+	printf '%s[2J%s[H' "$ESC" "$ESC"
+	printf ' %s%s5gtop%s\n' "$C_B" "$C_CYA" "$C_RST"
+	_tight="$TINY"; bar_modems; bar_tabs; _tight=0
+	box_top "$T_TAB_ENG"
+	_i=0
+	while [ "$_i" -lt "$ENG_ROWS" ]; do box_mid; _i=$((_i + 1)); done
+	[ "$TINY" = 1 ] || box_end
+	if [ "$TINY" = 1 ]; then
+		keyhint "d	$T_K_SAVE"
+	else
+		keyhint "d	$T_K_SAVE
++/-	$T_K_WIDTH"
+	fi
+	ROW_END=$((ENG_ROWS + 8))
+	[ "$TINY" = 1 ] && ROW_END=22
+}
+
+draw_eng() {
+	_et=7; [ "$TINY" = 1 ] && _et=5
+	_er=$ENG_ROWS; _em=""
+	if [ "$ENG_MSGN" -gt 0 ]; then
+		_em="$ENG_MSG"; ENG_MSGN=$((ENG_MSGN - 1)); _er=$((_er - 1))
+	fi
+	eng_lines $((W - 1)) "$_er" > "$DATA.engl" 2>/dev/null
+	: > "$DATA.eng"
+	_r=$_et
+	while IFS="$TABCH" read -r _ep _ec; do
+		[ "$_r" -ge $((_et + _er)) ] && break
+		at "$_r" 2 "$_ec$C_RST$ESC[K"
+		printf '%s\n' "$_ep" >> "$DATA.eng"
+		_r=$((_r + 1))
+	done < "$DATA.engl"
+	while [ "$_r" -lt $((_et + ENG_ROWS)) ]; do
+		at "$_r" 1 "$ESC[K"
+		_r=$((_r + 1))
+	done
+	[ -n "$_em" ] && at $((_et + ENG_ROWS - 1)) 2 "${C_YEL}$(fit "$_em" $((W - 1)))${C_RST}"
+	return 0
+}
+
+eng_save() {
+	if { date '+%Y-%m-%d %H:%M:%S'; cat "$DATA.eng"; } > "$ENG_FILE" 2>/dev/null; then
+		ENG_MSG="$T_SAVED $ENG_FILE"
+	else
+		ENG_MSG="$ENG_FILE: error"
+	fi
+	ENG_MSGN=5
+}
+
+read_line() {
+	_RL=""
+	[ "$TTY" = 1 ] || return 1
+	[ "$HAS_STTY" = 1 ] && stty "$STTY_SAVE" 2>/dev/null
+	printf '%s[%d;1H%s[K%s%s:%s ' "$ESC" "$ROW_END" "$ESC" "$C_B$C_YEL" "$1" "$C_RST"
+	printf '%s[?25h' "$ESC"
+	IFS= read -r _rl
+	printf '%s[?25l' "$ESC"
+	[ "$HAS_STTY" = 1 ] && stty -echo -icanon min 0 time 1 2>/dev/null
+	_RL="$_rl"
+}
+
+send_console() {
+	[ -n "$2" ] || return
+	OUTFILE="$DATA.out.$1"; OUTBUSY="$DATA.outbusy.$1"
+	: > "$OUTBUSY"
+	( _p=""
+	  case "$1" in
+	  	ussd) _p=$(uci -q get 5gmodem.sms.ussdport) ;;
+	  	at)   _p=$(uci -q get 5gmodem.sms.atport) ;;
+	  esac
+	  [ -n "$_p" ] || _p=$(uci -q get 5gmodem.@5gmodem[0].at_port)
+	  if [ -z "$_p" ] || [ ! -e "$_p" ]; then
+	  	printf '%s\n' "$T_NOPORT" > "$OUTFILE"
+	  else
+	  	case "$1" in
+	  	ussd)
+	  		_sc_code="$2"
+	  		set -- -d "$_p"
+	  		[ "$(uci -q get 5gmodem.sms.ussd)" = "1" ] && set -- "$@" -R
+	  		[ "$(uci -q get 5gmodem.sms.pdu)" = "1" ] && set -- "$@" -r
+	  		sms_tool "$@" ussd "$_sc_code" > "$OUTFILE" 2>&1
+	  		;;
+	  	at) sms_tool -d "$_p" at "$2" > "$OUTFILE" 2>&1 ;;
+	  	esac
+	  fi
+	  rm -f "$OUTBUSY" ) >/dev/null 2>&1 </dev/null &
+}
+
+draw_narrow() {
+	_vc=13
+	_l() { printf '%s[%d;2H%s%s%s%s' "$ESC" "$1" "$C_DIM" "$(pad "$2" 10)" "$C_RST" "$3"; }
+	_l 7  "$T_MODEL"   "$(fit "$(v modem)" $((W - 12)))"
+	_l 8  "$T_OPERATOR" "$(fit "$(_operator_plmn)" $((W - 12)))"
+	_sg=$(v signal)
+	_l 9  "$T_LEVEL"  "$(bar "$_sg" 10) ${C_B}${_sg}%${C_RST}  "
+	_l 10 "$T_PHONE"  "$(pad "${C_DIM}$(_phone_or_loc)${C_RST}" $((W - 12)))"
+	_t=$(v mtemp)
+	case "$_t" in *C|-) : ;; *) _t="$_t °C" ;; esac
+	_l 11 "$T_TEMP"    "$(pad "$(_temp_cell "$_t")" $((W - 12)))"
+
+	_a=$(v rsrp); _b=$(v rsrq); _c=$(v sinr); _e=$(v rssi)
+	_l 14 'RSRP'     "$(qcolor rsrp "$_a")$(pad "$_a" 8)${C_RST}$(mbar rsrp "$_a")"
+	_l 15 'RSRQ'     "$(qcolor rsrq "$_b")$(pad "$_b" 8)${C_RST}$(mbar rsrq "$_b")"
+	_l 16 'SINR'     "$(qcolor sinr "$_c")$(pad "$_c" 8)${C_RST}$(mbar sinr "$_c")"
+	_l 17 'RSSI'     "$(qcolor rssi "$_e")$(pad "$_e" 8)${C_RST}$(mbar rssi "$_e")"
+
+	_md=$(v mode); _md=${_md%% | *}
+	_mb=$(fit "${_md}  $(v pband)" $((W - 12)))
+	_l 20 "$T_MODE"    "${C_CYA}${_mb}${C_RST}"
+	_l 21 'PCI/EARF' "$(fit "$(v pci) / $(v earfcn)" $((W - 12)))"
+	_l 22 'IP'       "${C_GRN}$(fit "$(v ipaddr)" 16)${C_RST}$(fit "$(uptime_str)" $((W - 29)))"
+
+	if [ -f "$STFILE" ]; then
+		_sj=$(cat "$STFILE" 2>/dev/null)
+		_run=$(printf '%s' "$_sj" | jsonfilter -e '@.running' 2>/dev/null)
+		if [ "$_run" = "1" ]; then
+			_fr=$((_spin % 8)); _anim=""; _i=0
+			while [ "$_i" -lt 8 ]; do
+				[ "$_i" = "$_fr" ] && _anim="$_anim#" || _anim="$_anim."
+				_i=$((_i + 1))
+			done
+			_l 25 "$T_TEST"  "$(pad "${C_YEL}${_anim}${C_RST} ${T_RUNNING}" $((W - 12)))"
+			_l 26 ''      "$(pad '' $((W - 12)))"
+		else
+			_l 25 "$T_DL" "$(pad "${C_GRN}$(printf '%s' "$_sj" | jsonfilter -e '@.down_mbps' 2>/dev/null)${C_RST} ${T_MBPS}" $((W - 12)))"
+			_l 26 "$T_UL" "$(pad "${C_BLU}$(printf '%s' "$_sj" | jsonfilter -e '@.up_mbps' 2>/dev/null)${C_RST} ${T_MBPS}" $((W - 12)))"
+		fi
+	else
+		_l 25 "$T_TEST" "$(pad "$(hl_name "$T_PRESS_S" t "$C_DIM")" $((W - 12)))"
+	fi
+
+	_ar=33; _any=0
+	for _i in 1 2 3 4; do
+		_sb=$(v "s${_i}band")
+		[ "$_sb" = "-" ] && continue
+		[ "$_ar" -gt 34 ] && break
+		printf '%s[%d;2H%sSCC%s%s %s' "$ESC" "$_ar" "$C_DIM" "$_i" "$C_RST" "$(fit "$_sb" $((W - 8)))"
+		_ar=$((_ar + 1)); _any=1
+	done
+	[ "$_any" = 0 ] && { printf '%s[33;2H%s%s%s' "$ESC" "$C_DIM" "$(pad "$T_NOCA" $((W - 2)))" "$C_RST"; _ar=34; }
+	while [ "$_ar" -le 34 ]; do
+		printf '%s[%d;2H%s' "$ESC" "$_ar" "$(pad '' $((W - 2)))"
+		_ar=$((_ar + 1))
+	done
+
+	if [ -s "$NPFILE" ]; then
+		_np=$(cat "$NPFILE" 2>/dev/null); _n=0; _rw=29
+		_act=$(np_active_idx "$_np")
+		while [ "$_n" -lt 2 ]; do
+			_if=$(printf '%s' "$_np" | jsonfilter -e "@[$_n].iface" 2>/dev/null)
+			[ -n "$_if" ] || break
+			_lb=$(printf '%s' "$_np" | jsonfilter -e "@[$_n].label" 2>/dev/null)
+			_mt=$(printf '%s' "$_np" | jsonfilter -e "@[$_n].metric" 2>/dev/null)
+			[ "$_n" = "$_act" ] && _mk="${C_GRN}>${C_RST}" || _mk=" "
+			printf '%s[%d;2H%s %s%d%s %s' "$ESC" "$_rw" "$_mk" "$C_DIM" "$((_n + 1))" "$C_RST" "$(pad "$_lb" $((W - 8)))"
+			_rw=$((_rw + 1)); _n=$((_n + 1))
+		done
+	fi
+	printf '%s[%d;1H' "$ESC" "$ROW_END"
+}
+
+draw_tiny() {
+	_l() { printf '%s[%d;2H%s%s%s%s' "$ESC" "$1" "$C_DIM" "$(pad "$2" 10)" "$C_RST" "$3"; }
+	_l 5  "$T_MODEL"    "$(fit "$(v modem)" $((W - 12)))"
+	_l 6  "$T_OPERATOR" "$(fit "$(_operator_plmn)" $((W - 12)))"
+	_sg=$(v signal)
+	_l 7  "$T_LEVEL"    "$(bar "$_sg" 10) ${C_B}${_sg}%${C_RST}  "
+	_l 8  "$T_PHONE"    "$(pad "${C_DIM}$(_phone_or_loc)${C_RST}" $((W - 12)))"
+	_t=$(v mtemp)
+	case "$_t" in *C|-) : ;; *) _t="$_t °C" ;; esac
+	_l 9  "$T_TEMP"     "$(pad "$(_temp_cell "$_t")" $((W - 12)))"
+
+	_a=$(v rsrp); _b=$(v rsrq); _c=$(v sinr); _e=$(v rssi)
+	_l 11 'RSRP' "$(qcolor rsrp "$_a")$(pad "$_a" 8)${C_RST}$(mbar rsrp "$_a")"
+	_l 12 'RSRQ' "$(qcolor rsrq "$_b")$(pad "$_b" 8)${C_RST}$(mbar rsrq "$_b")"
+	_l 13 'SINR' "$(qcolor sinr "$_c")$(pad "$_c" 8)${C_RST}$(mbar sinr "$_c")"
+	_l 14 'RSSI' "$(qcolor rssi "$_e")$(pad "$_e" 8)${C_RST}$(mbar rssi "$_e")"
+
+	_md=$(v mode); _md=${_md%% | *}
+	_mb=$(fit "${_md}  $(v pband)" $((W - 12)))
+	_l 16 "$T_MODE"  "${C_CYA}${_mb}${C_RST}"
+	_l 17 'PCI/EARF' "$(fit "$(v pci) / $(v earfcn)" $((W - 12)))"
+	_l 18 'IP'       "${C_GRN}$(fit "$(v ipaddr)" 16)${C_RST}$(fit "$(uptime_str)" $((W - 29)))"
+
+	if [ -f "$STFILE" ]; then
+		_sj=$(cat "$STFILE" 2>/dev/null)
+		_run=$(printf '%s' "$_sj" | jsonfilter -e '@.running' 2>/dev/null)
+		if [ "$_run" = "1" ]; then
+			_fr=$((_spin % 8)); _anim=""; _i=0
+			while [ "$_i" -lt 8 ]; do
+				[ "$_i" = "$_fr" ] && _anim="$_anim#" || _anim="$_anim."
+				_i=$((_i + 1))
+			done
+			_l 20 "$T_TEST" "$(pad "${C_YEL}${_anim}${C_RST} ${T_RUNNING}" $((W - 12)))"
+			_l 21 ''        "$(pad '' $((W - 12)))"
+		else
+			_l 20 "$T_DL" "$(pad "${C_GRN}$(printf '%s' "$_sj" | jsonfilter -e '@.down_mbps' 2>/dev/null)${C_RST} ${T_MBPS}" $((W - 12)))"
+			_l 21 "$T_UL" "$(pad "${C_BLU}$(printf '%s' "$_sj" | jsonfilter -e '@.up_mbps' 2>/dev/null)${C_RST} ${T_MBPS}" $((W - 12)))"
+		fi
+	else
+		_l 20 "$T_TEST" "$(pad "$(hl_name "$T_PRESS_S" t "$C_DIM")" $((W - 12)))"
+	fi
+	printf '%s[%d;1H' "$ESC" "$ROW_END"
+}
+
+draw() {
+	_spin=$((_spin + 1))
+	if [ "$NARROW" = 1 ]; then
+		_st=" "; [ -f "$FETCHING" ] && _st="${C_YEL}*${C_RST}"
+		printf '%s[1;%dH%s%s%s' "$ESC" "$((W - 8))" "$C_DIM" "$(date '+%H:%M')" "$C_RST$_st"
+		[ "$TINY" = 1 ] && draw_tiny || draw_narrow
+		return
+	fi
+	_st=" "
+	[ -f "$FETCHING" ] && _st="${C_YEL}*${C_RST}"
+	at 1 62 "${C_DIM}$(date '+%H:%M:%S')${C_RST} $_st"
+
+	_sg=$(v signal)
+	at 7  4  "$(pad "${C_DIM}[${C_RST}$(sigbars "$_sg")${C_DIM}]${C_RST} ${C_B}${_sg}%${C_RST}" 25)"
+	at 8  4  "${C_DIM}$(fit "$(v modem)" 25)${C_RST}"
+	at 9  4  "${C_CYA}$(fit "$(ca_compact)" 25)${C_RST}"
+	_vw=$((TW - 65)); [ "$_vw" -lt 12 ] && _vw=12; [ "$_vw" -gt 40 ] && _vw=40
+
+	lab 7  30 "$T_OPERATOR" 10 "$(fit "$(_operator_plmn)" 16)" 16
+	_r=$(v registration)
+	case "$_r" in
+		1) _rs="${C_GRN}${T_ONLINE}${C_RST}" ;;
+		5) _rs="${C_GRN}${T_ONLINE}${C_RST} ${C_DIM}${T_ROAM}${C_RST}" ;;
+		-) _rs="${C_DIM}-${C_RST}" ;;
+		*) _rs="${C_YEL}${T_NOREG}${C_RST}" ;;
+	esac
+	lab 8  30 "$T_STATUS"   10 "$_rs" 16
+	lab 9  30 "$T_PHONE"  10 "${C_DIM}$(fit "$(_phone_or_loc)" 16)${C_RST}" 16
+	_sl=$(v simslot)
+	[ "$SLOT_CNT" -gt 1 ] && _sl="$_sl ${C_DIM}(k)${C_RST}"
+	lab 10  30 'SIM'      10 "$_sl" 16
+
+	_md=$(v mode); _md=${_md%% | *}
+	lab 7  57 "$T_MODE"    9 "${C_CYA}$(fit "$_md" $_vw)${C_RST}" $_vw
+	lab 8  57 'IP'       9 "${C_GRN}$(fit "$(v ipaddr)" $_vw)${C_RST}" $_vw
+	_v6=$(g ipaddr6)
+	[ -n "$_v6" ] && [ "$_v6" != "-" ] && lab 9 57 'IPv6' 9 "${C_GRN}$(fit "$_v6" 12)${C_RST}" 12
+	lab 9  57 "$T_TIME"    9 "$(fit "$(uptime_str)" $_vw)" $_vw
+	_t=$(v mtemp)
+	case "$_t" in *C|-) : ;; *) _t="$_t °C" ;; esac
+	lab 10  57 "$T_TEMP"    9 "$(fit "$(_temp_cell_plain "$_t")" $_vw)" $_vw
+	lab 11  57 "$T_TRAFFIC"   9 "${C_DIM}$(fit "v $(_bytes_l10n "$(v rx)")" $_vw)${C_RST}" $_vw
+	at 12  66 "${C_DIM}$(fit "^ $(_bytes_l10n "$(v tx)")" $_vw)${C_RST}"
+
+	_a=$(v rsrp); _b=$(v rsrq); _c=$(v sinr)
+	_e=$(v rssi)
+	at 16 4  "${C_DIM}RSRP${C_RST} $(qcolor rsrp "$_a")$(fit "$_a" 6)${C_RST}${C_DIM}[${C_RST}$(mbar rsrp "$_a" 12)${C_DIM}]${C_RST}"
+	at 17 4  "${C_DIM}RSRQ${C_RST} $(qcolor rsrq "$_b")$(fit "$_b" 6)${C_RST}${C_DIM}[${C_RST}$(mbar rsrq "$_b" 12)${C_DIM}]${C_RST}"
+	at 18 4  "${C_DIM}SINR${C_RST} $(qcolor sinr "$_c")$(fit "$_c" 6)${C_RST}${C_DIM}[${C_RST}$(mbar sinr "$_c" 12)${C_DIM}]${C_RST}"
+	at 19 4  "${C_DIM}RSSI${C_RST} $(qcolor rssi "$_e")$(fit "$_e" 6)${C_RST}${C_DIM}[${C_RST}$(mbar rssi "$_e" 12)${C_DIM}]${C_RST}"
+
+	lab 16 30 "$T_BAND" 10 "$(band_fit "$(v pband)" 16)" 16
+	lab 17 30 "$T_BW"   10 "$(fit "$(v bandwidth)" 16)" 16
+	lab 18 30 'PCI'      10 "$(fit "$(v pci)" 16)" 16
+	lab 19 30 'EARFCN'   10 "$(fit "$(v earfcn)" 16)" 16
+
+	lab 16 57 "$T_ENB"  10 "$(fit "$(v enbid)" $((_vw - 1)))" $((_vw - 1))
+	lab 17 57 'TAC'      10 "$(fit "$(v tac_dec)" $((_vw - 1)))" $((_vw - 1))
+	lab 18 57 'MIMO'     10 "$(fit "$(v pmimo)" $((_vw - 1)))" $((_vw - 1))
+	lab 19 57 'VoLTE'    10 "$(fit "$(v volte)" $((_vw - 1)))" $((_vw - 1))
+
+	if [ -f "$STFILE" ]; then
+		_sj=$(cat "$STFILE" 2>/dev/null)
+		_srv=$(printf '%s' "$_sj" | jsonfilter -e '@.service' 2>/dev/null)
+		_run=$(printf '%s' "$_sj" | jsonfilter -e '@.running' 2>/dev/null)
+		_dn=$(printf '%s' "$_sj" | jsonfilter -e '@.down_mbps' 2>/dev/null)
+		_up=$(printf '%s' "$_sj" | jsonfilter -e '@.up_mbps' 2>/dev/null)
+		_ld=$(printf '%s' "$_sj" | jsonfilter -e '@.live_down' 2>/dev/null)
+		_lu=$(printf '%s' "$_sj" | jsonfilter -e '@.live_up' 2>/dev/null)
+		_ip=$(printf '%s' "$_sj" | jsonfilter -e '@.pub_ip' 2>/dev/null)
+		_cc=$(printf '%s' "$_sj" | jsonfilter -e '@.cc' 2>/dev/null)
+
+		if [ "$_run" = "1" ]; then
+			_fr=$((_spin % 8))
+			_anim=""
+			_i=0
+			while [ "$_i" -lt 8 ]; do
+				if [ "$_i" = "$_fr" ]; then _anim="$_anim#"; else _anim="$_anim."; fi
+				_i=$((_i + 1))
+			done
+			if [ -n "$_lu" ] && [ "$_lu" != "0" ]; then
+				_ph="${C_BLU}${T_UL_LC}${C_RST}"; _val="$_lu"; _c="$C_BLU"
+			else
+				_ph="${C_GRN}${T_DL_LC}${C_RST}";  _val="${_ld:-0}"; _c="$C_GRN"
+			fi
+			lab 22 4 "$T_TESTING" 12 "${_c}${_anim}${C_RST}  $_ph ${C_B}${_val}${C_RST} ${C_DIM}${T_MBPS}${C_RST}" 34
+			lab 23 4 "$T_SERVICE"    12 "${C_DIM}${_srv}${C_RST}" 34
+		else
+			_ago=""
+			_now=$(date +%s); _mt=$(date -r "$STFILE" +%s 2>/dev/null || echo "$_now")
+			_sec=$((_now - _mt)); [ "$_sec" -lt 0 ] && _sec=0
+			if   [ "$_sec" -lt 60 ];   then _ago="${_sec}$T_AGO_S"
+			elif [ "$_sec" -lt 3600 ]; then _ago="$((_sec / 60))$T_AGO_M"
+			else _ago="$((_sec / 3600))$T_AGO_H"; fi
+			lab 22 4 "$T_DL"  12 "${C_GRN}$(pad "${_dn:--}" 8)${C_RST}${C_DIM}${T_MBPS}   ${_ago}${C_RST}" 34
+			lab 23 4 "$T_UL" 12 "${C_BLU}$(pad "${_up:--}" 8)${C_RST}${C_DIM}${T_MBPS}   ${_srv}${C_RST}" 34
+		fi
+		lab 22 48 "$T_EXTIP" 12 "${C_DIM}${_ip:--}${C_RST}" 16
+		lab 23 48 "$T_COUNTRY"     12 "${C_DIM}${_cc:--}${C_RST}" 16
+	else
+		lab 22 4 "$T_TEST" 12 "$(hl_name "$T_PRESS_S_LONG" t "$C_DIM")" 40
+		lab 23 4 ''     12 "$(pad '' 40)" 40
+	fi
+
+	_row=26; _idx=0
+	if [ -s "$NPFILE" ]; then
+		_np=$(cat "$NPFILE" 2>/dev/null)
+		_n=0
+		_act=$(np_active_idx "$_np")
+		while [ "$_n" -lt 3 ]; do
+			_if=$(printf '%s' "$_np" | jsonfilter -e "@[$_n].iface" 2>/dev/null)
+			[ -n "$_if" ] || break
+			_lb=$(printf '%s' "$_np" | jsonfilter -e "@[$_n].label" 2>/dev/null)
+			_sb=$(printf '%s' "$_np" | jsonfilter -e "@[$_n].sub" 2>/dev/null)
+			_ipa=$(printf '%s' "$_np" | jsonfilter -e "@[$_n].ip" 2>/dev/null)
+			_mt=$(printf '%s' "$_np" | jsonfilter -e "@[$_n].metric" 2>/dev/null)
+			_idx=$((_n + 1))
+			if [ "$_n" = "$_act" ]; then
+				_mk="${C_GRN}>${C_RST}"; _nm="${C_B}$(fit "$_lb" 21)${C_RST} "
+			else
+				_mk="${C_DIM} ${C_RST}"; _nm="${C_DIM}$(fit "$_lb" 21)${C_RST} "
+			fi
+			at "$_row" 4 "$_mk ${C_DIM}${_idx}${C_RST} ${_nm}${C_DIM}$(fit "$_sb" 21)${C_RST} $(fit "${_ipa:--}" 18)"
+			_row=$((_row + 1)); _n=$((_n + 1))
+		done
+	else
+		at 26 4 "${C_DIM}$(pad "$T_COLLECTING" 60)${C_RST}"
+	fi
+
+	_ar=31; _any=0
+	for _i in 1 2 3 4; do
+		_sb=$(v "s${_i}band")
+		[ "$_sb" = "-" ] && continue
+		[ "$_ar" -gt 32 ] && break
+		at "$_ar" 4 "${C_DIM}SCC${_i}${C_RST} $(band_fit "$_sb" 25) ${C_DIM}PCI${C_RST} $(fit "$(v s${_i}pci)" 8)${C_DIM}EARFCN${C_RST} $(fit "$(v s${_i}earfcn)" 10)"
+		_ar=$((_ar + 1)); _any=1
+	done
+	[ "$_any" = 0 ] && { at 31 4 "${C_DIM}$(pad "$T_NOCA" 60)${C_RST}"; _ar=32; }
+	while [ "$_ar" -le 32 ]; do
+		at "$_ar" 4 "$(pad '' 60)"
+		_ar=$((_ar + 1))
+	done
+
+	printf '%s[%d;1H' "$ESC" "$ROW_END"
+}
+
+TTY=0
+[ -t 0 ] && [ -t 1 ] && TTY=1
+
+HAS_STTY=0
+command -v stty >/dev/null 2>&1 && HAS_STTY=1
+
+term_width() {
+	_w=""
+	if [ "$HAS_STTY" = 1 ]; then
+		_w=$(stty size 2>/dev/null | cut -d' ' -f2)
+		case "$_w" in ''|*[!0-9]*|0) _w="" ;; esac
+		[ -n "$_w" ] && { printf '%s' "$_w"; return; }
+	fi
+	if [ "$TTY" = 1 ] && [ "$HAS_STTY" = 1 ]; then
+		stty -echo -icanon min 0 time 1 2>/dev/null
+		printf '%s[999;999H%s[6n' "$ESC" "$ESC"
+		_r=""; _i=0
+		while [ "$_i" -lt 12 ]; do
+			_ch=""
+			read -t 1 -r -n 1 _ch 2>/dev/null
+			[ -n "$_ch" ] || break
+			case "$_ch" in R) break ;; esac
+			_r="$_r$_ch"
+			_i=$((_i + 1))
+		done
+		_w=${_r##*;}
+	fi
+	case "$_w" in ''|*[!0-9]*) _w=60 ;; esac
+	[ "$_w" -lt 30 ] 2>/dev/null && _w=30
+	printf '%s' "$_w"
+}
+
+term_height() {
+	_h=""
+	[ "$HAS_STTY" = 1 ] && _h=$(stty size 2>/dev/null | cut -d' ' -f1)
+	case "$_h" in ''|*[!0-9]*) _h=0 ;; esac
+	printf '%s' "$_h"
+}
+
+TW_FIXED=0
+case "$TWARG" in ''|*[!0-9]*) ;; *) TW_FIXED=1 ;; esac
+[ "$TW_FIXED" = 1 ] || case "$COLS" in ''|*[!0-9]*) ;; *) TW_FIXED=1 ;; esac
+
+TW="$TWARG"
+[ -n "$TW" ] || TW="$COLS"
+case "$TW" in ''|*[!0-9]*) TW=$(term_width) ;; esac
+case "$TW" in ''|*[!0-9]*) TW=80 ;; esac
+[ "$TW" -lt 30 ] && TW=30
+apply_width() {
+	[ "$TW" -lt 30 ]  && TW=30
+	[ "$TW" -gt 220 ] && TW=220
+	if [ "$TW" -ge 80 ]; then
+		NARROW=0; W=$((TW - 2)); ROW_END=37
+	else
+		NARROW=1; W=$((TW - 2)); ROW_END=36
+	fi
+	TINY=0
+	[ "$NARROW" = 1 ] && [ "$TH" -gt 0 ] && [ "$TH" -lt 30 ] && TINY=1
+	[ "$TINY" = 1 ] && SMS_ROWS=14 || SMS_ROWS=$SMS_ROWS_DEF
+	if [ "$TINY" = 1 ]; then
+		ENG_ROWS=17
+	elif [ "$TH" -gt 0 ]; then
+		ENG_ROWS=$((TH - 10))
+		[ "$ENG_ROWS" -lt 8 ] && ENG_ROWS=8
+		[ "$ENG_ROWS" -gt 40 ] && ENG_ROWS=40
+	else
+		ENG_ROWS=16
+	fi
+}
+TH=$(term_height)
+apply_width
+[ "$W" -lt 28 ] && W=28
+
+sms_merge() {
+	_raw="$1"
+
+	_fix="$_raw.fix"
+	sed 's/\\u\([0-9a-fA-F]\{2\}\)f\{6\}\([0-9a-fA-F]\{2\}\)/\\u\1\2/g' \
+		"$_raw" > "$_fix" 2>/dev/null && [ -s "$_fix" ] && _raw="$_fix"
+
+	_n=0
+	while [ "$_n" -lt 40 ]; do
+		S_i=""; S_s=""; S_t=""; S_r=""; S_p=""; S_o=""; S_c=""
+		eval "$(jsonfilter -i "$_raw" -e "S_i=@.msg[$_n].index" \
+			-e "S_s=@.msg[$_n].sender" -e "S_t=@.msg[$_n].timestamp" \
+			-e "S_r=@.msg[$_n].reference" -e "S_p=@.msg[$_n].part" \
+			-e "S_o=@.msg[$_n].total" -e "S_c=@.msg[$_n].content" 2>/dev/null)"
+		[ -n "$S_i$S_s$S_t$S_c" ] || break
+		_sn="$S_s"; _ts="$S_t"; _rf="$S_r"; _pt="$S_p"; _tt="$S_o"
+		_tx=$(printf '%s' "$S_c" | tr '\n\t\r' '   ' | sed 's/\xef\xbf\xbd/ /g')
+		case "$_tt" in ''|*[!0-9]*) _tt=1 ;; esac
+		case "$_pt" in ''|*[!0-9]*) _pt=1 ;; esac
+		if [ "$_tt" -gt 1 ] && [ -n "$_rf" ]; then
+			_key="r|$_sn|$_rf|$_tt"
+		else
+			_key="s|$_n"
+		fi
+		printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$_key" "$_pt" "$_sn" "$_ts" "$_tx" "$_tt"
+		_n=$((_n + 1))
+	done | awk -F'\t' '
+		{
+			key = $1; part = $2 + 0
+			if (!(key in seen)) { seen[key] = 1; order[++cnt] = key; snd[key] = $3 }
+			pk = key SUBSEP part
+			if (!(pk in txt) || $4 >= pts[pk]) { txt[pk] = $5; pts[pk] = $4 }
+			if (part > maxp[key]) maxp[key] = part
+			if ($6 + 0 > tot[key]) tot[key] = $6 + 0
+		}
+		END {
+			for (i = 1; i <= cnt; i++) {
+				k = order[i]; out = ""; have = 0; fp = -1
+				for (p = 0; p <= maxp[k]; p++) {
+					if ((k SUBSEP p) in txt) { out = out txt[k SUBSEP p]; have++; if (fp < 0) fp = p }
+				}
+				gsub(/^ +| +$/, "", out)
+				if (tot[k] > 1 && have < tot[k]) out = out sprintf(" [%d/%d]", have, tot[k])
+				sk[i] = pts[k SUBSEP fp]
+				row[i] = snd[k] "\t" sk[i] "\t" out
+				ix[i] = i
+			}
+			for (i = 2; i <= cnt; i++) {
+				j = i
+				while (j > 1 && sk[ix[j - 1]] < sk[ix[j]]) { t = ix[j]; ix[j] = ix[j - 1]; ix[j - 1] = t; j-- }
+			}
+			for (i = 1; i <= cnt; i++) print row[ix[i]]
+		}'
+}
+
+fetch_esim() {
+	[ -f "$ESBUSY" ] && return
+	( : > "$ESBUSY"
+	  _st=$(/usr/share/5gmodem/esim.sh status 2>/dev/null)
+	  if [ "$(printf '%s' "$_st" | jsonfilter -e '@.available' 2>/dev/null)" = "1" ]; then
+	  	/usr/share/5gmodem/esim.sh dump > "$ESFILE.tmp" 2>/dev/null
+	  	[ -s "$ESFILE.tmp" ] && mv "$ESFILE.tmp" "$ESFILE"
+	  else
+	  	printf '{"unavailable":1}\n' > "$ESFILE"
+	  fi
+	  rm -f "$ESBUSY" ) >/dev/null 2>&1 </dev/null &
+}
+
+fetch_sms() {
+	[ -f "$SMSBUSY" ] && return
+	( : > "$SMSBUSY"
+	  _p=$(uci -q get 5gmodem.sms.readport)
+	  _s=$(uci -q get 5gmodem.sms.storage)
+	  if [ -n "$_p" ] && [ -e "$_p" ]; then
+	  	/usr/share/5gmodem/smsbridge.sh recv "${_s:-ME}" "$_p" > "$SMSFILE.raw" 2>/dev/null
+	  	[ -s "$SMSFILE.raw" ] && sms_merge "$SMSFILE.raw" > "$SMSFILE.tmp" 2>/dev/null
+	  	[ -f "$SMSFILE.tmp" ] || : > "$SMSFILE.tmp"
+	  	mv "$SMSFILE.tmp" "$SMSFILE"
+	  	rm -f "$SMSFILE.raw" "$SMSFILE.raw.fix"
+	  fi
+	  rm -f "$SMSBUSY" ) >/dev/null 2>&1 </dev/null &
+}
+
+fetch() {
+	[ -f "$FETCHING" ] && return
+	( : > "$FETCHING"
+	  $SRC cached "$INTERVAL" > "$DATA.tmp" 2>/dev/null
+	  [ -s "$DATA.tmp" ] && mv "$DATA.tmp" "$DATA" && modelog_update
+	  /usr/share/5gmodem/netpri.sh list > "$NPFILE.tmp" 2>/dev/null
+	  [ -s "$NPFILE.tmp" ] && mv "$NPFILE.tmp" "$NPFILE"
+	  rm -f "$FETCHING" ) >/dev/null 2>&1 </dev/null &
+}
+
+_slj=$(/usr/share/5gmodem/simslot.sh status 2>/dev/null)
+SLOTS=$(printf '%s' "$_slj" | jsonfilter -e '@.slots[*].id' 2>/dev/null | tr '\n' ' ')
+SLOT_ACTIVE=$(printf '%s' "$_slj" | jsonfilter -e '@.active' 2>/dev/null)
+SLOT_CNT=$(printf '%s' "$SLOTS" | wc -w)
+
+switch_slot() {
+	[ "$SLOT_CNT" -gt 1 ] || return
+	_next=""; _first=""; _take=0
+	for _s in $SLOTS; do
+		[ -z "$_first" ] && _first="$_s"
+		[ "$_take" = 1 ] && { _next="$_s"; _take=0; }
+		[ "$_s" = "$SLOT_ACTIVE" ] && _take=1
+	done
+	[ -n "$_next" ] || _next="$_first"
+	at 6 4 "${C_YEL}$(fit "$T_SLOT_SW" $((W - 6)))${C_RST}"
+	( /usr/share/5gmodem/simslot.sh set "$_next" >/dev/null 2>&1
+	  rm -f "$DATA" ) >/dev/null 2>&1 </dev/null &
+	SLOT_ACTIVE="$_next"
+}
+
+_present=$(/usr/share/5gmodem/listmodems.sh 2>/dev/null \
+	| jsonfilter -e '@[*].path' 2>/dev/null | tr '\n' ' ')
+[ -n "$_present" ] || _present=$(jsonfilter -i /tmp/5gmodem/listmodems.cache -e '@[*].path' 2>/dev/null | tr '\n' ' ')
+MODEMS=""
+for _sec in $(uci -q show 5gmodem 2>/dev/null | sed -n 's/^5gmodem\.\(m_[^.]*\)\.path=.*/\1/p'); do
+	_sp=$(uci -q get "5gmodem.$_sec.path")
+	[ -n "$_sp" ] || continue
+	if [ -z "$_present" ]; then
+		MODEMS="$MODEMS $_sec"
+		continue
+	fi
+	case " $_present " in *" $_sp "*) MODEMS="$MODEMS $_sec" ;; esac
+done
+MODEMS=$(printf '%s\n' $MODEMS)
+MCOUNT=$(printf '%s\n' "$MODEMS" | grep -c . 2>/dev/null)
+[ -n "$MCOUNT" ] || MCOUNT=0
+MKEY=""
+[ "$MCOUNT" -gt 1 ] && MKEY="   m $T_K_MODEM"
+
+set_pri() {
+	[ -s "$NPFILE" ] || return
+	_i=$(( $1 - 1 ))
+	_if=$(jsonfilter -i "$NPFILE" -e "@[$_i].iface" 2>/dev/null)
+	[ -n "$_if" ] || return
+	/usr/share/5gmodem/netpri.sh set "$_if" >/dev/null 2>&1
+	rm -f "$NPFILE"; fetch
+}
+
+switch_modem() {
+	[ "$MCOUNT" -gt 1 ] || return
+	_cur=$(uci -q get 5gmodem.@5gmodem[0].active_modem | tr -c 'A-Za-z0-9' '_')
+	_cur="m_${_cur%_}"
+	_next=""; _first=""; _take=0
+	for _m in $MODEMS; do
+		[ -z "$_first" ] && _first="$_m"
+		[ "$_take" = 1 ] && { _next="$_m"; _take=0; }
+		[ "$_m" = "$_cur" ] && _take=1
+	done
+	[ -n "$_next" ] || _next="$_first"
+	_path=$(uci -q get "5gmodem.$_next.path")
+	[ -n "$_path" ] || return
+	/usr/share/5gmodem/modemswitch.sh switch "$_path" >/dev/null 2>&1
+	rm -f "$DATA"; J=""; mlog_path; fetch
+}
+
+if [ "$TTY" = 1 ]; then
+	printf '%s[?25l' "$ESC"
+	stty -echo -icanon 2>/dev/null
+fi
+
+render_frame() {
+	case "$(tab_id "$TAB")" in
+		cell)  [ "$NARROW" = 1 ] && frame_cell_narrow || frame_cell ;;
+		modem) frame_modem ;;
+		sms)   frame_sms; fetch_sms ;;
+		esim)  frame_esim; fetch_esim ;;
+		ussd)  frame_ussd ;;
+		at)    frame_at ;;
+		eng)   frame_eng ;;
+		*)     frame ;;
+	esac
+}
+render_draw() {
+	case "$(tab_id "$TAB")" in
+		cell)  [ "$NARROW" = 1 ] && draw_cell_narrow || draw_cell ;;
+		modem) draw_modem ;;
+		sms)   draw_sms ;;
+		esim)  draw_esim ;;
+		ussd)  draw_ussd ;;
+		at)    draw_at ;;
+		eng)   draw_eng ;;
+		*)     draw ;;
+	esac
+}
+
+NEED_FRAME=1
+WINCH=0
+paint() {
+	if [ "$NEED_FRAME" = 1 ]; then
+		NEED_FRAME=0
+		{ render_frame; render_draw; } > "$DATA.scr" 2>/dev/null
+	else
+		render_draw > "$DATA.scr" 2>/dev/null
+	fi
+	cat "$DATA.scr"
+}
+
+_on_winch() { WINCH=1; }
+_winch_apply() {
+	[ "$TW_FIXED" = 1 ] && return 0
+	_ww=$(term_width)
+	case "$_ww" in ''|*[!0-9]*) return 0 ;; esac
+	_hh=$(term_height)
+	[ "$_ww" = "$TW" ] && [ "$_hh" = "$TH" ] && return 0
+	TW="$_ww"; TH="$_hh"; apply_width
+	NEED_FRAME=1
+	return 0
+}
+trap _on_winch WINCH
+
+fetch
+case "$(tab_id "$TAB")" in
+	sms)  fetch_sms ;;
+	esim) fetch_esim ;;
+esac
+_since=0
+_tick=0
+while :; do
+	[ -f "$DATA" ] && J=$(cat "$DATA" 2>/dev/null)
+	[ "$WINCH" = 1 ] && { WINCH=0; _winch_apply; }
+	paint
+
+	if [ "$TTY" = 1 ]; then
+		_t0=$(date +%s)
+		_k=""
+		if IFS= read -t 1 -r -n 1 _k 2>/dev/null; then _got=1; else _got=0; fi
+		[ "$_got" = 1 ] || _k="__timeout__"
+		case "$_k" in
+			q|Q) cleanup ;;
+			r|R)
+				fetch
+				case "$(tab_id "$TAB")" in
+					sms)  fetch_sms ;;
+					esim) rm -f "$ESFILE"; fetch_esim ;;
+				esac
+				_since=0
+				;;
+			t|T) /usr/share/5gmodem/speedtest.sh start >/dev/null 2>&1 ;;
+			d|D) [ "$(tab_id "$TAB")" = eng ] && eng_save ;;
+			k|K) switch_slot ;;
+			n|N|c|C|m|M|s|S|e|E|u|U|a|A|g|G)
+				_want=""
+				for _t in $TAB_IDS; do
+					case "$_k" in
+						[Nn]) [ "$(tab_key "$_t")" = 'n' ] && _want="$_t" ;;
+						[Cc]) [ "$(tab_key "$_t")" = 'c' ] && _want="$_t" ;;
+						[Mm]) [ "$(tab_key "$_t")" = 'm' ] && _want="$_t" ;;
+						[Ss]) [ "$(tab_key "$_t")" = 's' ] && _want="$_t" ;;
+						[Ee]) [ "$(tab_key "$_t")" = 'e' ] && _want="$_t" ;;
+						[Uu]) [ "$(tab_key "$_t")" = 'u' ] && _want="$_t" ;;
+						[Aa]) [ "$(tab_key "$_t")" = 'a' ] && _want="$_t" ;;
+						[Gg]) [ "$(tab_key "$_t")" = 'g' ] && _want="$_t" ;;
+					esac
+				done
+				[ -n "$_want" ] && { TAB=$(tab_num "$_want"); NEED_FRAME=1; }
+				;;
+			1|2|3|4|5|6)
+				case "$(tab_id "$TAB")" in
+					esim) esim_switch "$_k" ;;
+					net)  case "$_k" in 1|2|3) set_pri "$_k" ;; esac ;;
+				esac
+				;;
+			"$TABCH") switch_modem; NEED_FRAME=1; _since=0 ;;
+			"" | "$(printf '\015')")
+				case "$(tab_id "$TAB")" in
+				ussd)
+					read_line "$T_ENTER_USSD"
+					NEED_FRAME=1; send_console ussd "$_RL"
+					;;
+				esim)
+					read_line "$T_ESIM_ADD"
+					NEED_FRAME=1; esim_download "$_RL"
+					;;
+				at)
+					read_line "$T_ENTER_AT"
+					NEED_FRAME=1; send_console at "$_RL"
+					;;
+				esac
+				;;
+			"$BSCH"|$(printf '\177'))
+				TAB=$((TAB + 1))
+				[ "$TAB" -gt "$(tab_count)" ] && TAB=1
+				NEED_FRAME=1
+				;;
+			+|=) TW=$((TW + 4)); apply_width; NEED_FRAME=1 ;;
+			-|_) TW=$((TW - 4)); apply_width; NEED_FRAME=1 ;;
+		esac
+		[ "$NEED_FRAME" = 1 ] || { [ "$(date +%s)" = "$_t0" ] && sleep 1; }
+	else
+		sleep 1
+	fi
+
+	_since=$((_since + 1))
+	if [ "$_since" -ge "$INTERVAL" ]; then
+		fetch
+		[ "$(tab_id "$TAB")" = "sms" ] && [ "$((_tick % 6))" = 0 ] && fetch_sms
+		[ "$(tab_id "$TAB")" = "esim" ] && [ "$((_tick % 12))" = 0 ] && fetch_esim
+		_since=0
+	fi
+	_tick=$((_tick + 1))
+done

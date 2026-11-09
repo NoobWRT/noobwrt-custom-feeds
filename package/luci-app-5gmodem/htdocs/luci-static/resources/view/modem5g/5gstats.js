@@ -1,0 +1,532 @@
+'use strict';
+'require view';
+'require fs';
+'require ui';
+'require uci';
+'require poll';
+'require view.modem5g.modemtabs as modemtabs';
+'require view.modem5g.mutil as mutil';
+'require view.modem5g.fresh as fresh';
+
+var BIN = '/usr/share/5gmodem/stats.sh';
+
+var _state = { list: null, series: {}, traffic: null };
+
+function callStats(args) {
+	return L.resolveDefault(fs.exec_direct(BIN, args), '').then(function(out) {
+		try { return JSON.parse(out || 'null'); } catch (e) { return null; }
+	});
+}
+
+var LINE_COLORS = [ '#2b8a3e', '#1c7ed6', '#e8590c', '#7048e8', '#c92a2a' ];
+
+function hexToRgba(hex, a) {
+	var m = /^#?([a-f\d]{2})([a-f\d]{2})([a-f\d]{2})$/i.exec(hex);
+	if (!m) { return hex; }
+	return 'rgba(' + parseInt(m[1], 16) + ',' + parseInt(m[2], 16) + ',' + parseInt(m[3], 16) + ',' + a + ')';
+}
+
+function drawChart(canvas, series, opts) {
+	opts = opts || {};
+	var dpr = window.devicePixelRatio || 1;
+	var rect = canvas.getBoundingClientRect();
+	var W = Math.max(1, rect.width || canvas.clientWidth || 600);
+	var H = Math.max(1, rect.height || 190);
+	canvas.width = Math.floor(W * dpr);
+	canvas.height = Math.floor(H * dpr);
+	var ctx = canvas.getContext('2d');
+	ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+
+	var padL = 52, padR = 12, padT = 12, padB = 24;
+	var dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+	var fg = dark ? '#c9ccd1' : '#444';
+	var grid = dark ? 'rgba(255,255,255,.10)' : 'rgba(0,0,0,.08)';
+
+	ctx.clearRect(0, 0, W, H);
+	var all = [];
+	series.forEach(function(s) { (s.points || []).forEach(function(p) { all.push(p[1]); }); });
+	if (!all.length) {
+		ctx.fillStyle = fg; ctx.font = '12px sans-serif'; ctx.textAlign = 'center';
+		ctx.fillText(_('No data yet'), W / 2, H / 2);
+		canvas.__chart = null;
+		return;
+	}
+	var vmax = Math.max.apply(null, all), vmin = Math.min.apply(null, all);
+	if (opts.zeroBase) { vmin = 0; }
+	if (vmax === vmin) { vmax = vmin + 1; }
+	var pad = (vmax - vmin) * 0.12;
+	vmax += pad; if (!opts.zeroBase) { vmin -= pad; }
+	if (opts.min != null) { vmin = opts.min; }
+	if (opts.max != null) { vmax = opts.max; }
+
+	var tAll = [];
+	series.forEach(function(s) { (s.points || []).forEach(function(p) { tAll.push(p[0]); }); });
+	var tmin = Math.min.apply(null, tAll), tmax = Math.max.apply(null, tAll);
+	if (tmax === tmin) { tmax = tmin + 1; }
+
+	var innerW = W - padL - padR, innerH = H - padT - padB;
+	var x = function(t) { return padL + (t - tmin) / (tmax - tmin) * innerW; };
+	var y = function(v) { return padT + (1 - (v - vmin) / (vmax - vmin)) * innerH; };
+
+	ctx.strokeStyle = grid; ctx.fillStyle = fg;
+	ctx.lineWidth = 1; ctx.font = '10px sans-serif'; ctx.textAlign = 'right';
+	for (var i = 0; i <= 4; i++) {
+		var v = vmin + (vmax - vmin) * i / 4, yy = Math.round(y(v)) + 0.5;
+		ctx.beginPath(); ctx.moveTo(padL, yy); ctx.lineTo(W - padR, yy); ctx.stroke();
+		ctx.fillText(opts.fmt ? opts.fmt(v) : Math.round(v), padL - 6, yy + 3);
+	}
+	ctx.textAlign = 'left';
+	ctx.fillText(_('%d min ago').format(Math.round((tmax - tmin) / 60)), padL, H - 7);
+	ctx.textAlign = 'right';
+	ctx.fillText(_('now'), W - padR, H - 7);
+
+	series.forEach(function(s, idx) {
+		var pts = s.points || [];
+		if (!pts.length) { return; }
+		var col = LINE_COLORS[idx % LINE_COLORS.length];
+		var tracePath = function() {
+			for (var q = 0; q < pts.length; q++) {
+				var qpx = x(pts[q][0]), qpy = y(pts[q][1]);
+				if (q === 0) { ctx.moveTo(qpx, qpy); continue; }
+				var ppx = x(pts[q - 1][0]), ppy = y(pts[q - 1][1]);
+				ctx.quadraticCurveTo(ppx, ppy, (ppx + qpx) / 2, (ppy + qpy) / 2);
+			}
+			ctx.lineTo(x(pts[pts.length - 1][0]), y(pts[pts.length - 1][1]));
+		};
+
+		if (true) {
+			ctx.beginPath();
+			tracePath();
+			ctx.lineTo(x(pts[pts.length - 1][0]), padT + innerH);
+			ctx.lineTo(x(pts[0][0]), padT + innerH);
+			ctx.closePath();
+			var grad = ctx.createLinearGradient(0, padT, 0, padT + innerH);
+			var a0 = (series.length > 1) ? (dark ? 0.20 : 0.14) : (dark ? 0.38 : 0.28);
+			grad.addColorStop(0, hexToRgba(col, a0));
+			grad.addColorStop(1, hexToRgba(col, 0));
+			ctx.fillStyle = grad;
+			ctx.fill();
+		}
+		ctx.strokeStyle = col;
+		ctx.lineWidth = 1.6;
+		ctx.lineJoin = 'round'; ctx.lineCap = 'round';
+		ctx.beginPath();
+		tracePath();
+		ctx.stroke();
+	});
+
+	canvas.__chart = { series: series, tmin: tmin, tmax: tmax, vmin: vmin, vmax: vmax,
+		padL: padL, padT: padT, innerW: innerW, innerH: innerH, W: W, H: H,
+		fmt: opts.fmt, opts: opts, dark: dark };
+
+	if (canvas.__hoverX != null) {
+		var hx = canvas.__hoverX;
+		if (hx >= padL && hx <= W - padR) {
+			ctx.strokeStyle = dark ? 'rgba(255,255,255,.35)' : 'rgba(0,0,0,.30)';
+			ctx.setLineDash([ 3, 3 ]); ctx.lineWidth = 1;
+			ctx.beginPath(); ctx.moveTo(hx, padT); ctx.lineTo(hx, padT + innerH); ctx.stroke();
+			ctx.setLineDash([]);
+			var t = tmin + (hx - padL) / innerW * (tmax - tmin);
+			var lines = [];
+			series.forEach(function(s, idx) {
+				var pts = s.points || [];
+				if (!pts.length) { return; }
+				var best = pts[0], bd = Math.abs(pts[0][0] - t);
+				pts.forEach(function(p) { var d = Math.abs(p[0] - t); if (d < bd) { bd = d; best = p; } });
+				lines.push({ c: LINE_COLORS[idx % LINE_COLORS.length], n: s.name,
+					v: opts.fmt ? opts.fmt(best[1]) : String(best[1]) });
+			});
+			if (lines.length) {
+				ctx.font = '11px sans-serif';
+				var bw = 0;
+				lines.forEach(function(l) { bw = Math.max(bw, ctx.measureText(l.n + '  ' + l.v).width); });
+				bw += 22;
+				var bh = lines.length * 15 + 8;
+				var bx = (hx + bw + 10 < W) ? hx + 8 : hx - bw - 8;
+				var by = padT + 4;
+				ctx.fillStyle = dark ? 'rgba(20,22,26,.92)' : 'rgba(255,255,255,.94)';
+				ctx.strokeStyle = grid;
+				ctx.beginPath(); ctx.rect(bx, by, bw, bh); ctx.fill(); ctx.stroke();
+				lines.forEach(function(l, i) {
+					var ly = by + 15 * i + 14;
+					ctx.fillStyle = l.c;
+					ctx.fillRect(bx + 6, ly - 7, 8, 3);
+					ctx.fillStyle = fg; ctx.textAlign = 'left';
+					ctx.fillText(l.n + '  ' + l.v, bx + 18, ly);
+				});
+			}
+		}
+	}
+}
+
+function chartCanvas(id, height) {
+	return E('canvas', { 'id': id,
+		'style': 'width:100%; height:' + (height || 190) + 'px; display:block; cursor:crosshair',
+		'mousemove': function(ev) {
+			var r = ev.target.getBoundingClientRect();
+			ev.target.__hoverX = ev.clientX - r.left;
+			if (ev.target.__chart) { drawChart(ev.target, ev.target.__chart.series,
+				ev.target.__chart.opts); }
+		},
+		'mouseleave': function(ev) {
+			ev.target.__hoverX = null;
+			if (ev.target.__chart) { drawChart(ev.target, ev.target.__chart.series,
+				ev.target.__chart.opts); }
+		}
+	});
+}
+
+function dualChartCard(title, idA, labelA, idB, labelB) {
+	var sub = function(t, top) {
+		return E('div', { 'style': 'font-size:12px; opacity:.7; margin:' + top + ' 0 2px 0' }, [ t ]);
+	};
+	return E('div', { 'class': 'cbi-section tg5g' }, [
+		E('h3', {}, [ title ]),
+		E('div', { 'id': idA + '-legend', 'style': 'display:flex; gap:1em; flex-wrap:wrap; margin-bottom:.4em; font-size:.9em' }, []),
+		sub(labelA, '0'),
+		chartCanvas(idA, 150),
+		sub(labelB, '10px'),
+		chartCanvas(idB, 150)
+	]);
+}
+
+function chartCard(title, id, legend) {
+	var canvas = chartCanvas(id);
+	return E('div', { 'class': 'cbi-section tg5g' }, [
+		E('h3', {}, [ title ]),
+		E('div', { 'id': id + '-legend', 'style': 'display:flex; gap:1em; flex-wrap:wrap; margin-bottom:.4em; font-size:.9em' }, legend || []),
+		canvas
+	]);
+}
+
+function legendItem(name, idx) {
+	return E('span', { 'style': 'display:inline-flex; align-items:center; gap:.35em' }, [
+		E('span', { 'style': 'width:12px; height:3px; border-radius:2px; display:inline-block; background:'
+			+ LINE_COLORS[idx % LINE_COLORS.length] }),
+		E('span', {}, [ name ])
+	]);
+}
+
+function fmtBytes(n) {
+	n = Number(n) || 0;
+	var units = [ _('B'), _('KB'), _('MB'), _('GB'), _('TB') ];
+	var i = 0;
+	while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+	var d = (i === 0) ? 0 : (n < 10 ? 2 : (n < 100 ? 1 : 0));
+	return n.toFixed(d) + ' ' + units[i];
+}
+
+function fmtMonth(ym) {
+	var m = /^(\d{4})-(\d{2})$/.exec(String(ym || ''));
+	if (!m) { return String(ym || ''); }
+	var name = ym;
+	try {
+		name = new Date(+m[1], +m[2] - 1, 1).toLocaleString(undefined, { month: 'long' });
+		name = name.charAt(0).toUpperCase() + name.slice(1);
+	} catch (e) { return String(ym); }
+	return name + ', ' + m[1];
+}
+
+function trafficIcon(key, label, opName) {
+	var f;
+	if (/^sim-/.test(String(key || ''))) {
+		f = mutil.operatorIcon(opName || '') || mutil.operatorIcon(label) || 'op-sim';
+		f = 'icons/5gmodem/' + f + '.svg';
+	} else if (/^(wwan|wlan|phy|wifi)/i.test(String(key || ''))) {
+		f = 'icons/5gmodem/cwifi.svg';
+	} else if (/^(wan|eth|lan)/i.test(String(key || ''))) {
+		f = 'icons/5gmodem/cwan.svg';
+	} else {
+		f = 'icons/5gmodem/op-sim.svg';
+	}
+	return E('img', { 'src': mutil.icon(f), 'width': 18, 'height': 18, 'alt': '',
+		'style': 'display:block' });
+}
+
+function prettyTrafficLabel(label) {
+	var s = String(label || '');
+	var m = s.match(/^sim-(\d{6,})$/);
+	if (m) { return 'ICCID: ' + m[1]; }
+	if (/ICCID:/.test(s)) { return s; }
+	return s.replace(/\+?\d[\d\s()-]{9,}\d/, function(m2) { return mutil.formatPhone(m2); });
+}
+
+function trafficTable(data, labels) {
+	var rows = [ E('tr', { 'class': 'tr table-titles' }, [
+		E('th', { 'class': 'th', 'style': 'width:1%' }, [ '' ]),
+		E('th', { 'class': 'th' }, [ _('SIM card') ]),
+		E('th', { 'class': 'th' }, [ _('Month') ]),
+		E('th', { 'class': 'th' }, [ _('Received') ]),
+		E('th', { 'class': 'th' }, [ _('Sent') ]),
+		E('th', { 'class': 'th' }, [ _('Total') ]),
+		E('th', { 'class': 'th', 'style': 'width:1%' }, [ '' ])
+	]) ];
+	var keys = Object.keys(data || {}).sort();
+	keys.forEach(function(k) {
+		var parts = k.split('|'), v = data[k] || {};
+		var rx = parseInt(v.rx, 10) || 0, tx = parseInt(v.tx, 10) || 0;
+		var lab = (labels || {})[parts[0]] || (labels || {})['ping.' + parts[0]] || parts[0];
+		rows.push(E('tr', { 'class': 'tr' }, [
+			E('td', { 'class': 'td', 'style': 'width:1%' },
+				[ trafficIcon(parts[0], lab, (labels || {})['op.' + parts[0]]) ]),
+			E('td', { 'class': 'td', 'data-title': _('SIM card') }, [ prettyTrafficLabel(lab) ]),
+			E('td', { 'class': 'td', 'data-title': _('Month') }, [ fmtMonth(parts[1]) ]),
+			E('td', { 'class': 'td', 'data-title': _('Received') }, [ fmtBytes(rx) ]),
+			E('td', { 'class': 'td', 'data-title': _('Sent') }, [ fmtBytes(tx) ]),
+			E('td', { 'class': 'td', 'data-title': _('Total') }, [ fmtBytes(rx + tx) ]),
+			E('td', { 'class': 'td', 'style': 'width:1%' }, [
+				E('button', {
+					'class': 'tg-trdel',
+					'title': _('Delete this row'),
+					'style': 'width:20px;height:20px;padding:0;border-radius:50%;' +
+					         'border:1px solid rgba(128,128,128,.45);background:transparent;' +
+					         'color:inherit;opacity:.6;cursor:pointer;line-height:1;' +
+					         'display:inline-flex;align-items:center;justify-content:center;' +
+					         'font-size:13px',
+					'mouseover': function(ev) { ev.currentTarget.style.opacity = '1'; },
+					'mouseout': function(ev) { ev.currentTarget.style.opacity = '.6'; },
+					'click': function(ev) { forgetTrafficRow(ev.currentTarget, parts[0], parts[1]); }
+				}, '×')
+			])
+		]));
+	});
+	if (keys.length === 0) {
+		rows.push(E('tr', { 'class': 'tr' }, [
+			E('td', { 'class': 'td', 'colspan': '7' }, [ _('No data yet') ])
+		]));
+	}
+	return E('table', { 'class': 'table' }, rows);
+}
+
+function forgetTrafficRow(btn, key, month) {
+	if (!confirm(_('Delete this traffic row? This cannot be undone.'))) { return; }
+	btn.disabled = true;
+	callStats([ 'forget', key, month ]).then(function() {
+		return callStats([ 'traffic' ]);
+	}).then(function(t) {
+		_state.traffic = t || {};
+		var tt = document.getElementById('traffic-table');
+		if (tt) {
+			tt.innerHTML = '';
+			tt.appendChild(trafficTable(_state.traffic, (_state.list || {}).labels || {}));
+		}
+	});
+}
+
+function redraw() {
+	var lst = _state.list || {};
+	var lab = lst.labels || {};
+	var pingSeries = (lst.ping || []).map(function(n) {
+		return { name: lab['ping.' + n] || n, points: (_state.series['ping.' + n] || []) };
+	});
+	var c1 = document.getElementById('chart-ping');
+	if (c1) { drawChart(c1, pingSeries, { zeroBase: true, fmt: function(v) { return Math.round(v) + ' ms'; } }); }
+	var l1 = document.getElementById('chart-ping-legend');
+	if (l1) { l1.innerHTML = ''; pingSeries.forEach(function(s, i) { l1.appendChild(legendItem(s.name, i)); }); }
+
+	var sigSeries = (lst.signal || []).map(function(n) {
+		return { name: lab['signal.' + n] || n.replace(/_/g, ' '), points: (_state.series['signal.' + n] || []) };
+	});
+	var c2 = document.getElementById('chart-signal');
+	if (c2) { drawChart(c2, sigSeries, { min: 0, max: 100, fmt: function(v) { return Math.round(v) + '%'; } }); }
+	var l2 = document.getElementById('chart-signal-legend');
+	if (l2) { l2.innerHTML = ''; sigSeries.forEach(function(s, i) { l2.appendChild(legendItem(s.name, i)); }); }
+
+	var rawNames = (lst.rsrp || []).slice();
+	(lst.sinr || []).forEach(function(n) { if (rawNames.indexOf(n) < 0) { rawNames.push(n); } });
+	var rawSeries = function(kind) {
+		return rawNames.map(function(n) {
+			return { name: lab[kind + '.' + n] || lab['signal.' + n] || n.replace(/_/g, ' '), points: (_state.series[kind + '.' + n] || []) };
+		});
+	};
+	var rsrpSeries = rawSeries('rsrp'), sinrSeries = rawSeries('sinr');
+	var rsrpOpts = { fmt: function(v) { return Math.round(v) + ' dBm'; } };
+	var sinrOpts = { fmt: function(v) { return (Math.round(v * 10) / 10) + ' dB'; } };
+	var c4 = document.getElementById('chart-rsrp'), c5 = document.getElementById('chart-sinr');
+	var rc = document.getElementById('card-rsrp');
+	if (rc) { rc.style.display = rawNames.length ? '' : 'none'; }
+	if (rawNames.length) {
+		if (c4) { drawChart(c4, rsrpSeries, rsrpOpts); }
+		if (c5) { drawChart(c5, sinrSeries, sinrOpts); }
+	}
+	var l4 = document.getElementById('chart-rsrp-legend');
+	if (l4) { l4.innerHTML = ''; rsrpSeries.forEach(function(s, i) { l4.appendChild(legendItem(s.name, i)); }); }
+
+	var tempSeries = (lst.temp || []).map(function(n) {
+		return { name: lab['temp.' + n] || n.replace(/_/g, ' '), points: (_state.series['temp.' + n] || []) };
+	});
+	var c3 = document.getElementById('chart-temp');
+	if (c3) { drawChart(c3, tempSeries, { fmt: function(v) { return Math.round(v) + ' °C'; } }); }
+	var l3 = document.getElementById('chart-temp-legend');
+	if (l3) { l3.innerHTML = ''; tempSeries.forEach(function(s, i) { l3.appendChild(legendItem(s.name, i)); }); }
+	var tc = document.getElementById('card-temp');
+	if (tc) {
+		var wasHidden = (tc.style.display === 'none');
+		tc.style.display = tempSeries.length ? '' : 'none';
+		if (wasHidden && tempSeries.length && c3) {
+			drawChart(c3, tempSeries, { fmt: function(v) { return Math.round(v) + ' °C'; } });
+		}
+	}
+
+	var tt = document.getElementById('traffic-table');
+	if (tt) { tt.innerHTML = ''; tt.appendChild(trafficTable(_state.traffic, lab)); }
+}
+
+function pathNowText(lst) {
+	lst = lst || {};
+	if (!lst.persist) { return _('Storing is off - data lives in RAM until the next reboot.'); }
+	if (lst.path && lst.path_now && lst.path_now !== lst.path) {
+		return _('The drive is not mounted - writing to %s for now, and merging back when it returns.').format(lst.path_now);
+	}
+	return lst.path_now ? _('Writing to %s').format(lst.path_now) : _('Nowhere to write - check the path.');
+}
+
+function refresh() {
+	return callStats([ 'list' ]).then(function(lst) {
+		_state.list = lst || {};
+		var names = [];
+		(lst && lst.ping || []).forEach(function(n) { names.push('ping.' + n); });
+		(lst && lst.signal || []).forEach(function(n) { names.push('signal.' + n); });
+		(lst && lst.temp || []).forEach(function(n) { names.push('temp.' + n); });
+		(lst && lst.rsrp || []).forEach(function(n) { names.push('rsrp.' + n); });
+		(lst && lst.sinr || []).forEach(function(n) { names.push('sinr.' + n); });
+		return Promise.all(names.map(function(n) {
+			return callStats([ 'series', n ]).then(function(r) {
+				_state.series[n] = (r && r.series) || [];
+			});
+		})).then(function() {
+			return callStats([ 'traffic' ]).then(function(t) { _state.traffic = t || {}; });
+		});
+	}).then(redraw);
+}
+
+return view.extend({
+	load: function() {
+		var self = this, args = arguments;
+		return fresh.check(30934, [ modemtabs, mutil ]).then(function() { return self._load5g.apply(self, args); });
+	},
+
+	_load5g: function() {
+		return Promise.all([
+			uci.load('5gmodem'),
+			callStats([ 'list' ])
+		]);
+	},
+
+	render: function(res) {
+		var lst = (res && res[1]) || {};
+		_state.list = lst;
+
+		var head = E('div');
+
+		var controls = E('div', { 'class': 'cbi-section tg5g' }, [
+			E('h3', {}, [ _('Statistics') ]),
+			E('div', { 'class': 'cbi-value tg-flag' }, [
+				E('label', { 'class': 'cbi-value-title' }, [ _('Keep monthly traffic across reboots') ]),
+				E('div', { 'class': 'cbi-value-field' }, [
+					(function() {
+						var w = new ui.Checkbox(lst.persist ? '1' : '0', { id: 'st-persist' });
+						var n = w.render();
+						n.addEventListener('widget-change', function() {
+							callStats([ 'setconf', 'persist=' + (w.isChecked() ? '1' : '0') ]).then(function() {
+								return callStats([ 'list' ]).then(function(lst2) {
+									_state.list = lst2 || {};
+									var el = document.getElementById('st-path-now');
+									if (el) { el.textContent = pathNowText(lst2); }
+								});
+							});
+						});
+						return n;
+					})(),
+					E('div', { 'class': 'cbi-value-description' },
+						[ _('Monthly totals are written to flash about once an hour. Ping series are never written there.') ])
+				])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, [ _('Collect signal in the background') ]),
+				E('div', { 'class': 'cbi-value-field' }, [
+					(function() {
+						var w = new ui.Select(String(lst.bgpoll || 0), {
+							'0': _('Off'),
+							'300': _('Every 5 minutes'),
+							'60': _('Every minute')
+						}, { id: 'st-bgpoll', sort: [ '0', '300', '60' ] });
+						var n = w.render();
+						n.addEventListener('widget-change', function() {
+							callStats([ 'setconf', 'bgpoll=' + w.getValue() ]);
+						});
+						return n;
+					})(),
+					E('div', { 'class': 'cbi-value-description' },
+						[ _('With the page closed the modem is not polled, so the signal charts stop. This polls the active modem on a timer to keep them going. Modems with background AT polling switched off are skipped.') ])
+				])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, [ _('Where to store') ]),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('input', {
+						'type': 'text', 'class': 'cbi-input-text', 'id': 'st-path',
+						'value': lst.path || '', 'placeholder': lst.path_default || '/etc/5gmodem/stats',
+						'style': 'width:22em;max-width:100%',
+						'change': function(ev) {
+							callStats([ 'setconf', 'path=' + String(ev.target.value || '').trim() ]).then(function(r) {
+								var el = document.getElementById('st-path-now');
+								if (r && r.error) { if (el) { el.textContent = _('Path rejected: %s').format(r.error); } return; }
+								return callStats([ 'list' ]).then(function(lst2) {
+									_state.list = lst2 || {};
+									if (el) { el.textContent = pathNowText(lst2); }
+								});
+							});
+						}
+					}),
+					E('div', { 'class': 'cbi-value-description' }, [
+						_('Empty - the router\'s own memory (%s). A path on a USB drive also gets the chart series, not just monthly totals.').format(lst.path_default || '/etc/5gmodem/stats'),
+						E('div', { 'id': 'st-path-now', 'style': 'margin-top:4px' }, [ pathNowText(lst) ])
+					])
+				])
+			]),
+			E('div', { 'class': 'cbi-value' }, [
+				E('label', { 'class': 'cbi-value-title' }, [ _('Reset statistics') ]),
+				E('div', { 'class': 'cbi-value-field' }, [
+					E('button', {
+						'class': 'btn cbi-button cbi-button-remove',
+						'click': ui.createHandlerFn(this, function() {
+							return callStats([ 'reset' ]).then(function() {
+								_state.series = {}; _state.traffic = {};
+								return refresh();
+							});
+						})
+					}, [ _('Reset') ])
+				])
+			])
+		]);
+
+		var body = E('div', {}, [
+			head,
+			controls,
+			chartCard(_('Uplink latency'), 'chart-ping'),
+			chartCard(_('Signal level'), 'chart-signal'),
+			E('div', { 'id': 'card-rsrp', 'style': 'display:none' }, [
+				dualChartCard(_('RSRP / SINR'), 'chart-rsrp', 'RSRP, dBm', 'chart-sinr', 'SINR, dB')
+			]),
+			E('div', { 'id': 'card-temp', 'style': 'display:none' }, [
+				chartCard(_('Modem temperature'), 'chart-temp')
+			]),
+			E('div', { 'class': 'cbi-section tg5g' }, [
+				E('h3', {}, [ _('Monthly traffic') ]),
+				E('div', { 'id': 'traffic-table' }, [])
+			])
+		]);
+
+		refresh();
+		poll.add(function() {
+			if (document.hidden) { return Promise.resolve(); }
+			return callStats([ 'tick' ]).then(refresh);
+		}, 10);
+		return body;
+	},
+
+	handleSaveApply: null,
+	handleSave: null,
+	handleReset: null
+});

@@ -1,0 +1,212 @@
+_DEVICE=""
+
+_DEFAULT_LTE_BANDS="1 2 3 4 5 7 8 12 13 14 17 18 19 20 25 26 28 29 30 32 34 38 39 40 41 42 43 46 48 66 71"
+_DEFAULT_5GNSA_BANDS="1 2 3 5 7 8 20 25 28 30 38 40 41 48 66 71 75 77 78 79"
+_DEFAULT_5GSA_BANDS="$_DEFAULT_5GNSA_BANDS"
+_MODES="1:Auto 4:4G 6:5G"
+
+_BND_NOW=""
+_BND_CAP=""
+_WS46_CAP=""
+_MODEL=""
+
+_port_ok() { [ -n "$_DEVICE" ] && [ -e "$_DEVICE" ]; }
+
+_now() {
+	if [ -z "$_BND_NOW" ] && _port_ok; then
+		_BND_NOW=$(sms_tool -d $_DEVICE at "AT#BND?" 2>/dev/null | tr -d '\r ' \
+			| sed -n 's/^#BND://p' | head -1)
+	fi
+	printf '%s' "$_BND_NOW"
+}
+
+_cap() {
+	if [ -z "$_BND_CAP" ] && _port_ok; then
+		_BND_CAP=$(sms_tool -d $_DEVICE at "AT#BND=?" 2>/dev/null | tr -d '\r ' \
+			| sed -n 's/^#BND://p' | head -1 | sed 's/^(//; s/)$//; s/),(/;/g')
+	fi
+	printf '%s' "$_BND_CAP"
+}
+
+_nowf()  { _now | cut -d, -f"$1"; }
+_capf()  { _cap | cut -d';' -f"$1"; }
+_nowN()  { _now | tr ',' '\n' | grep -c .; }
+_capN()  { _cap | tr ';' '\n' | grep -c .; }
+
+_pad16() { printf '%16s' "${1:-0}" | tr ' ' '0'; }
+
+_pair2bands() { hextobands "0x$(_pad16 "$2")$(_pad16 "$1")" | xargs -n1 2>/dev/null | sort -n | uniq | xargs; }
+
+_lomask() {
+	_l=""
+	for _b in $1; do
+		case "$_b" in ''|*[!0-9]*) continue ;; esac
+		[ "$_b" -le 64 ] && _l="$_l $_b"
+	done
+	bandstohex "$_l"
+}
+
+_himask() {
+	_h=""
+	for _b in $1; do
+		case "$_b" in ''|*[!0-9]*) continue ;; esac
+		[ "$_b" -gt 64 ] && _h="$_h $((_b - 64))"
+	done
+	bandstohex "$_h"
+}
+
+_read_pair() {
+	[ "$(_nowN)" -ge $(($1 + 1)) ] 2>/dev/null || return 0
+	_pair2bands "$(_nowf "$1")" "$(_nowf $(($1 + 1)))"
+}
+
+_read_cap_pair() {
+	[ "$(_capN)" -ge $(($1 + 1)) ] 2>/dev/null || return 0
+	_pair2bands "$(_capf "$1")" "$(_capf $(($1 + 1)))"
+}
+
+_write_pair() {
+	_n=$(_nowN)
+	[ "$_n" -ge $(($1 + 1)) ] 2>/dev/null || return 1
+	_out=""; _i=1
+	while [ "$_i" -le "$_n" ]; do
+		_v=$(_nowf "$_i")
+		[ "$_i" = "$1" ] && _v="$2"
+		[ "$_i" = "$(($1 + 1))" ] && _v="$3"
+		_out="$_out,$_v"
+		_i=$((_i + 1))
+	done
+	sms_tool -d $_DEVICE at "AT#BND=${_out#,}"
+}
+
+getinfo() {
+	if [ -z "$_MODEL" ] && _port_ok; then
+		_MODEL=$(sms_tool -d $_DEVICE at "AT+CGMM" 2>/dev/null | tr -d '\r' \
+			| grep -oE "FN[0-9]+[A-Za-z0-9-]*" | head -1)
+	fi
+	echo "Telit ${_MODEL:-FN990}"
+}
+
+getsupportedbands() {
+	_B=$(_read_cap_pair 3)
+	[ -n "$_B" ] || _B="$_DEFAULT_LTE_BANDS"
+	echo "$_B"
+}
+
+getbands() { _read_pair 3; }
+
+setbands() {
+	_BS="$1"
+	[ "$_BS" = "default" ] && _BS="$(getsupportedbands)"
+	_LO=$(_lomask "$_BS"); _HI=$(_himask "$_BS")
+	[ "$_LO" = 0 ] && [ "$_HI" = 0 ] && return 1
+	_write_pair 3 "$_LO" "$_HI"
+}
+
+getsupportedbands5gnsa() {
+	_B=$(_read_cap_pair 5)
+	[ -n "$_B" ] || { _port_ok && return; echo "$_DEFAULT_5GNSA_BANDS"; }
+	echo "$_B"
+}
+
+getbands5gnsa() { _read_pair 5; }
+
+setbands5gnsa() {
+	_BS="$1"
+	[ "$_BS" = "default" ] && _BS="$(getsupportedbands5gnsa)"
+	_write_pair 5 "$(_lomask "$_BS")" "$(_himask "$_BS")"
+}
+
+_sa_lo() {
+	_sn=$(_capN)
+	[ "$_sn" -gt 0 ] 2>/dev/null || _sn=$(_nowN)
+	if [ "$_sn" -ge 10 ] 2>/dev/null; then
+		case "$(getinfo)" in *FN980*) echo 8; return ;; esac
+		_s7=$(_capf 7); _s8=$(_capf 8)
+		case "$_s7$_s8" in *[!0-9A-Fa-f]*) ;; *)
+			if [ -n "$_s8" ] && [ "$_s8" != 0 ] && [ "$((0x${_s7:-0}))" -le 255 ] 2>/dev/null; then
+				echo 8; return
+			fi ;;
+		esac
+	fi
+	echo 7
+}
+
+getsupportedbands5gsa() {
+	_B=$(_read_cap_pair "$(_sa_lo)")
+	[ -n "$_B" ] || { _port_ok && return; echo "$_DEFAULT_5GSA_BANDS"; }
+	echo "$_B"
+}
+
+getbands5gsa() { _read_pair "$(_sa_lo)"; }
+
+setbands5gsa() {
+	_BS="$1"
+	[ "$_BS" = "default" ] && _BS="$(getsupportedbands5gsa)"
+	_write_pair "$(_sa_lo)" "$(_lomask "$_BS")" "$(_himask "$_BS")"
+}
+
+_ws46_cap() {
+	if [ -z "$_WS46_CAP" ] && _port_ok; then
+		_WS46_CAP=$(sms_tool -d $_DEVICE at "AT+WS46=?" 2>/dev/null | tr -d '\r ' \
+			| sed -n 's/^+WS46:(\(.*\))$/\1/p' | head -1 | tr ',' ' ')
+	fi
+	printf '%s' "$_WS46_CAP"
+}
+
+_ws46_auto() {
+	_c=$(_ws46_cap)
+	for _w in 38 37 31 28; do
+		for _s in $_c; do
+			[ "$_s" = "$_w" ] && { echo "$_w"; return; }
+		done
+	done
+	echo 37
+}
+
+_ws46_id() {
+	case "$1" in
+		22) echo 2 ;;
+		31) echo 3 ;;
+		28) echo 4 ;;
+		37) echo 5 ;;
+		36) echo 6 ;;
+		*)  echo "" ;;
+	esac
+}
+
+getsupportedmodes() {
+	_c=$(_ws46_cap)
+	[ -n "$_c" ] || { echo "$_MODES"; return; }
+	_a=$(_ws46_auto)
+	_o="1:Auto"
+	for _p in 22:3G 31:3G+4G 28:4G 37:4G+5G 36:5G; do
+		_v=${_p%%:*}
+		[ "$_v" = "$_a" ] && continue
+		for _s in $_c; do
+			[ "$_s" = "$_v" ] && _o="$_o $(_ws46_id "$_v"):${_p#*:}"
+		done
+	done
+	echo "$_o"
+}
+
+getmode() {
+	_M=$(sms_tool -d $_DEVICE at "AT+WS46?" 2>/dev/null | tr -d '\r' \
+		| sed -n 's/^+WS46: *\([0-9]*\).*/\1/p' | head -1)
+	[ -n "$_M" ] || { echo ""; return; }
+	[ "$_M" = "$(_ws46_auto)" ] && { echo 1; return; }
+	_ws46_id "$_M"
+}
+
+setmode() {
+	case "$1" in
+		1) _W=$(_ws46_auto) ;;
+		2) _W=22 ;;
+		3) _W=31 ;;
+		4) _W=28 ;;
+		5) _W=37 ;;
+		6) _W=36 ;;
+		*) return 1 ;;
+	esac
+	sms_tool -d $_DEVICE at "AT+WS46=$_W"
+}

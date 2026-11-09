@@ -1,0 +1,338 @@
+#!/bin/sh
+
+RES=/usr/share/5gmodem
+CFG=5gmodem
+
+. "$RES/lib.sh" 2>/dev/null
+
+_cfg() { uci -q get "$CFG.sms.$1" 2>/dev/null; }
+_log() { logger -t 5gmodem "sms-commands: $*"; }
+
+CMD_EN=$(_cfg cmd_enabled)
+[ "$1" = run ] && [ "$CMD_EN" != 1 ] && exit 0
+CMD_WL=$(_cfg cmd_whitelist_only); [ -n "$CMD_WL" ] || CMD_WL=1
+CMD_SECRET=$(_cfg cmd_secret)
+CMD_MAXAGE=$(_cfg cmd_max_age); case "$CMD_MAXAGE" in ''|*[!0-9]*) CMD_MAXAGE=24 ;; esac
+
+CMD_COOLDOWN=$(_cfg cmd_cooldown); case "$CMD_COOLDOWN" in ''|*[!0-9]*) CMD_COOLDOWN=300 ;; esac
+
+_cool_key() { printf '%s' "$1" | tr 'A-Z' 'a-z' | md5sum | cut -c1-12; }
+
+_cool_ok() {
+	[ "$CMD_COOLDOWN" = 0 ] && return 0
+	_ck_now=$(date +%s 2>/dev/null); case "$_ck_now" in ''|*[!0-9]*) return 0 ;; esac
+	_ck_k=$(_cool_key "$1")
+	_ck_f=$(sms_cmd_cool_file "$MPATH")
+	[ -f "$_ck_f" ] || return 0
+	while read -r _ck_w _ck_t; do
+		[ "$_ck_w" = "$_ck_k" ] || continue
+		case "$_ck_t" in ''|*[!0-9]*) return 0 ;; esac
+		[ "$_ck_now" -lt "$_ck_t" ] && return 0
+		[ $((_ck_now - _ck_t)) -lt "$CMD_COOLDOWN" ] && return 1
+		return 0
+	done < "$_ck_f"
+	return 0
+}
+
+_cool_mark() {
+	[ "$CMD_COOLDOWN" = 0 ] && return 0
+	_cm_now=$(date +%s 2>/dev/null); case "$_cm_now" in ''|*[!0-9]*) return 0 ;; esac
+	_cm_k=$(_cool_key "$1")
+	_cm_f=$(sms_cmd_cool_file "$MPATH")
+	mkdir -p "$(dirname "$_cm_f")" 2>/dev/null
+	{
+		if [ -f "$_cm_f" ]; then
+			while read -r _cm_w _cm_t; do
+				[ "$_cm_w" = "$_cm_k" ] && continue
+				[ -n "$_cm_w" ] && printf '%s %s\n' "$_cm_w" "$_cm_t"
+			done < "$_cm_f"
+		fi
+		printf '%s %s\n' "$_cm_k" "$_cm_now"
+	} > "$_cm_f.tmp" 2>/dev/null && mv "$_cm_f.tmp" "$_cm_f" 2>/dev/null
+	sync 2>/dev/null
+}
+
+_fresh_cmd() {
+	[ "$CMD_MAXAGE" = 0 ] && return 0
+	_fc_e=$(date -u -D '%Y-%m-%d %H:%M' -d "$1" +%s 2>/dev/null)
+	case "$_fc_e" in ''|*[!0-9]*) return 1 ;; esac
+	[ $(( $(date -u +%s) - _fc_e )) -lt $((CMD_MAXAGE * 3600)) ]
+}
+STORE=$(_cfg storage); [ -n "$STORE" ] || STORE=SM
+
+DONE_MAX=300
+_dm_al=$(_cfg archive_limit)
+case "$_dm_al" in ''|*[!0-9]*) _dm_al=0 ;; esac
+[ "${#_dm_al}" -le 4 ] && [ "$_dm_al" -le 2000 ] || _dm_al=2000
+DONE_MAX=$((DONE_MAX + _dm_al))
+ANS_MAX=600
+
+_num10() {
+	_n=$(printf '%s' "$1" | tr -cd '0-9')
+	_l=${#_n}
+	[ "$_l" -gt 10 ] && _n=$(printf '%s' "$_n" | cut -c$((_l - 9))-)
+	printf '%s' "$_n"
+}
+
+_allowed() {
+	[ "$CMD_WL" = "1" ] || return 0
+	_a=$(_num10 "$1")
+	[ -n "$_a" ] || return 1
+	for _w in $(uci -q get "$CFG.sms.cmd_phone" 2>/dev/null); do
+		[ "$(_num10 "$_w")" = "$_a" ] && return 0
+	done
+	return 1
+}
+
+_find_cmd() {
+	_fk=$(printf '%s' "$1" | tr 'A-Z' 'a-z')
+	[ -n "$_fk" ] || return 1
+	for _sec in $(uci -q show "$CFG" 2>/dev/null \
+			| sed -n "s/^\($CFG\.[^.]*\)=smscmd\$/\1/p"); do
+		_kw=$(uci -q get "$_sec.keyword" | tr 'A-Z' 'a-z')
+		[ -n "$_kw" ] && [ "$_kw" = "$_fk" ] && { printf '%s' "$_sec"; return 0; }
+	done
+	return 1
+}
+
+_run_cmd() {
+	_rc_ex=$(uci -q get "$1.exec")
+	[ -n "$_rc_ex" ] || return 1
+	cmd_allowed "$_rc_ex" || return 1
+	_rc_ans=$(uci -q get "$1.answer")
+	_rc_txt=$(uci -q get "$1.answer_text")
+	_rc_dly=$(uci -q get "$1.delay")
+	case "$_rc_dly" in ''|*[!0-9]*) _rc_dly=0 ;; esac
+	[ "$_rc_dly" -gt 300 ] 2>/dev/null && _rc_dly=300
+
+	_log "from $2: $(uci -q get "$1.keyword") -> $_rc_ex"
+
+	if [ "$_rc_dly" -gt 0 ]; then
+		[ "$_rc_ans" = "1" ] && _answer "$2" "${_rc_txt:-OK}"
+		(
+			exec >/dev/null 2>&1 </dev/null
+			sleep "$_rc_dly"
+			SMS_FROM="$2" SMS_ARGS="$3" SMS_TEXT="$4" sh -c "$_rc_ex"
+		) &
+		return 0
+	fi
+
+	_rc_out=$(SMS_FROM="$2" SMS_ARGS="$3" SMS_TEXT="$4" sh -c "$_rc_ex" 2>&1)
+	if [ "$_rc_ans" = "1" ]; then
+		_rc_body="$_rc_txt"
+		[ -n "$_rc_out" ] && _rc_body="${_rc_body:+$_rc_body
+}$(printf '%s' "$_rc_out" | head -c "$ANS_MAX")"
+		_answer "$2" "${_rc_body:-OK}"
+	fi
+	return 0
+}
+
+_answer() {
+	[ -n "$1" ] || return 0
+	case "$(_num10 "$1")" in '') return 0 ;; esac
+	SMS_MODEM="$MPATH" "$RES/smsbridge.sh" send "$1" "$2" "$MPORT" >/dev/null 2>&1
+}
+
+_o_nltrim() {
+	eval "_ont_v=\$$1"
+	while :; do
+		case "$_ont_v" in
+			*"
+") _ont_v=${_ont_v%?} ;;
+			*) break ;;
+		esac
+	done
+	eval "$1=\$_ont_v"
+}
+
+_one() {
+	MPATH="$1"
+	_o_sec="m_$(printf '%s' "$MPATH" | sed 's/[^A-Za-z0-9]/_/g')"
+	_o_act=$(uci -q get "$CFG.@5gmodem[0].active_modem")
+	if [ "$MPATH" = "$_o_act" ]; then
+		MPORT=$(_cfg readport)
+	else
+		MPORT=$(uci -q get "$CFG.$_o_sec.at_port")
+	fi
+
+	_o_msgs=$(SMS_MODEM="$MPATH" "$RES/smsbridge.sh" recv "$STORE" "$MPORT" 2>/dev/null)
+	[ -n "$_o_msgs" ] || return 0
+	_o_idx=$(printf '%s' "$_o_msgs" | jsonfilter -e '@.msg[*].index' 2>/dev/null)
+	[ -n "$_o_idx" ] || return 0
+
+	_o_df=$(sms_cmd_done_file "$MPATH")
+	_o_first=0
+	[ -f "$_o_df" ] || _o_first=1
+	mkdir -p "$(dirname "$_o_df")" 2>/dev/null
+
+	_o_ids=""
+	for _o_i in $_o_idx; do
+		case "$_o_i" in ''|*[!0-9]*) continue ;; esac
+		_o_s=""; _o_t=""; _o_c=""
+		eval "$(printf '%s' "$_o_msgs" | jsonfilter -e "_o_s=@.msg[@.index=$_o_i].sender" \
+			-e "_o_t=@.msg[@.index=$_o_i].timestamp" -e "_o_c=@.msg[@.index=$_o_i].content" 2>/dev/null)"
+		_o_nltrim _o_s; _o_nltrim _o_t; _o_nltrim _o_c
+		eval "_o_S$_o_i=\$_o_s; _o_T$_o_i=\$_o_t; _o_C$_o_i=\$_o_c"
+		_o_ids="$_o_ids $_o_i"
+	done
+	_o_idx="$_o_ids"
+
+	_o_seen_keys=""
+	for _o_i in $_o_idx; do
+		eval "_o_s=\$_o_S$_o_i; _o_t=\$_o_T$_o_i"
+		_o_grp="$_o_s|$_o_t"
+		case "
+$_o_seen_keys
+" in *"
+$_o_grp
+"*) continue ;; esac
+		_o_seen_keys="$_o_seen_keys
+$_o_grp"
+
+		eval "_o_c1=\$_o_C$_o_i"
+		grep -qxF "$(sms_cmd_key "$_o_s" "$_o_t" "$_o_c1")" "$_o_df" 2>/dev/null && continue
+
+		_o_text=""; _o_keys=""
+		for _o_j in $_o_idx; do
+			eval "_o_js=\$_o_S$_o_j; _o_jt=\$_o_T$_o_j"
+			[ "$_o_js" = "$_o_s" ] || continue
+			[ "$_o_jt" = "$_o_t" ] || continue
+			eval "_o_c=\$_o_C$_o_j"
+			_o_text="$_o_text$_o_c"
+			_o_keys="$_o_keys $(sms_cmd_key "$_o_s" "$_o_t" "$_o_c")"
+		done
+
+		_o_k1=${_o_keys# }; _o_k1=${_o_k1%% *}
+		[ -n "$_o_k1" ] && grep -qxF "$_o_k1" "$_o_df" 2>/dev/null && continue
+
+		# see docs/subsystems/notifications.md#mark-before-execute
+		for _o_k in $_o_keys; do
+			[ -n "$_o_k" ] || continue
+			[ "$_o_k" = "$_o_k1" ] && continue
+			grep -qxF "$_o_k" "$_o_df" 2>/dev/null || echo "$_o_k" >> "$_o_df"
+		done
+		if [ -n "$_o_k1" ]; then
+			grep -qxF "$_o_k1" "$_o_df" 2>/dev/null || echo "$_o_k1" >> "$_o_df"
+		fi
+		sync 2>/dev/null
+
+		if [ "$_o_first" = 0 ] && ! _fresh_cmd "$_o_t"; then
+			_log "skipped: message from $_o_s is older than ${CMD_MAXAGE} h (${_o_t}), old commands are not run"
+		elif [ "$_o_first" = 0 ]; then
+			_o_body="$_o_text"
+			if [ -n "$CMD_SECRET" ]; then
+				_o_w1=$(printf '%s' "$_o_body" | awk '{print $1; exit}')
+				if [ "$(printf '%s' "$_o_w1" | tr 'A-Z' 'a-z')" \
+				   = "$(printf '%s' "$CMD_SECRET" | tr 'A-Z' 'a-z')" ]; then
+					_o_body=$(printf '%s' "$_o_body" | awk '{ $1=""; sub(/^[ \t]+/,""); print; exit }')
+				else
+					_o_body=""
+				fi
+			fi
+			_o_word=$(printf '%s' "$_o_body" | awk '{print $1; exit}')
+			_o_rest=$(printf '%s' "$_o_body" | awk '{ $1=""; sub(/^[ \t]+/,""); print; exit }')
+			if _o_cs=$(_find_cmd "$_o_word"); then
+				if ! _allowed "$_o_s"; then
+					_log "rejected: number $_o_s is not whitelisted"
+				elif ! _cool_ok "$_o_word"; then
+					_log "skipped: \"$_o_word\" ran less than ${CMD_COOLDOWN} s ago (duplicate message)"
+				else
+					_cool_mark "$_o_word"
+					_run_cmd "$_o_cs" "$_o_s" "$_o_rest" "$_o_text"
+				fi
+			fi
+		fi
+	done
+
+	if [ "$(wc -l 2>/dev/null < "$_o_df" || echo 0)" -gt "$DONE_MAX" ]; then
+		tail -n "$DONE_MAX" "$_o_df" > "$_o_df.tmp" 2>/dev/null && mv "$_o_df.tmp" "$_o_df"
+	fi
+	[ "$_o_first" = 1 ] && _log "first time seeing this SIM (modem $MPATH): its messages marked as handled, no commands run"
+	return 0
+}
+
+_has_sms() {
+	[ "$(uci -q get "$CFG.m_$(printf '%s' "$1" | sed 's/[^A-Za-z0-9]/_/g').kind")" = "hilink" ] && return 0
+	"$RES/listmodems.sh" 2>/dev/null \
+		| jsonfilter -e "@[@.path=\"$1\"].tty[0]" -e "@[@.path=\"$1\"].wdm[0]" 2>/dev/null \
+		| grep -q .
+}
+
+case "$1" in
+run)
+	[ "$CMD_EN" = "1" ] || exit 0
+	_paths=$("$RES/registry.sh" paths 2>/dev/null)
+	[ -n "$_paths" ] || _paths=$(uci -q get "$CFG.@5gmodem[0].active_modem")
+	for _p in $_paths; do
+		_has_sms "$_p" || continue
+		if [ "$(uci -q get "$CFG.m_$(printf '%s' "$_p" | sed 's/[^A-Za-z0-9]/_/g').kind")" != "hilink" ] \
+		   && bg_at_off "$_p"; then
+			continue
+		fi
+		_one "$_p"
+	done
+	;;
+chat)
+	[ "$CMD_EN" = "1" ] || { echo '{"error":"disabled"}'; exit 1; }
+	_ct=$(printf '%s' "$2" | sed 's/^[[:space:]]*//; s/[[:space:]]*$//')
+	[ -n "$_ct" ] || { echo '{"error":"empty"}'; exit 2; }
+	if [ -n "$CMD_SECRET" ]; then
+		_cw1=$(printf '%s' "$_ct" | awk '{print $1; exit}')
+		if [ "$(printf '%s' "$_cw1" | tr 'A-Z' 'a-z')" \
+		   = "$(printf '%s' "$CMD_SECRET" | tr 'A-Z' 'a-z')" ]; then
+			_ct=$(printf '%s' "$_ct" | awk '{ $1=""; sub(/^[ \t]+/,""); print; exit }')
+		else
+			echo '{"error":"secret"}'; exit 1
+		fi
+	fi
+	_cword=$(printf '%s' "$_ct" | awk '{print $1; exit}')
+	_crest=$(printf '%s' "$_ct" | awk '{ $1=""; sub(/^[ \t]+/,""); print; exit }')
+	_ccs=$(_find_cmd "$_cword") || { echo '{"error":"no such command"}'; exit 1; }
+	_cex=$(uci -q get "$_ccs.exec")
+	[ -n "$_cex" ] || { echo '{"error":"no such command"}'; exit 1; }
+	cmd_allowed "$_cex" || { echo '{"error":"command refused by policy"}'; exit 1; }
+	_ctxt=$(uci -q get "$_ccs.answer_text")
+	_cdly=$(uci -q get "$_ccs.delay")
+	case "$_cdly" in ''|*[!0-9]*) _cdly=0 ;; esac
+	[ "$_cdly" -gt 300 ] 2>/dev/null && _cdly=300
+	_log "from chat: $_cword -> $_cex"
+	_cjson() { printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\000-\037' ' '; }
+	if [ "$_cdly" -gt 0 ]; then
+		(
+			exec >/dev/null 2>&1 </dev/null
+			sleep "$_cdly"
+			SMS_FROM="telegram" SMS_ARGS="$_crest" SMS_TEXT="$_ct" sh -c "$_cex"
+		) &
+		printf '{"result":"ok","output":"%s"}\n' \
+			"$(_cjson "${_ctxt:-OK} (через ${_cdly} c)")"
+	else
+		_cout=$(SMS_FROM="telegram" SMS_ARGS="$_crest" SMS_TEXT="$_ct" \
+			sh -c "$_cex" 2>&1 | head -c "$ANS_MAX")
+		printf '{"result":"ok","output":"%s"}\n' \
+			"$(_cjson "${_ctxt:+$_ctxt }${_cout}")"
+	fi
+	;;
+list)
+	uci -q show "$CFG" 2>/dev/null | sed -n "s/^$CFG\.[^.]*\.keyword='\(.*\)'\$/\1/p"
+	;;
+test)
+	[ -n "$2" ] || { echo '{"error":"no keyword"}'; exit 2; }
+	MPATH=$(uci -q get "$CFG.@5gmodem[0].active_modem")
+	MPORT=$(_cfg readport)
+	if _cs=$(_find_cmd "$2"); then
+		_tex=$(uci -q get "$_cs.exec")
+		cmd_allowed "$_tex" || { echo '{"error":"command refused by policy"}'; exit 1; }
+		_out=$(SMS_FROM="test" SMS_ARGS="$3" SMS_TEXT="$2 $3" \
+			sh -c "$_tex" 2>&1 | head -c "$ANS_MAX")
+		printf '{"result":"ok","output":"%s"}\n' \
+			"$(printf '%s' "$_out" | sed 's/\\/\\\\/g; s/"/\\"/g' | tr '\000-\037' ' ')"
+	else
+		echo '{"error":"no such command"}'
+		exit 1
+	fi
+	;;
+*)
+	echo "usage: $0 run | chat <text> | list | test <keyword> [args]" >&2
+	exit 2 ;;
+esac
+exit 0

@@ -1,0 +1,174 @@
+[ -n "$_IS_COMPAL" ] && return 0 2>/dev/null
+
+if [ -z "$ANTPORTS" ]; then
+	_AL=$(echo "$_DBG" | sed -n 's/.*lte_ant_rsrp:rx_diversity:\([0-9]*\)[^(]*(\([^)]*\)).*/\1|\2/p' | head -1)
+	[ -n "$_AL" ] || _AL=$(echo "$_DBG" | sed -n 's/.*wcdma_ant_rscp: *rx_diversity: *\([0-9]*\)[^(]*(\([^)]*\)).*/\1|\2/p' | head -1)
+	if [ -n "$_AL" ]; then
+		_AMASK="${_AL%%|*}"; _AVALS="${_AL#*|}"
+		# values are in direct chain order, see docs/modems/qualcomm-sdx55.md#antenna-ports
+		_AI=0; _AOK=0; _AGOOD=0
+		for _AV in $(echo "$_AVALS" | tr ',' ' '); do
+			_AV=$(echo "$_AV" | sed 's/dBm//g' | tr -d ' ')
+			case "$_AV" in ''|*[!0-9.-]*) _AI=$((_AI+1)); continue ;; esac
+			_AR=$(awk "BEGIN{printf \"%.0f\", $_AV}" 2>/dev/null)
+			case "$_AR" in ''|*[!0-9-]*) _AI=$((_AI+1)); continue ;; esac
+			if [ "$_AR" -le -160 ] 2>/dev/null || [ "$_AR" -ge -20 ] 2>/dev/null; then
+				_AI=$((_AI+1)); continue
+			fi
+			ANTPORTS="$ANTPORTS${ANTPORTS:+ }$_AI:$_AR:"
+			_AOK=$((_AOK+1))
+			[ "$_AR" -gt -130 ] 2>/dev/null && _AGOOD=$((_AGOOD+1))
+			_AI=$((_AI+1))
+		done
+		ANTPORTS=$(echo "$ANTPORTS" | tr ' ' '\n' | sort -n | tr '\n' ' ' | sed 's/ *$//')
+		if [ "$_AOK" -ge 2 ]; then
+			case "$_AMASK" in
+				''|*[!0-9]*) ;;
+				*) _AN=0
+				   for _AB in 1 2 4 8; do [ $(( _AMASK & _AB )) -ne 0 ] && _AN=$((_AN+1)); done
+				   case "$_AN" in
+					   1) RXDIV="off" ;;
+					   2) RXDIV="2rx" ;;
+					   3|4) RXDIV="4rx" ;;
+				   esac ;;
+			esac
+		fi
+	fi
+fi
+
+_VNC="/tmp/5gmodem/novzw_$(echo "${DEVICE##*/}" | tr -c 'A-Za-z0-9' '_')"
+if [ -z "$NEIGHBORS" ] && [ ! -f "$_VNC" ]; then
+	_VP=$(sms_tool -d $DEVICE at "AT+VZWRSRP?" 2>/dev/null | tr -d '\r')
+	case "$_VP" in
+		*VZWRSRP:*) ;;
+		*) : > "$_VNC" ;;
+	esac
+	if echo "$_VP" | grep -q "VZWRSRP:"; then
+		_VQ=$(sms_tool -d $DEVICE at "AT+VZWRSRQ?" 2>/dev/null | tr -d '\r')
+		NEIGHBORS=$(printf '%s\n@@RSRQ@@\n%s\n' "$_VP" "$_VQ" | awk '
+			function num(v) {   # "-1082" -> -108.2 -> -108
+				gsub(/"/, "", v); gsub(/[ \t]/, "", v)
+				if (v !~ /^-?[0-9]+$/) return ""
+				return sprintf("%.0f", v / 10)
+			}
+			/@@RSRQ@@/ { part = 2; next }
+			{
+				line = $0
+				sub(/^.*VZWRSRP:[ \t]*/, "", line)
+				sub(/^.*VZWRSRQ:[ \t]*/, "", line)
+				gsub(/[ \t]/, "", line)
+				if (line == "" || line == "OK") next
+				n = split(line, a, ",")
+				for (i = 1; i + 2 <= n; i += 3) {
+					pc = a[i]; ef = a[i+1]; vl = num(a[i+2])
+					if (pc !~ /^[0-9]+$/ || ef !~ /^[0-9]+$/) continue
+					key = pc "_" ef
+					if (part == 2) { rq[key] = vl; continue }
+					if (!(key in seen)) { seen[key] = ++cnt; kp[cnt] = pc; ke[cnt] = ef; kr[cnt] = vl }
+				}
+			}
+			END {
+				for (i = 1; i <= cnt; i++) {
+					key = kp[i] "_" ke[i]
+					printf "%s{\"band\":\"\",\"earfcn\":\"%s\",\"pci\":\"%s\",\"rsrp\":\"%s\",\"rsrq\":\"%s\",\"rssi\":\"\",\"serving\":%s}",
+						(o++ ? "," : ""), ke[i], kp[i], kr[i], (key in rq ? rq[key] : ""), (i == 1 ? 1 : 0)
+				}
+			}')
+	fi
+fi
+
+if [ -z "$TXPOWER" ]; then
+	_TXP=$(printf '%s\n' "$_DBG" | awk '
+		{
+			line = $0
+			gsub(/[ \t]/, "", line)
+			n = split(line, a, ",")
+			for (i = 1; i <= n; i++) {
+				p = index(a[i], ":")
+				if (p < 2) continue
+				k = substr(a[i], 1, p - 1)
+				v = substr(a[i], p + 1)
+				if (k != "lte_tx_pwr" && k != "nr_tx_pwr" && k != "tx_pwr") continue
+				sub(/(dBm|dB)$/, "", v)
+				if (v ~ /^-?[0-9]+(\.[0-9]+)?$/) { print v; exit }
+			}
+		}')
+	[ -n "$_TXP" ] && TXPOWER="$_TXP dBm"
+fi
+
+eval "$(printf '%s\n' "$_DBG" | awk '
+	function num(v) {
+		sub(/(dBm|dB)$/, "", v)
+		return (v ~ /^-?[0-9]+(\.[0-9]+)?$/) ? v : ""
+	}
+	/^[ \t]*pcell:/ { sec = 0; next }
+	/^[ \t]*scell:/ { sec = ++n; next }
+	/^[ \t]*nr_/    { sec = 0 }
+	sec > 0 {
+		line = $0
+		gsub(/[ \t]/, "", line)
+		m = split(line, a, ",")
+		for (i = 1; i <= m; i++) {
+			p = index(a[i], ":")
+			if (p < 2) continue
+			k = substr(a[i], 1, p - 1)
+			v = num(substr(a[i], p + 1))
+			if (v == "") continue
+			if (k == "lte_rsrp" || k == "rsrp")      rp[sec] = v
+			else if (k == "lte_rsrq" || k == "rsrq") rq[sec] = v
+			else if (k == "lte_rssi" || k == "rssi") rs[sec] = v
+			else if ((k == "lte_snr" || k == "snr") && v + 0 != 0 && v + 0 > -20) sr[sec] = v
+		}
+	}
+	END {
+		for (i = 1; i <= n && i <= 4; i++) {
+			if (i in rp) printf "_SX%dRSRP=%s\n", i, rp[i]
+			if (i in rq) printf "_SX%dRSRQ=%s\n", i, rq[i]
+			if (i in rs) printf "_SX%dRSSI=%s\n", i, rs[i]
+			if (i in sr) printf "_SX%dSINR=%s\n", i, sr[i]
+		}
+	}')"
+for _SI in 1 2 3 4; do
+	for _SM in RSRP RSRQ RSSI SINR; do
+		eval "_SV=\$_SX${_SI}${_SM}; _SC=\$S${_SI}${_SM}"
+		case "$_SC" in
+			''|-) [ -n "$_SV" ] && eval "S${_SI}${_SM}=\$_SV" ;;
+		esac
+	done
+	unset _SX${_SI}RSRP _SX${_SI}RSRQ _SX${_SI}RSSI _SX${_SI}SINR
+done
+unset _SV _SC
+
+case "$(printf '%s\n' "$_DBG" | sed -n 's/^[ \t]*RAT:[ \t]*//p' | head -1 | tr -d ' \t\r')" in
+	WCDMA*|UMTS*|HSPA*|HSDPA*|HSUPA*|GSM*|GPRS*|EDGE*)
+		_W3=$(printf '%s\n' "$_DBG" | sed 's/([^)]*)/ /g' | awk '
+			function num(v) {
+				sub(/(dBm|dB)$/, "", v)
+				return (v ~ /^-?[0-9]+(\.[0-9]+)?$/) ? v : ""
+			}
+			{
+				line = $0
+				gsub(/[ \t]/, "", line)
+				sub(/^cell[0-9]+:/, "", line)
+				m = split(line, a, ",")
+				for (i = 1; i <= m; i++) {
+					p = index(a[i], ":")
+					if (p < 2) continue
+					k = substr(a[i], 1, p - 1)
+					v = num(substr(a[i], p + 1))
+					if (v == "") continue
+					if (!(k in g)) g[k] = v
+				}
+			}
+			END { printf "%s|%s|%s|%s|%s\n", g["rscp"], g["ecio"], g["rssi"], g["channel"], g["psc"] }')
+		_W_RSCP=${_W3%%|*}; _W3=${_W3#*|}
+		_W_ECIO=${_W3%%|*}; _W3=${_W3#*|}
+		_W_RSSI=${_W3%%|*}; _W3=${_W3#*|}
+		_W_CHAN=${_W3%%|*}; _W_PSC=${_W3##*|}
+		[ -n "$_W_RSCP" ] && [ -z "$RSCP" ] && RSCP="$_W_RSCP"
+		[ -n "$_W_ECIO" ] && [ -z "$ECIO" ] && ECIO="$_W_ECIO"
+		[ -n "$_W_RSSI" ] && [ -z "$RSSI" ] && RSSI="$_W_RSSI"
+		[ -n "$_W_CHAN" ] && [ -z "$EARFCN" ] && EARFCN="$_W_CHAN"
+		[ -n "$_W_PSC" ]  && [ -z "$PCI" ]    && PCI="$_W_PSC"
+		;;
+esac

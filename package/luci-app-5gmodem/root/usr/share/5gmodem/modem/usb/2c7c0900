@@ -1,0 +1,36 @@
+. "$RES/modem/usb/_quectel_common"
+
+_qc_temp3n
+
+if [ -z "$REG" ] || [ "x$MODE_NUM" = "x11" ]; then
+	_q5_c5greg busybox awk
+fi
+
+if [ "$REGOK" = "1" ]; then
+
+O=$(sms_tool -d $DEVICE at "at+qnwinfo;+qcainfo;+qeng=\"servingcell\";+qspn")
+
+_qc_spn2
+
+_q5_core nrn nrn2
+
+fi
+
+MODE=$(echo $MODE | sed 's,/,+,' | sed 's, / \(B[0-9]\), + \1,g' | sed 's,LTE B,LTE | B,' | sed 's,LTE_A,LTE-A,' | sed 's,LTE-A B,LTE-A | B,')
+
+if [ "${LAC_DEC}" = "0" ]; then
+	LAC_DEC="-"
+	LAC_HEX="-"
+fi
+
+_qc_gmr_fw
+
+_qc_gmr_model
+
+_qc_qslot
+
+_qc_ids_sed
+
+_qc_proto "Vendor=2c7c ProdID=0900" 1290
+
+. "$RES/modem/usb/_quectel_qrsrp"

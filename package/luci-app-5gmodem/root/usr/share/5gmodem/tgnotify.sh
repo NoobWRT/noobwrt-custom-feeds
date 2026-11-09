@@ -1,0 +1,745 @@
+#!/bin/sh
+
+RES=/usr/share/5gmodem
+CFG=5gmodem
+
+_cfg() { uci -q get "$CFG.sms.$1" 2>/dev/null; }
+
+TG_EN=$(_cfg tg_enabled)
+if [ "$1" = tick ] && [ "$TG_EN" != 1 ]; then
+	[ "$(_cfg ntfy_enabled)" = 1 ] || [ "$(_cfg hook_enabled)" = 1 ] || exit 0
+fi
+TG_TOKEN=$(_cfg tg_token)
+TG_CHAT=$(_cfg tg_chat)
+TG_INT=$(_cfg tg_interval); case "$TG_INT" in ''|*[!0-9]*) TG_INT=60 ;; esac
+TG_CMD=$(_cfg tg_commands)
+TG_IFACE=$(_cfg tg_iface)
+TG_FIRSTH=$(_cfg tg_first_hours); case "$TG_FIRSTH" in ''|*[!0-9]*) TG_FIRSTH=24 ;; esac
+TG_HOST=$(_cfg tg_hostname)
+TG_API=$(_cfg tg_api_url)
+case "$TG_API" in http://?*|https://?*) TG_API=${TG_API%/} ;; *) TG_API="" ;; esac
+_TG_K=""
+[ -n "$TG_API" ] && [ "$(_cfg tg_api_insecure)" = 1 ] && _TG_K="-k"
+[ -n "$TG_API" ] || TG_API=https://api.telegram.org
+NTFY_EN=$(_cfg ntfy_enabled)
+NTFY_SRV=$(_cfg ntfy_server); [ -n "$NTFY_SRV" ] || NTFY_SRV=https://ntfy.sh
+NTFY_SRV=${NTFY_SRV%/}
+NTFY_TOPIC=$(_cfg ntfy_topic)
+NTFY_TOKEN=$(_cfg ntfy_token)
+HOOK_EN=$(_cfg hook_enabled)
+HOOK_URL=$(_cfg hook_url)
+HOOK_HDR=$(_cfg hook_header)
+STORE=$(_cfg storage); [ -n "$STORE" ] || STORE=SM
+PORT=$(_cfg readport)
+
+STAMP=/tmp/5gmodem/tg_last
+OFFSET=/etc/5gmodem/tg_offset
+ANNOUNCED=/etc/5gmodem/tg_announced
+LASTLOG=/tmp/5gmodem/tg_result
+NTFYLOG=/tmp/5gmodem/ntfy_result
+HOOKLOG=/tmp/5gmodem/hook_result
+
+_log() { logger -t 5gmodem "telegram: $*"; }
+
+_ready() {
+	[ "$TG_EN" = "1" ] || return 1
+	[ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] || return 1
+	command -v curl >/dev/null 2>&1 || return 1
+	return 0
+}
+
+_ntfy_ready() {
+	[ "$NTFY_EN" = "1" ] && [ -n "$NTFY_TOPIC" ] || return 1
+	command -v curl >/dev/null 2>&1
+}
+
+_hook_ready() {
+	[ "$HOOK_EN" = "1" ] && [ -n "$HOOK_URL" ] || return 1
+	command -v curl >/dev/null 2>&1
+}
+
+_chs() {
+	_ready && printf 'tg '
+	_ntfy_ready && printf 'ntfy '
+	_hook_ready && printf 'hook '
+	return 0
+}
+
+_js() {
+	printf '%s' "$1" | tr -d '\r' | sed 's/\\/\\\\/g; s/"/\\"/g; s/\t/\\t/g' | awk '
+		BEGIN { ORS=""; printf "\"" }
+		{ if (NR>1) printf "\\n"; printf "%s", $0 }
+		END { printf "\"" }'
+}
+
+_http_rc() {
+	case "$1" in
+		2??) return 0 ;;
+		408|425|429) return 1 ;;
+		4??) return 2 ;;
+	esac
+	return 1
+}
+
+_ntfy_send() {
+	_ns_j=$(printf '{"topic":%s,"title":%s,"message":%s}' "$(_js "$NTFY_TOPIC")" \
+		"$(_js "$(printf '%s' "$1" | utf8_fix)")" "$(_js "$(printf '%s' "$2" | utf8_fix)")")
+	if [ -n "$NTFY_TOKEN" ]; then
+		_ns_c=$(printf 'header = "Authorization: Bearer %s"\n' "$NTFY_TOKEN" | curl -s -m 20 -o "$NTFYLOG" -w '%{http_code}' -K - \
+			-H 'Content-Type: application/json' --data-binary "$_ns_j" "$NTFY_SRV" 2>/dev/null)
+	else
+		_ns_c=$(curl -s -m 20 -o "$NTFYLOG" -w '%{http_code}' \
+			-H 'Content-Type: application/json' --data-binary "$_ns_j" "$NTFY_SRV" 2>/dev/null)
+	fi
+	[ "$_ns_c" = 000 ] && printf 'no reply from %s' "$NTFY_SRV" > "$NTFYLOG" 2>/dev/null
+	case "$_ns_c" in 2??) printf 'ok' > "$NTFYLOG" 2>/dev/null ;; esac
+	_http_rc "$_ns_c"
+}
+
+_hook_send() {
+	sms_fwd_info "$5"
+	_hs_j=$(printf '{"title":%s,"sender":%s,"time":%s,"text":%s,"router":%s,"modem":%s,"operator":%s,"phone":%s,"path":%s}' \
+		"$(_js "$(printf '%s' "$1" | utf8_fix)")" "$(_js "$2")" "$(_js "$3")" "$(_js "$(printf '%s' "$4" | utf8_fix)")" \
+		"$(_js "$SFI_HOST")" "$(_js "$SFI_MODEL")" "$(_js "$SFI_OP")" "$(_js "$SFI_PHONE")" "$(_js "$5")")
+	if [ -n "$HOOK_HDR" ]; then
+		_hs_c=$(printf 'header = "%s"\n' "$(printf '%s' "$HOOK_HDR" | sed 's/\\/\\\\/g; s/"/\\"/g')" | curl -s -m 20 -o "$HOOKLOG" -w '%{http_code}' -K - \
+			-H 'Content-Type: application/json' --data-binary "$_hs_j" "$HOOK_URL" 2>/dev/null)
+	else
+		_hs_c=$(curl -s -m 20 -o "$HOOKLOG" -w '%{http_code}' \
+			-H 'Content-Type: application/json' --data-binary "$_hs_j" "$HOOK_URL" 2>/dev/null)
+	fi
+	[ "$_hs_c" = 000 ] && printf 'no reply from %s' "${HOOK_URL%%\?*}" > "$HOOKLOG" 2>/dev/null
+	case "$_hs_c" in 2??) printf 'ok' > "$HOOKLOG" 2>/dev/null ;; esac
+	_http_rc "$_hs_c"
+}
+
+. "$RES/lib.sh" 2>/dev/null
+
+_TG_CAPI=http://127.0.0.1:9090
+_tg_capi() {
+	if [ -n "$_TG_CSEC" ]; then
+		curl -s -m 3 -H "Authorization: Bearer $_TG_CSEC" "$@" 2>/dev/null
+	else
+		curl -s -m 3 "$@" 2>/dev/null
+	fi
+}
+
+_tg_proxy_port() {
+	_tp_f=$(sed -n 's/^ *\(mixed-port\|port\) *: *\([0-9]*\).*/\2/p' \
+		/opt/clash/config.yaml /etc/clash/config.yaml 2>/dev/null | head -1)
+	case "$_tp_f" in ''|0) ;; *) printf '%s' "$_tp_f"; return 0 ;; esac
+	_TG_CSEC=$(sed -n "s/^ *secret *: *[\"']*\([^\"' ]*\).*/\1/p" \
+		/opt/clash/config.yaml /etc/clash/config.yaml 2>/dev/null | head -1)
+	_tp_r=$(_tg_capi "$_TG_CAPI/configs" | jsonfilter -e '@["mixed-port"]' 2>/dev/null)
+	case "$_tp_r" in ''|*[!0-9]*) return 1 ;; esac
+	if [ "$_tp_r" = "0" ]; then
+		_tg_capi -X PATCH "$_TG_CAPI/configs" -d '{"mixed-port":7895}' -o /dev/null || return 1
+		_tp_r=7895
+		logger -t 5gmodem "telegram: direct path to api.telegram.org is blocked - opened clash mixed-port 7895 (API, 127.0.0.1 only)"
+	fi
+	printf '%s' "$_tp_r"
+}
+
+_TG_DDEAD=/tmp/5gmodem/tg_direct_dead
+_tg_direct_dead() {
+	_td_t=$(cat "$_TG_DDEAD" 2>/dev/null)
+	case "$_td_t" in ''|*[!0-9]*) return 1 ;; esac
+	IFS=' ' read -r _td_n _ < /proc/uptime; _td_n=${_td_n%%.*}
+	[ $((_td_n - _td_t)) -lt 600 ]
+}
+
+_tg_ifdev() {
+	[ -n "$TG_IFACE" ] || return 1
+	_ti_d=$(ubus call "network.interface.$TG_IFACE" status 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null)
+	[ -n "$_ti_d" ] || _ti_d="$TG_IFACE"
+	[ -d "/sys/class/net/$_ti_d" ] || return 1
+	printf '%s' "$_ti_d"
+}
+
+_tg_curl() {
+	_tc_u="$1"; shift
+	_tc_o=""
+	_tc_if=$(_tg_ifdev)
+	if [ -n "$_tc_if" ]; then
+		_tc_o=$(printf 'url = "%s"\n' "$_tc_u" | curl -s -m 20 $_TG_K --interface "$_tc_if" -K - "$@" 2>&1)
+		case "$_tc_o" in
+			*'"ok":'*) printf '%s' "$_tc_o"; return 0 ;;
+		esac
+	fi
+	if ! _tg_direct_dead; then
+		_tc_o=$(printf 'url = "%s"\n' "$_tc_u" | curl -s -m 8 $_TG_K -K - "$@" 2>&1)
+		case "$_tc_o" in
+			*'"ok":'*) rm -f "$_TG_DDEAD" 2>/dev/null; printf '%s' "$_tc_o"; return 0 ;;
+		esac
+		IFS=' ' read -r _tc_n _ < /proc/uptime; printf '%s' "${_tc_n%%.*}" > "$_TG_DDEAD" 2>/dev/null
+	fi
+	_tc_pp=$(_tg_proxy_port)
+	if [ -n "$_tc_pp" ] && [ "$_tc_pp" != "0" ]; then
+		_tc_p=$(printf 'url = "%s"\n' "$_tc_u" | curl -s -m 20 $_TG_K -x "http://127.0.0.1:$_tc_pp" -K - "$@" 2>&1)
+		case "$_tc_p" in
+			*'"ok":'*) printf '%s' "$_tc_p"; return 0 ;;
+		esac
+	fi
+	printf '%s' "$_tc_o"
+	return 1
+}
+
+_tg_send() {
+	_ts_t=$(printf '%s' "$1" | utf8_fix)
+	_ts_o=$(_tg_curl "$TG_API/bot$TG_TOKEN/sendMessage" \
+		--data-urlencode "chat_id=$TG_CHAT" \
+		--data-urlencode "text=$_ts_t" \
+		${2:+-d "parse_mode=$2"} \
+		-d "disable_web_page_preview=true")
+	case "$_ts_o" in
+		*'"ok":true'*) printf 'ok' > "$LASTLOG" 2>/dev/null; return 0 ;;
+	esac
+	printf '%s' "$(printf '%s' "$_ts_o" | tr -d '\n' | head -c 200)" > "$LASTLOG" 2>/dev/null
+	case "$_ts_o" in
+		*'"error_code":400'*)
+			case "$_ts_o" in
+				*"chat not found"*|*chat_id*) return 1 ;;
+			esac
+			return 2 ;;
+	esac
+	return 1
+}
+
+_tk_head() {
+	if [ "$TG_HOST" = 1 ]; then
+		sms_fwd_head "$_tk_path" "$_tk_snd"
+	else
+		printf 'SMS %s%s' "$_tk_snd" "$_tk_tag"
+	fi
+}
+
+_tk_mark() {
+	SMS_MODEM="$1" "$RES/smsbridge.sh" list-add "${3:-tg}" "$2" >/dev/null 2>&1
+	SMS_MODEM="$1" "$RES/smsbridge.sh" seen-add "$2" >/dev/null 2>&1
+}
+
+_tk_young() {
+	_ty_e=$(date -u -D '%Y-%m-%d %H:%M' -d "$1" +%s 2>/dev/null)
+	case "$_ty_e" in ''|*[!0-9]*) return 1 ;; esac
+	_ty_a=$(( $(date -u +%s) - _ty_e ))
+	[ "$_ty_a" -ge 0 ] && [ "$_ty_a" -lt 180 ]
+}
+
+_tg_paths() { "$RES/registry.sh" paths 2>/dev/null; }
+
+_tg_sec() { printf 'm_%s' "$(printf '%s' "$1" | sed 's/[^A-Za-z0-9]/_/g')"; }
+
+_tg_port() {
+	[ "$1" = "$(uci -q get "$CFG.@5gmodem[0].active_modem")" ] && { printf '%s' "$PORT"; return; }
+	uci -q get "$CFG.$(_tg_sec "$1").at_port"
+}
+
+_tg_name() {
+	_tn=$(uci -q get "$CFG.$(_tg_sec "$1").model")
+	[ -n "$_tn" ] || _tn=$(uci -q get "$CFG.$(_tg_sec "$1").product")
+	[ -n "$_tn" ] || _tn="$1"
+	printf '%s' "$_tn"
+}
+
+tick() {
+	_TK_CHS=$(_chs)
+	[ -n "$_TK_CHS" ] || return 0
+	_tk_dead=""
+	IFS=' ' read -r _tk_now _ < /proc/uptime
+	_tk_now=${_tk_now%%.*}
+	_tk_prev=$(cat "$STAMP" 2>/dev/null)
+	case "$_tk_prev" in ''|*[!0-9]*) _tk_prev=0 ;; esac
+	[ $((_tk_now - _tk_prev)) -ge "$TG_INT" ] || return 0
+	printf '%s' "$_tk_now" > "$STAMP" 2>/dev/null
+
+	_tk_any=$(_tg_paths)
+	[ -n "$_tk_any" ] || _tk_any=$(uci -q get "$CFG.@5gmodem[0].active_modem")
+	for _tk_p in $_tk_any; do
+		_tk_one "$_tk_p" || return 0
+	done
+	return 0
+}
+
+_tg_has_sms() {
+	[ "$(uci -q get "$CFG.$(_tg_sec "$1").kind")" = "hilink" ] && return 0
+	"$RES/listmodems.sh" 2>/dev/null \
+		| jsonfilter -e "@[@.path=\"$1\"].tty[0]" -e "@[@.path=\"$1\"].wdm[0]" 2>/dev/null \
+		| grep -q .
+}
+
+_tk_fresh() {
+	[ "$TG_FIRSTH" = 0 ] && return 0
+	_tf_e=$(date -u -D '%Y-%m-%d %H:%M' -d "$1" +%s 2>/dev/null)
+	case "$_tf_e" in
+		''|*[!0-9]*) [ "$2" = fresh ]; return $? ;;
+	esac
+	[ $(( $(date -u +%s) - _tf_e )) -lt $((TG_FIRSTH * 3600)) ]
+}
+
+_tk_one() {
+	_tk_path="$1"
+	_tg_has_sms "$_tk_path" || return 0
+	[ "$(uci -q get "$CFG.$(_tg_sec "$_tk_path").kind")" = "hilink" ] \
+		|| ! bg_at_off "$_tk_path" || return 0
+	_tk_live=""
+	for _tk_c in $_TK_CHS; do
+		case " $_tk_dead " in *" $_tk_c "*) ;; *) _tk_live="$_tk_live,$_tk_c" ;; esac
+	done
+	[ -n "$_tk_live" ] || return 1
+	_tk_port=$(_tg_port "$_tk_path")
+	_tk_msgs=$(SMS_MODEM="$_tk_path" "$RES/smsbridge.sh" unseen "${_tk_live#,}," "$STORE" "$_tk_port" 2>/dev/null)
+	[ -n "$_tk_msgs" ] || return 0
+	_tk_firsts=$(printf '%s' "$_tk_msgs" | jsonfilter -e '@.first' 2>/dev/null)
+	_tk_gn=$(printf '%s' "$_tk_msgs" | jsonfilter -e '@.sms[*].have' 2>/dev/null | wc -l)
+	case "$_tk_gn" in ''|*[!0-9]*) return 0 ;; esac
+	_tk_tag=""
+	case "$(printf '%s' "$_tk_any" | tr '\n' ' ')" in
+		*" "*) _tk_tag=" ($(_tg_name "$_tk_path"))" ;;
+	esac
+
+	_tk_n=0
+	_tk_skipped=0
+	_tk_g=0
+	while [ "$_tk_g" -lt "$_tk_gn" ]; do
+		_tk_snd=""; _tk_ts=""; _tk_txt=""; _tk_key=""; _tk_have=""; _tk_tot=""; _tk_miss=""
+		eval "$(printf '%s' "$_tk_msgs" | jsonfilter -e "_tk_snd=@.sms[$_tk_g].sender" \
+			-e "_tk_ts=@.sms[$_tk_g].time" -e "_tk_txt=@.sms[$_tk_g].text" \
+			-e "_tk_key=@.sms[$_tk_g].key" -e "_tk_have=@.sms[$_tk_g].have" \
+			-e "_tk_tot=@.sms[$_tk_g].total" -e "_tk_miss=@.sms[$_tk_g].miss" 2>/dev/null)"
+		_tk_g=$((_tk_g + 1))
+		[ -n "$_tk_key" ] || continue
+		case "$_tk_have$_tk_tot" in
+			''|*[!0-9]*) : ;;
+			*)
+				if [ "$_tk_have" -lt "$_tk_tot" ]; then
+					_tk_young "$_tk_ts" && continue
+					_tk_txt="$_tk_txt [$_tk_have/$_tk_tot]"
+				fi ;;
+		esac
+		for _tk_c in $_tk_miss; do
+			case " $_tk_dead " in *" $_tk_c "*) continue ;; esac
+			case " $_tk_firsts " in
+				*" $_tk_c "*)
+					if [ "$TG_FIRSTH" = 0 ] || ! _tk_fresh "$_tk_ts" old; then
+						_tk_mark "$_tk_path" "$_tk_key" "$_tk_c"
+						continue
+					fi ;;
+				*)
+					if ! _tk_fresh "$_tk_ts" fresh; then
+						_tk_mark "$_tk_path" "$_tk_key" "$_tk_c"
+						_tk_skipped=$((_tk_skipped + 1))
+						continue
+					fi ;;
+			esac
+			_tk_deliver "$_tk_c"
+			case "$?" in
+				0)
+					_tk_mark "$_tk_path" "$_tk_key" "$_tk_c"
+					_tk_n=$((_tk_n + 1)) ;;
+				2)
+					_log "$_tk_c rejected the message from $_tk_snd ($_tk_ts): $(_tk_lastlog "$_tk_c" | head -c 120)"
+					[ "$_tk_c" = tg ] && _tg_send "$(_tk_head)
+$_tk_ts
+
+(текст не принят Telegram - откройте «Входящие» на роутере)" >/dev/null 2>&1
+					_tk_mark "$_tk_path" "$_tk_key" "$_tk_c" ;;
+				*)
+					_log "$_tk_c: not delivered ($(_tk_lastlog "$_tk_c" | head -c 120))"
+					_tk_dead="$_tk_dead $_tk_c" ;;
+			esac
+		done
+	done
+	for _tk_c in $_tk_firsts; do
+		case " $_tk_dead " in *" $_tk_c "*) continue ;; esac
+		SMS_MODEM="$_tk_path" "$RES/smsbridge.sh" list-add "$_tk_c" >/dev/null 2>&1
+	done
+	[ "$_tk_skipped" -gt 0 ] && \
+		_log "$(_tg_name "$_tk_path"): $_tk_skipped message(s) older than ${TG_FIRSTH}h marked seen without forwarding (SIM swap or a wiped modem memory)"
+	[ "$_tk_n" -gt 0 ] && _log "messages forwarded: $_tk_n ($(_tg_name "$_tk_path"))"
+	for _tk_c in $_TK_CHS; do
+		case " $_tk_dead " in *" $_tk_c "*) ;; *) return 0 ;; esac
+	done
+	return 1
+}
+
+_tk_lastlog() {
+	case "$1" in
+		ntfy) cat "$NTFYLOG" 2>/dev/null ;;
+		hook) cat "$HOOKLOG" 2>/dev/null ;;
+		*) cat "$LASTLOG" 2>/dev/null ;;
+	esac
+}
+
+_tg_hesc() {
+	sed 's/&/\&amp;/g; s/</\&lt;/g; s/>/\&gt;/g'
+}
+
+_tg_codes() {
+	printf '%s' "$1" | grep -qiE '(К|к)(О|о)(Д|д)|(П|п)(А|а)(Р|р)(О|о)(Л|л)|code|password|pin|otp|kod|验证码' || return 1
+	printf '%s' "$1" | _tg_hesc | LC_ALL=C awk '
+		{
+			if (NR > 1) printf "\n"
+			s = $0; out = ""; found = 0
+			while (match(s, /[0-9]+/)) {
+				p = RSTART; n = RLENGTH
+				pre = p > 1 ? substr(s, p - 1, 1) : ""
+				rest = substr(s, p + n)
+				ok = 0
+				if (n == 3 && rest ~ /^[ -][0-9][0-9][0-9]([^0-9]|$)/) { n = 7; rest = substr(s, p + n); ok = 1 }
+				else if (n >= 4 && n <= 8) ok = 1
+				if (pre ~ /[0-9A-Za-z+.,:\/]/) ok = 0
+				if (rest ~ /^[.,:\/-][0-9]/) ok = 0
+				r = tolower(rest); sub(/^ /, "", r)
+				if (r ~ /^(руб|р\.|₽|rub|usd|eur|%)/ || r ~ /^(Руб|РУБ)/) ok = 0
+				if (ok) { out = out substr(s, 1, p - 1) "<code>" substr(s, p, n) "</code>"; found = 1 }
+				else out = out substr(s, 1, p + n - 1)
+				s = substr(s, p + n)
+			}
+			printf "%s", out s
+			if (found) hit = 1
+		}
+		END { exit hit ? 0 : 1 }'
+}
+
+_tk_deliver() {
+	case "$1" in
+		tg)
+			if _tk_html=$(_tg_codes "$_tk_txt"); then
+				_tg_send "$(_tk_head | _tg_hesc)
+$_tk_ts
+
+$_tk_html" HTML
+				_tk_rc=$?
+				[ "$_tk_rc" = 2 ] || return "$_tk_rc"
+			fi
+			_tg_send "$(_tk_head)
+$_tk_ts
+
+$_tk_txt" ;;
+		ntfy) _ntfy_send "$(sms_fwd_head "$_tk_path" "$_tk_snd")" "$_tk_ts
+
+$_tk_txt" ;;
+		hook) _hook_send "$(sms_fwd_head "$_tk_path" "$_tk_snd")" "$_tk_snd" "$_tk_ts" "$_tk_txt" "$_tk_path" ;;
+		*) return 2 ;;
+	esac
+}
+
+chatid() {
+	[ -n "$TG_TOKEN" ] || { echo '{"ok":false,"error":"no token"}'; return 0; }
+	command -v curl >/dev/null 2>&1 || { echo '{"ok":false,"error":"no curl"}'; return 0; }
+	_ci_o=$(_tg_curl "$TG_API/bot$TG_TOKEN/getUpdates")
+	case "$_ci_o" in
+		*'"ok":true'*) ;;
+		'')
+			echo '{"ok":false,"error":"noreply"}'
+			return 0 ;;
+		*)
+			printf '{"ok":false,"error":"%s"}\n' \
+				"$(printf '%s' "$_ci_o" | tr -d '"\\' | tr '\n' ' ' | head -c 180)"
+			return 0 ;;
+	esac
+	printf '%s' "$_ci_o" | awk '
+		BEGIN { RS = "{"; n = 0 }
+		/"id":-?[0-9]+/ && /"type":"(private|group|supergroup|channel)"/ {
+			id = ""; ttl = ""; typ = ""
+			if (match($0, /"id":-?[0-9]+/)) { id = substr($0, RSTART + 5, RLENGTH - 5) }
+			if (match($0, /"type":"[a-z]+"/)) { typ = substr($0, RSTART + 8, RLENGTH - 9) }
+			if (match($0, /"title":"[^"]*"/)) { ttl = substr($0, RSTART + 9, RLENGTH - 10) }
+			else if (match($0, /"first_name":"[^"]*"/)) { ttl = substr($0, RSTART + 14, RLENGTH - 15) }
+			else if (match($0, /"username":"[^"]*"/)) { ttl = substr($0, RSTART + 12, RLENGTH - 13) }
+			sub(/\\+$/, "", ttl)
+			if (id != "" && !(id in seen)) {
+				seen[id] = 1
+				out = out (n++ ? "," : "") "{\"id\":\"" id "\",\"name\":\"" ttl "\",\"type\":\"" typ "\"}"
+			}
+		}
+		END { printf "{\"ok\":true,\"chats\":[%s]}\n", out }
+	'
+}
+
+setchat() {
+	case "$1" in
+		-[0-9]*|[0-9]*)
+			case "${1#-}" in
+				*[!0-9]*) echo '{"ok":false,"error":"bad id"}'; return 0 ;;
+			esac ;;
+		*) echo '{"ok":false,"error":"bad id"}'; return 0 ;;
+	esac
+	[ "${#1}" -le 20 ] || { echo '{"ok":false,"error":"bad id"}'; return 0; }
+	uci -q get "$CFG.sms" >/dev/null 2>&1 || uci -q set "$CFG.sms=sms"
+	uci -q set "$CFG.sms.tg_chat=$1"
+	uci -q commit "$CFG"
+	printf '{"ok":true,"chat":"%s"}\n' "$1"
+}
+
+_st_field() {
+	_sf_v=$(printf '%s' "$1" | jsonfilter -e "@.$2" 2>/dev/null)
+	case "$_sf_v" in ''|-) return 1 ;; esac
+	printf '%s' "$_sf_v"
+}
+_st_therm() {
+	_th_t=$(_st_field "$1" mtemp)
+	_th_l=$(_st_field "$1" mtherm)
+	case "$_th_l" in
+		0) _th_w="В норме" ;;
+		1) _th_w="Тёплый" ;;
+		2) _th_w="Горячий" ;;
+		3) _th_w="Критический" ;;
+		*) _th_w="" ;;
+	esac
+	if [ -n "$_th_t" ]; then
+		_th_t=$(printf '%s' "$_th_t" | sed 's/&deg;/°/g')
+		case "$_th_l" in
+			1|2|3) printf 'Температура: %s, %s' "$_th_t" "$_th_w" ;;
+			*)     printf 'Температура: %s' "$_th_t" ;;
+		esac
+		return 0
+	fi
+	[ -n "$_th_w" ] && printf 'Температура: %s' "$_th_w"
+	return 0
+}
+_tg_path_by_num() {
+	_pn=0
+	for _pp in $(_tg_paths); do
+		_pn=$((_pn + 1))
+		[ "$_pn" = "$1" ] && { printf '%s' "$_pp"; return 0; }
+	done
+	return 1
+}
+
+_tg_list() {
+	_lact=$(uci -q get "$CFG.@5gmodem[0].active_modem")
+	_ln=0
+	for _lp in $(_tg_paths); do
+		_ln=$((_ln + 1))
+		_lop=$(printf '%s' "$("$RES/5gmodem.sh" peek "$_lp" 2>/dev/null)" \
+			| jsonfilter -e '@.operator_name' 2>/dev/null)
+		case "$_lop" in ''|-) _lop="" ;; *) _lop=" - $_lop" ;; esac
+		[ "$_lp" = "$_lact" ] && _lop="$_lop (активный)"
+		printf '%s. %s%s\n' "$_ln" "$(_tg_name "$_lp")" "$_lop"
+	done
+}
+
+status_text() {
+	if [ -n "$1" ]; then
+		_st_j=$("$RES/5gmodem.sh" peek "$1" 2>/dev/null)
+	else
+		_st_j=$("$RES/5gmodem.sh" peek 2>/dev/null)
+	fi
+	[ -n "$_st_j" ] || { printf 'Снимка метрик пока нет - модем ещё опрашивается.'; return 0; }
+	_st_out="Модем: $(_st_field "$_st_j" modem)"
+	_st_v=$(_st_field "$_st_j" operator_name) && _st_out="$_st_out
+Оператор: $_st_v"
+	_st_v=$(_st_field "$_st_j" mode) && _st_out="$_st_out
+Сеть: $_st_v"
+	_st_v=$(_st_field "$_st_j" signal) && _st_out="$_st_out
+Сигнал: $_st_v%"
+	_st_v=$(_st_therm "$_st_j"); [ -n "$_st_v" ] && _st_out="$_st_out
+$_st_v"
+	_st_v=$(_st_field "$_st_j" conn_time) && _st_out="$_st_out
+Соединение: $_st_v"
+	_st_rx=$(_st_field "$_st_j" rx); _st_tx=$(_st_field "$_st_j" tx)
+	[ -n "$_st_rx$_st_tx" ] && _st_out="$_st_out
+Трафик: ↓ ${_st_rx:-?}  ↑ ${_st_tx:-?}"
+	_st_v=$(_st_field "$_st_j" ipaddr) && _st_out="$_st_out
+Адрес: $_st_v"
+	printf '%s' "$_st_out"
+}
+
+_tg_reply() { _tg_send "$1" >/dev/null 2>&1; }
+
+_tg_via() {
+	_tv_j=$("$RES/5gmodem.sh" peek 2>/dev/null)
+	_tv_m=$(printf '%s' "$_tv_j" | jsonfilter -e '@.modem' 2>/dev/null)
+	_tv_o=$(printf '%s' "$_tv_j" | jsonfilter -e '@.operator_name' 2>/dev/null)
+	case "$_tv_m" in ''|-) return 0 ;; esac
+	case "$_tv_o" in ''|-) printf ' через %s' "$_tv_m"; return 0 ;; esac
+	printf ' через %s (%s)' "$_tv_m" "$_tv_o"
+}
+
+commands() {
+	[ "$TG_CMD" = "1" ] || return 0
+	_ready || return 0
+	if [ ! -f "$ANNOUNCED" ]; then
+		if _tg_send "Отправка SMS из чата включена.
+Команда: /sms <номер> <текст>
+Например: /sms +79001234567 Привет
+Ещё есть /status - состояние модема (/status all - все),
+и /modem - список модемов, /modem <номер> - сделать активным."; then
+			: > "$ANNOUNCED" 2>/dev/null
+		fi
+	fi
+	_co_off=$(cat "$OFFSET" 2>/dev/null)
+	case "$_co_off" in ''|*[!0-9]*) _co_off=0 ;; esac
+	_co_url="$TG_API/bot$TG_TOKEN/getUpdates?timeout=0&limit=10"
+	[ "$_co_off" -gt 0 ] && _co_url="$_co_url&offset=$_co_off"
+	_co_j=$(_tg_curl "$_co_url")
+	case "$_co_j" in *'"ok":true'*) ;; *) return 0 ;; esac
+
+	_co_i=0
+	_co_max="$_co_off"
+	while [ "$_co_i" -lt 10 ]; do
+		_co_u=$(printf '%s' "$_co_j" | jsonfilter -e "@.result[$_co_i].update_id" 2>/dev/null)
+		[ -n "$_co_u" ] || break
+		_co_i=$((_co_i + 1))
+		[ "$_co_u" -lt "$_co_off" ] && continue
+		if [ "$_co_u" -ge "$_co_max" ]; then
+			_co_max=$((_co_u + 1))
+			printf '%s' "$_co_max" > "$OFFSET.tmp" 2>/dev/null && mv "$OFFSET.tmp" "$OFFSET" 2>/dev/null
+			sync 2>/dev/null
+		fi
+		_co_chat=$(printf '%s' "$_co_j" | jsonfilter -e "@.result[$((_co_i - 1))].message.chat.id" 2>/dev/null)
+		_co_txt=$(printf '%s' "$_co_j" | jsonfilter -e "@.result[$((_co_i - 1))].message.text" 2>/dev/null)
+		[ -n "$_co_txt" ] || continue
+		[ "$_co_chat" = "$TG_CHAT" ] || {
+			_log "command from foreign chat $_co_chat ignored"
+			continue
+		}
+		case "$_co_txt" in
+			/sms\ *)
+				_co_rest=${_co_txt#/sms }
+				_co_to=${_co_rest%% *}
+				_co_body=${_co_rest#* }
+				if [ -z "$_co_to" ] || [ "$_co_body" = "$_co_rest" ] || [ -z "$_co_body" ]; then
+					_tg_reply "Формат: /sms <номер> <текст>"
+					continue
+				fi
+				_co_port=$(uci -q get "$CFG.sms.sendport")
+				_co_out=$("$RES/smsbridge.sh" send "$_co_to" "$_co_body" "$_co_port" 2>&1)
+				case "$_co_out" in
+					*sucessfully*) _tg_reply "SMS отправлена на $_co_to$(_tg_via)" ;;
+					*queued*)      _tg_reply "Порт занят, поставил в очередь - отправлю при первой возможности ($_co_to)" ;;
+					*)             _tg_reply "Не удалось отправить на $_co_to: ${_co_out:-нет ответа}" ;;
+				esac
+				_log "chat command: SMS to $_co_to" ;;
+			/sms|/sms@*)
+				_tg_reply "Формат: /sms <номер> <текст>" ;;
+			/status\ *)
+				_co_arg=${_co_txt#/status }
+				_co_arg=${_co_arg%% *}
+				case "$_co_arg" in
+					all)
+						_co_n=0
+						for _co_p in $(_tg_paths); do
+							_co_n=$((_co_n + 1))
+							_tg_reply "[$_co_n] $(_tg_name "$_co_p")
+$(status_text "$_co_p")"
+						done
+						[ "$_co_n" = 0 ] && _tg_reply "Модемов не найдено." ;;
+					[0-9]*)
+						_co_p=$(_tg_path_by_num "$_co_arg") \
+							&& _tg_reply "[$_co_arg] $(_tg_name "$_co_p")
+$(status_text "$_co_p")" \
+							|| _tg_reply "Нет модема с номером $_co_arg. Список:
+$(_tg_list)" ;;
+					*) _tg_reply "Формат: /status, /status <номер> или /status all
+$(_tg_list)" ;;
+				esac ;;
+			/status*)
+				_tg_reply "$(status_text)" ;;
+			/modem\ *)
+				_co_arg=${_co_txt#/modem }
+				_co_arg=${_co_arg%% *}
+				_co_p=$(_tg_path_by_num "$_co_arg") || {
+					_tg_reply "Нет модема с номером $_co_arg. Список:
+$(_tg_list)"
+					continue
+				}
+				if "$RES/modemswitch.sh" switch "$_co_p" >/dev/null 2>&1; then
+					_log "chat command: active modem -> $_co_p"
+					_tg_reply "Активный модем: $(_tg_name "$_co_p")
+$(status_text "$_co_p")"
+				else
+					_tg_reply "Не удалось переключиться на $(_tg_name "$_co_p")"
+				fi ;;
+			/modem*)
+				_tg_reply "Модемы:
+$(_tg_list)
+Переключить: /modem <номер>" ;;
+			/help*|/start*)
+				_co_kw=$("$RES/smscmd.sh" list 2>/dev/null | tr '\n' ' ')
+				_tg_reply "Команды:
+/sms <номер> <текст> - отправить SMS
+/status - состояние активного модема
+/status <номер> | /status all - состояние конкретного или всех
+/modem - список модемов, /modem <номер> - сделать активным
+Входящие SMS приходят сюда сами - со всех модемов.
+${_co_kw:+
+Команды роутера (те же, что по SMS): $_co_kw
+Пишите словом, без косой черты; если задан защитный код - перед словом.
+}
+Модемы:
+$(_tg_list)" ;;
+			*)
+				_co_out=$("$RES/smscmd.sh" chat "$_co_txt" 2>/dev/null)
+				case "$_co_out" in
+					*'"result":"ok"'*)
+						_co_ans=$(printf '%s' "$_co_out" \
+							| jsonfilter -e '@.output' 2>/dev/null)
+						_tg_reply "${_co_ans:-OK}"
+						_co_lw=${_co_txt%% *}
+						_co_sc=$(_cfg cmd_secret)
+						if [ -n "$_co_sc" ] && [ "$(printf '%s' "$_co_lw" | tr 'A-Z' 'a-z')" = "$(printf '%s' "$_co_sc" | tr 'A-Z' 'a-z')" ]; then
+							_co_lw=$(printf '%s' "$_co_txt" | awk '{print $2; exit}')
+						fi
+						_log "chat command: $_co_lw" ;;
+					*'"error":"secret"'*)
+						_tg_reply "Перед командой нужен защитный код." ;;
+					*'"error":"disabled"'*)
+						_tg_reply "Команды выключены: включите их на странице «Команды по SMS»." ;;
+					*) : ;;
+				esac ;;
+		esac
+	done
+	[ "$_co_max" != "$_co_off" ] && printf '%s' "$_co_max" > "$OFFSET" 2>/dev/null
+	return 0
+}
+
+case "$1" in
+	tick) tick; commands ;;
+	commands) commands ;;
+	modems) _tg_list ;;
+	chatid) chatid ;;
+	setchat) setchat "$2" ;;
+	test)
+		_te_m=$(uci -q get "$CFG.@5gmodem[0].active_modem")
+		case "$2" in
+			ntfy|hook)
+				if [ "$2" = ntfy ]; then _ntfy_ready; else _hook_ready; fi || {
+					echo '{"ok":false,"error":"not configured"}'; exit 0; }
+				_te_h="$(sms_fwd_head "$_te_m" "")"
+				if [ "$2" = ntfy ]; then
+					_ntfy_send "$_te_h" "Проверка связи: уведомления о входящих SMS с роутера включены."
+				else
+					_hook_send "$_te_h" "" "$(date -u '+%Y-%m-%d %H:%M')" "Проверка связи: уведомления о входящих SMS с роутера включены." "$_te_m"
+				fi
+				if [ "$?" = 0 ]; then
+					echo '{"ok":true}'
+				else
+					printf '{"ok":false,"error":"%s"}\n' "$(_tk_lastlog "$2" | tr -d '"\\\n' | head -c 180)"
+				fi
+				exit 0 ;;
+		esac
+		if ! _ready; then
+			echo '{"ok":false,"error":"not configured"}'
+			exit 0
+		fi
+		_te_t="Проверка связи: уведомления о входящих SMS с роутера включены."
+		[ "$TG_HOST" = 1 ] && _te_t="$(sms_fwd_head "$_te_m" "")
+$(date '+%Y-%m-%d %H:%M')
+
+$_te_t"
+		if _tg_send "$_te_t"; then
+			echo '{"ok":true}'
+		else
+			printf '{"ok":false,"error":"%s"}\n' "$(cat "$LASTLOG" 2>/dev/null | tr -d '"\\' | head -c 180)"
+		fi ;;
+	status)
+		_st_cfg=0
+		[ -n "$TG_TOKEN" ] && [ -n "$TG_CHAT" ] && _st_cfg=1
+		printf '{"enabled":%s,"configured":%s,"interval":%s,"last":"%s"}\n' \
+			"${TG_EN:-0}" "$_st_cfg" "$TG_INT" \
+			"$(cat "$LASTLOG" 2>/dev/null | tr -d '"\\' | head -c 180)" ;;
+	*) echo "usage: $0 tick|test|chatid|setchat <id>|commands|modems|status" >&2; exit 2 ;;
+esac
+exit 0

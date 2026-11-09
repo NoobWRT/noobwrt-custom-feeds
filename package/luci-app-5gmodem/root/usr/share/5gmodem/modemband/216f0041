@@ -1,0 +1,4 @@
+. "$RES/_altair_lte_common"
+getinfo() {
+	echo "Altair ALT3100"
+}

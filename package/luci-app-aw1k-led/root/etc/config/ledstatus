@@ -22,7 +22,7 @@ config ledstatus 'settings'
 	option color_5g_excellent 'green'
 	option color_5g_good 'blue'
 	option color_5g_average 'yellow'
-	option color_5g_poor 'blue'
+	option color_5g_poor 'cyan'
 	option color_5g_none 'red'
 
 	# Signal (CSQ) LED colors

@@ -104,7 +104,7 @@ CSQ_AVERAGE=$(uci get ledstatus.settings.csq_average   2>/dev/null); [ -z "$CSQ_
 C5G_EXCELLENT=$(uci get ledstatus.settings.color_5g_excellent 2>/dev/null); [ -z "$C5G_EXCELLENT" ] && C5G_EXCELLENT=green
 C5G_GOOD=$(uci get ledstatus.settings.color_5g_good      2>/dev/null); [ -z "$C5G_GOOD"      ] && C5G_GOOD=blue
 C5G_AVERAGE=$(uci get ledstatus.settings.color_5g_average   2>/dev/null); [ -z "$C5G_AVERAGE"   ] && C5G_AVERAGE=yellow
-C5G_POOR=$(uci get ledstatus.settings.color_5g_poor      2>/dev/null); [ -z "$C5G_POOR"      ] && C5G_POOR=blue
+C5G_POOR=$(uci get ledstatus.settings.color_5g_poor      2>/dev/null); [ -z "$C5G_POOR"      ] && C5G_POOR=cyan
 C5G_NONE=$(uci get ledstatus.settings.color_5g_none      2>/dev/null); [ -z "$C5G_NONE"      ] && C5G_NONE=red
 
 # Signal colors

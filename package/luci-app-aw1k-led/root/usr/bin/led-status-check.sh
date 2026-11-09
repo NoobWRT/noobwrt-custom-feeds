@@ -104,7 +104,7 @@ CSQ_AVERAGE=$(uci get ledstatus.settings.csq_average   2>/dev/null); [ -z "$CSQ_
 C5G_EXCELLENT=$(uci get ledstatus.settings.color_5g_excellent 2>/dev/null); [ -z "$C5G_EXCELLENT" ] && C5G_EXCELLENT=green
 C5G_GOOD=$(uci get ledstatus.settings.color_5g_good      2>/dev/null); [ -z "$C5G_GOOD"      ] && C5G_GOOD=blue
 C5G_AVERAGE=$(uci get ledstatus.settings.color_5g_average   2>/dev/null); [ -z "$C5G_AVERAGE"   ] && C5G_AVERAGE=yellow
-C5G_POOR=$(uci get ledstatus.settings.color_5g_poor      2>/dev/null); [ -z "$C5G_POOR"      ] && C5G_POOR=magenta
+C5G_POOR=$(uci get ledstatus.settings.color_5g_poor      2>/dev/null); [ -z "$C5G_POOR"      ] && C5G_POOR=blue
 C5G_NONE=$(uci get ledstatus.settings.color_5g_none      2>/dev/null); [ -z "$C5G_NONE"      ] && C5G_NONE=red
 
 # Signal colors
@@ -136,8 +136,8 @@ else
         set_color 5g "$C5G_AVERAGE"
         echo "5G: Average (SINR=$SINR_INT color=$C5G_AVERAGE)"
     else
-        set_color 5g "$C5G_POOR" 1
-        echo "5G: Poor/blink (SINR=$SINR_INT color=$C5G_POOR)"
+        set_color 5g "$C5G_POOR"
+        echo "5G: Poor (SINR=$SINR_INT color=$C5G_POOR)"
     fi
 fi
 
@@ -216,8 +216,8 @@ if [ "$found" -eq 1 ]; then
             set_color signal "$CSIG_AVERAGE"
             echo "Signal: Average (CSQ=$CSQ color=$CSIG_AVERAGE)"
         else
-            set_color signal "$CSIG_WEAK" 1
-            echo "Signal: Weak/blink (CSQ=$CSQ color=$CSIG_WEAK)"
+            set_color signal "$CSIG_WEAK"
+            echo "Signal: Weak (CSQ=$CSQ color=$CSIG_WEAK)"
         fi
     else
         echo "Signal: CSQ not detected"

@@ -50,12 +50,25 @@ jobs:
             sdk_version: 25.12.1
     steps:
       - uses: actions/checkout@v4
+      - name: Ensure GNU install
+        run: |
+          set -euo pipefail
+          if install --version 2>/dev/null | grep -q 'GNU coreutils'; then
+            exit 0
+          fi
+          sudo apt-get update
+          sudo apt-get install -y gnu-coreutils || sudo apt-get install -y --reinstall coreutils
+          if [ -x /usr/bin/gnuinstall ]; then
+            sudo ln -sf /usr/bin/gnuinstall /usr/local/bin/install
+          fi
+          install --version | head -1
       - uses: nooblk-98/openwrt-package-compile-action@v1.1.4
         with:
           package-name: luci-app-aw1k-led
           sdk-version: ${{ matrix.sdk_version }}
           sdk-target: x86
           sdk-subtarget: "64"
+          sdk-cache-key-override: "${{ matrix.sdk_version }}-v1.0.6"
           artifact-name: luci-app-aw1k-led-${{ matrix.sdk_version }}
 
   release:

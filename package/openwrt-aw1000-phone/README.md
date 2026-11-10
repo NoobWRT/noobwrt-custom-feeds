@@ -1,5 +1,12 @@
 # openwrt-aw1000-phone
 
+[![Release](https://img.shields.io/github/v/release/Perz3us/openwrt-aw1000-phone?label=release)](https://github.com/Perz3us/openwrt-aw1000-phone/releases/latest)
+[![Downloads](https://img.shields.io/github/downloads/Perz3us/openwrt-aw1000-phone/total?label=downloads)](https://github.com/Perz3us/openwrt-aw1000-phone/releases)
+[![Issues](https://img.shields.io/github/issues/Perz3us/openwrt-aw1000-phone?label=issues)](https://github.com/Perz3us/openwrt-aw1000-phone/issues)
+[![Router](https://img.shields.io/badge/router-Arcadyan%20AW1000-0a7bbb)](#)
+[![OpenWrt](https://img.shields.io/badge/OpenWrt-25.12-00b5e2?logo=openwrt&logoColor=white)](https://openwrt.org)
+[![License](https://img.shields.io/github/license/Perz3us/openwrt-aw1000-phone)](LICENSE)
+
 Makes the RJ11 phone port on the Arcadyan AW1000 work on OpenWrt.
 
 The AW1000 has a phone port on the back, but it only works on the stock Telstra firmware.
@@ -23,32 +30,56 @@ starts by itself after a reboot.
 Other things that work:
 
 - HD calling (16 kHz wideband audio), off by default, turn it on in Settings
-- SIP calling through QModem voice (experimental, off by default, see below)
+- SIP calling through a SIP service you choose, QModem voice is the first one (experimental, off by default, see below)
 - Caller ID on phones with a display (FSK Bellcore, FSK ETSI or DTMF, before or after the first ring).
   Numbers can be shown the way you dial them, like 0771234567 instead of 94771234567
 - Ringing tone in the handset while the other side rings
 - Hold: press FLASH during a call, press it again to come back
+- Keypad digits during a call, for phone menus and voicemail
 - Speed dial: save a number under a code and dial `*1`, `*2` and so on
+- Phone codes: `*66` redial and `*69` call back the last caller, which you can change in Settings
+- Lifting the handset can call one set number by itself
+- A Call button in the call history: the phone rings, you lift the handset and it dials
+- Ring the phone from a script, for a doorbell or an alarm
+- A script of your own that runs on call events, for example a message on a missed call
+- Backup and restore of the settings and call history on the Status page
 - Blocked numbers, including hidden numbers if you want
+- Limit which numbers the RJ11 phone can call, by number or prefix. Emergency numbers always go through
+- Network service codes on the handset, like `*#21#`. A short beep tone means the network took it, busy means it did not
+- Call forwarding and USSD on the Phone services page. Forwarding is kept by the network on your SIM, and your network may charge for it
+- Phonebook: names in the call history and on phones with a display, and a ring pattern per contact
+- A stuttered dial tone after a missed call, if you turn it on
+- Alarm calls: the phone rings at set times and days
+- MQTT: send phone events to Home Assistant or another broker. Needs mosquitto-client-nossl
 - The phone LED shows the line state: solid when ready, fast blink when a call comes in, slow
   blink while the handset is off hook (each can be changed). During NoobWRT's LED night mode
   it stays dark and only blinks while a call rings
-- Do not disturb: the phone doesn't ring during set hours, calls still show in the history.
-  A second call from the same number within a few minutes rings, and you can add numbers that always ring
+- Do not disturb: weekly windows and holiday dates when the phone doesn't ring, gives one short
+  ring, or turns the caller away. Contacts can be Important (always ring) or Never ring. A second
+  call from the same number within a few minutes can ring. The call history says why each call
+  rang or didn't
+- Quiet for a while: a Quiet button on the Status page with a countdown, or `*78*60` on the
+  phone for 60 minutes
+- Call recording to a USB stick or the router, for the RJ11 phone and SIP phones
 - Line test in LuCI with line voltage, loop current and a button to ring the phone. It also
   warns when no phone seems to be plugged in (checked each time the phone rings)
 - Call history with search, filters, CSV export and optional auto delete
+- Network tones: with no mobile service you hear a fast beeping tone (950 Hz) instead of dial
+  tone, and a call the network turns down for lack of capacity gives a fast busy tone (425 Hz)
+  instead of the normal busy tone. Digits still dial, emergency numbers too. The Status page
+  says when there is no service. This is for the RJ11 phone only, and while a SIP phone is connected a
+  failed call gives the normal busy tone
 
-Call waiting is in the code but did not work on my SIM, the network answers busy for the
-second call. Pulse dialing and tones for other countries are not done yet (dial and busy
-tone are 425 Hz).
+Call waiting: fxsd asks the network to turn it on when it starts. You hear a tone when a second
+call comes in and FLASH switches between the calls. Some networks do not offer it, the log says
+so. Pulse dialing and tones for other countries are not done yet (dial and busy tone are 425 Hz).
 
 ## What you need
 
 - AW1000 with the Quectel RG500Q-EA modem
 - OpenWrt 25.12. I use [NoobWRT](https://github.com/nooblk-98/noobwrt-arcadyan-aw1k) 25.12.5
 - QModem is optional. With it fxsd sends AT commands through its at-daemon, without it fxsd
-  talks to the modem AT port itself. SIP calling needs QModem voice
+  talks to the modem AT port itself. SIP calling needs a SIP service, like QModem voice
 - A SIM with voice calls (VoLTE)
 - The SLIC DSP patch file, see below
 
@@ -67,20 +98,21 @@ there with scp) and install them:
 
 ```
 cd /tmp
-wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.7.0/kmod-aw1000-fxs-6.12.94.0.3.0-r1.apk
-wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.7.0/fxsd-0.7.0-r1.apk
-wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.7.0/luci-app-fxs-0.7.0-r1.apk
-apk add --allow-untrusted /tmp/kmod-aw1000-fxs-6.12.94.0.3.0-r1.apk /tmp/fxsd-0.7.0-r1.apk /tmp/luci-app-fxs-0.7.0-r1.apk
+wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.8.0/kmod-aw1000-fxs-6.12.94.0.4.0-r1.apk
+wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.8.0/fxsd-0.8.0-r1.apk
+wget https://github.com/Perz3us/openwrt-aw1000-phone/releases/download/v0.8.0/luci-app-fxs-0.8.0-r1.apk
+apk add --allow-untrusted /tmp/kmod-aw1000-fxs-6.12.94.0.4.0-r1.apk /tmp/fxsd-0.8.0-r1.apk /tmp/luci-app-fxs-0.8.0-r1.apk
 ```
 
-On NoobWRT with the kernel module already installed (0.3.0), you only need fxsd and
-luci-app-fxs. Otherwise update all three together (SIP calling needs the 0.3.0 driver). The old
+On NoobWRT with the 0.3.0 kernel module already installed, fxsd and luci-app-fxs are enough,
+but recording calls on the RJ11 phone needs the 0.4.0 driver. Otherwise update all three
+together (SIP calling needs the 0.3.0 driver or newer). The old
 kernel module stays loaded until it is removed, so stop fxsd and remove it before installing:
 
 ```
 /etc/init.d/fxsd stop
 rmmod aw1000_fxs
-apk add --allow-untrusted /tmp/kmod-aw1000-fxs-6.12.94.0.3.0-r1.apk /tmp/fxsd-0.7.0-r1.apk /tmp/luci-app-fxs-0.7.0-r1.apk
+apk add --allow-untrusted /tmp/kmod-aw1000-fxs-6.12.94.0.4.0-r1.apk /tmp/fxsd-0.8.0-r1.apk /tmp/luci-app-fxs-0.8.0-r1.apk
 /etc/init.d/fxsd start
 ```
 
@@ -118,12 +150,14 @@ python3 tools/mkpatch.py si3226x_patch_C_FB_2017MAY26.c si3226x_patch.bin
 
 ## Settings
 
-Everything can be set in LuCI under Services > Phone (RJ11). It has five tabs: Status,
-Call history, Settings, Speed dial and Blocked numbers. The same settings are in `/etc/config/fxs`.
+Everything can be set in LuCI under Services > Phone (RJ11). Its tabs are Status,
+Call history, Recording, Settings, SIP, Phonebook, Do not disturb, Phone services, Alarm calls, MQTT, Speed dial, Blocked numbers and Outgoing calls. The same settings are in `/etc/config/fxs`.
+Save backup and Restore backup are on the Status page. A restore replaces the settings and the
+call history, and restarts the phone service.
 
 | Option | Default | |
 |---|---|---|
-| `enabled` | `1` | turn the port on or off. With `sip` on, turning it off keeps SIP calling working without the RJ11 phone |
+| `enabled` | `1` | turn the port on or off. With `sip_enabled` on, turning it off keeps SIP calling working without the RJ11 phone |
 | `own_number` | | your number, shown on the Status page |
 | `tx_gain` | `-6` | your voice level to the other side (dB) |
 | `rx_gain` | `0` | the other side's level to your phone (dB) |
@@ -134,7 +168,10 @@ Call history, Settings, Speed dial and Blocked numbers. The same settings are in
 | `patch` | `/etc/fxs/si3226x_patch.bin` | patch file |
 | `ringback` | `1` | ringing tone while the other side rings |
 | `hd` | `0` | HD calling (16 kHz). Changing it restarts the modem, mobile data drops for about 30 seconds |
-| `sip` | `0` | SIP calling through QModem voice (experimental) |
+| `sip_enabled` | `0` | SIP calling (experimental) |
+| `sip_service` | `qmodem` | the SIP service to use, a folder in `/usr/share/fxs/sip` |
+| `sip_vpn` | `0` | let SIP phones connect over a VPN |
+| `sip_vpn_if` | | the VPN device to allow, like `wg0` or `tailscale0` |
 | `callerid` | `bellcore` | caller ID format: bellcore, etsi, dtmf or off |
 | `callerid_format` | `received` | `local` shows numbers from your own country the way you dial them and puts the international prefix (like 00) in front of other numbers. `received` sends the number without the + |
 | `callerid_country` | `auto` | your country code without the +, `auto` reads it from the SIM |
@@ -148,18 +185,86 @@ Call history, Settings, Speed dial and Blocked numbers. The same settings are in
 | `led_ringing` | `fast` | LED while a call comes in |
 | `led_offhook` | `slow` | LED while the handset is off hook |
 | `block_private` | `0` | reject calls without a number |
-| `dnd` | `0` | do not disturb, the phone doesn't ring between `dnd_from` and `dnd_to` |
-| `dnd_from` | `22:00` | start of do not disturb |
-| `dnd_to` | `07:00` | end of do not disturb |
-| `dnd_allday` | `0` | do not disturb all the time, `dnd_from` and `dnd_to` are ignored |
+| `out_mode` | `off` | `block` or `allow` the prefixes in the `outgoing` sections, for the RJ11 phone |
+| `code_dnd_on` | `*78` | code to turn do not disturb on until you turn it off, a `*` and 1 to 6 digits. Add `*` and minutes, like `*78*60`, for 1 to 720 minutes |
+| `code_dnd_off` | `*79` | code to go back to the do not disturb windows |
 | `dnd_repeat` | `3` | minutes, a second call from the same number within this time rings anyway, 0 turns it off |
-| `dnd_allow` | | list of numbers that always ring during do not disturb |
+| `dnd_allow` | | list of numbers that always ring in a do not disturb window that allows them |
+| `rec_mode` | `off` | record calls: `off`, `every` (all calls, the lists are kept but not used), `all` (except `recnum` sections set to `never`) or `chosen` (only `recnum` sections set to `always`). A `recnum` section with `enabled 0` is paused |
+| `rec_format` | `stereo` | `stereo` keeps each side apart, `mono` mixes them for half the size |
+| `rec_flash_mb` | `50` | MB for recordings on the router |
+| `rec_usb_mb` | `1000` | MB for recordings on a USB stick |
 | `history_autodelete` | `0` | delete old calls from the call history |
 | `history_days` | `30` | how many days of calls to keep when that is on |
+| `call_waiting` | `1` | ask the network for call waiting. While `sip_enabled` is on it is turned off and a second caller hears busy |
+| `missed_tone` | `0` | stutter the dial tone after a missed call |
+| `code_redial` | `*66` | code to call the last number you dialed, a `*` and 1 to 6 digits |
+| `code_callback` | `*69` | code to call the last person who called you, a `*` and 1 to 6 digits |
+| `hotline_enabled` | `0` | lifting the handset calls `hotline` by itself |
+| `hotline` | | the number to call when the handset is lifted |
+| `hotline_delay` | `5` | seconds to wait before that call (0 to 10). Pressing a key first gives a normal call. With 0 no other number can be dialed, not even an emergency number |
+| `dial_wait` | `4` | seconds after the last digit before the call starts (2 to 15) |
+| `flash_min` | `80` | a hook break shorter than this (ms) is ignored (20 to 500) |
+| `flash_max` | `700` | a hook break longer than this (ms) hangs up (300 to 3000), at least 100 above `flash_min` |
 
 Speed dial entries are `config speed` sections with `code` and `number`, blocked numbers are
 `config block` sections with `number`. Numbers are matched on the last 9 digits, so
-`0771234567` also blocks `+94771234567`.
+`0771234567` also blocks `+94771234567`. A speed dial code wins over a phone code with the same
+digits, so a speed dial saved under `66` replaces redial.
+
+## Ringing the phone from a script
+
+```
+ubus call fxs ring '{"seconds":20}'
+```
+
+This rings the phone for 1 to 60 seconds without caller ID, also during do not disturb. It does
+nothing while the phone is in use. To call a number when the handset is lifted:
+
+```
+ubus call fxs click_call '{"number":"0771234567"}'
+```
+
+## Call events
+
+If `/etc/fxs/hook.sh` exists and can be run, fxsd starts it on every call event with the event and
+the number. The events are `incoming`, `answered`, `missed`, `elsewhere`, `blocked`, `waiting`,
+`dial`, `connected`, `failed`, `hangup`, `ended`, `recorded`, which gets the file name instead
+of the number, and `quiet` with `on` or `off`. The script should finish quickly and keep the
+number in quotes, it comes from the network. It is not part of the backup. For example, a
+message through ntfy on a missed call:
+
+```
+#!/bin/sh
+[ "$1" = missed ] && wget -q -O /dev/null --post-data "Missed call from ${2:-a hidden number}" https://ntfy.sh/your-topic
+```
+
+Then run `chmod +x /etc/fxs/hook.sh`.
+
+## Call recording
+
+The Recording tab can save answered calls on the RJ11 phone and on SIP phones: every call, every
+call except a list of numbers, or only a list of numbers. The lists stay saved when you switch, and
+a number can be paused. Recording is off until you turn it on. Calls play back
+from the call history, where each recording can also be downloaded, kept or deleted.
+
+Recordings are WAV files named by the date and time, never by the number. Each side of the call is
+on its own channel unless you choose mixed sound, which takes half the space. An 8 kHz call takes
+about 2 MB a minute, an HD call twice that.
+
+With a USB stick plugged in, recordings go to a `phone-recordings` folder on it. Without one they
+go to `/root/phone-recordings` on the router. Each place has its own size limit, and when it is
+used up the oldest recordings are removed, except the ones marked Keep. The router always keeps
+20 MB free. Recordings stay after a restart, but a firmware upgrade that does not keep settings
+deletes the ones on the router. The config backup does not include recordings.
+
+Recording a call may need the other person's consent where you live.
+
+## Emergency calls
+
+Numbers like 112, 911 and 119 are never hidden, and blocked numbers and do not disturb do not
+apply to them. Whether an emergency call goes through depends on the modem and the network, and
+this has not been tested with a real emergency call. Don't rely on this port for them.
 
 Logs: `logread -e fxsd`. Call log: `/etc/fxs/calls.log`. Phone numbers and dialed digits
 only go to the call log, not to the system log.
@@ -173,12 +278,13 @@ and fxsd starts again.
 ## SIP calling (experimental)
 
 With this on, SIP phones and apps on your network can make and answer calls through the SIM
-as well as the RJ11 phone. The SIP side is done by QModem voice (qmodem-voip and
-qmodem-sipd). fxsd hands it the modem audio and takes the RJ11 phone's calls through it, so
-both sides know about each other: an incoming call rings the RJ11 phone and the SIP phones,
-and whichever answers first gets the call.
+as well as the RJ11 phone. The SIP side is done by a SIP service you choose on the SIP tab.
+QModem voice (qmodem-voip and qmodem-sipd) comes as the first choice. fxsd hands the service
+the modem audio and takes the RJ11 phone's calls through it, so both sides know about each
+other: an incoming call rings the RJ11 phone and the SIP phones, and whichever answers first
+gets the call.
 
-What you need:
+What you need for QModem voice:
 
 - a QModem build with AW1000 support in QModem voice. It was added in
   [FUjr/QModem#290](https://github.com/FUjr/QModem/pull/290) and is in QModem main, not in a
@@ -202,14 +308,14 @@ Then in LuCI:
 
 1. QModem > VoIP: turn on Inbound SIP, type a SIP account name and press Generate for the
    password. Write it down, it is shown once. Save.
-2. Services > Phone (RJ11) > Settings: tick SIP calling and save. fxsd turns on QModem voice
-   and the SIP service by itself.
+2. Services > Phone (RJ11) > SIP: tick Turn on SIP, choose QModem voice and save. fxsd turns
+   on QModem voice and its SIP service by itself.
 
-SIP calling on the Settings page is the on/off switch for SIP. Turning it off also stops
-QModem's SIP service, so SIP phones can't connect to a call that has no sound.
+The SIP tab is the on/off switch for SIP. Turning it off also stops the service's SIP side,
+so SIP phones can't connect to a call that has no sound. You can't change it during a call.
 
-The Status page shows whether fxsd is connected to QModem voice. If QModem voice is not
-running, the RJ11 phone works on its own as before.
+The SIP tab shows whether fxsd is connected to the service, and lists anything the service
+still needs. If the service is not running, the RJ11 phone works on its own as before.
 
 In the SIP app (Linphone, Zoiper and so on) use the account name and password from step 1,
 domain `192.168.1.1` (your router's LAN address), port 5060, transport UDP. In the app's audio
@@ -217,13 +323,25 @@ codecs turn on PCMA or PCMU, other codecs don't work. The phone has to be on the
 Wi-Fi or LAN. Keep the app running in the background or it can't ring.
 If it was closed, open it while the RJ11 phone is ringing and the call shows up.
 
-FLASH (hold and call waiting) on the RJ11 phone doesn't work while it is on. Calls to and
-from SIP use 8 kHz audio, even with HD calling on. A call answered on a SIP phone shows as
+Instead of typing the account in, press Show QR code on the SIP tab and scan it with Linphone.
+The code points to a setup file on the router that holds the SIP password, and it is deleted
+after 5 minutes. The phone has to be on the router's network to load it.
+
+To use SIP from outside your home, set up WireGuard or Tailscale on the router, then on the SIP
+tab tick Allow SIP over the VPN and choose the connection. This opens the SIP ports on that VPN
+only. On the phone the VPN has to route your router's LAN address, and with Tailscale the
+router's subnet route has to be approved. Never open SIP to the internet, anyone who gets in
+can make calls on your SIM.
+
+FLASH (hold and call waiting) on the RJ11 phone doesn't work while it is on. QModem voice
+uses 8 kHz audio, even with HD calling on. A call answered on a SIP phone shows as
 "Answered on SIP" in the call history.
 
 This is new and still being tested. If calls drop, have no sound or the phone stops
 ringing, turn it off and open an [issue](https://github.com/Perz3us/openwrt-aw1000-phone/issues)
 with the output of `logread | grep -E 'fxsd|qmodem_voip'`.
+
+To add another SIP service, see [Adding a SIP service](docs/sip-services.md).
 
 ## Problems
 
@@ -267,6 +385,8 @@ New tabs or settings do not show up after an update: the browser has the old pag
 press Ctrl+F5 on the page.
 
 ## Building
+
+Building the same commit twice gives the same packages, and `scripts/check_repro.sh` checks this.
 
 You need Docker. The first run downloads the OpenWrt SDK, which takes a while.
 

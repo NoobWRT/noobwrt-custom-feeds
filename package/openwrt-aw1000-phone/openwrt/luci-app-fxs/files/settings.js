@@ -1,6 +1,8 @@
 'use strict';
 'require view';
+'require fxs.tabs';
 'require form';
+'require uci';
 
 return view.extend({
 	render: function() {
@@ -10,7 +12,7 @@ return view.extend({
 
 		s = m.section(form.NamedSection, 'main', 'fxs');
 		s.tab('general', _('General'));
-		s.tab('dnd', _('Do not disturb'));
+		s.tab('calling', _('Calling'));
 		s.tab('history', _('Call history'));
 		s.tab('led', _('LED'));
 		s.tab('advanced', _('Advanced'));
@@ -41,13 +43,6 @@ return view.extend({
 
 		o = s.taboption('general', form.Flag, 'hd', _('HD calling'),
 			_('Wideband (16 kHz) audio to the phone when the network and the other side support it. Changing this restarts the modem, so mobile data drops for about 30 seconds.'));
-		o.default = '0';
-		o.rmempty = false;
-
-		o = s.taboption('general', form.Flag, 'sip', _('SIP calling (experimental)'),
-			_('Lets SIP phones and apps make and answer calls through the SIM, next to the RJ11 phone. It needs QModem voice (qmodem-voip and qmodem-sipd, with at-daemon 3.4.0 or newer) set up in QModem. This switch turns QModem voice and its SIP service on and off. Until QModem voice is running, the RJ11 phone keeps working as before. To use only SIP phones, turn the phone port off on the Status page.') + '<br /><strong>' +
-			_('Warning: this is still being tested. Calls may drop or have no sound, and call waiting (flash) on the RJ11 phone does not work while it is on. If something goes wrong, turn it off and report it on') +
-			' <a href="https://github.com/Perz3us/openwrt-aw1000-phone/issues" target="_blank" rel="noreferrer">GitHub</a>.</strong>');
 		o.default = '0';
 		o.rmempty = false;
 
@@ -114,39 +109,79 @@ return view.extend({
 		o.placeholder = '4000';
 		o.depends('ring_pattern', 'custom');
 
-		o = s.taboption('dnd', form.Flag, 'dnd', _('Do not disturb'),
-			_('The RJ11 phone does not ring during these hours. Calls still show in the call history as missed, and SIP phones still ring. Numbers in the allowed list always ring.'));
-		o.default = '0';
+		var isNumber = function(section_id, value) {
+			return !value || /^\+?[0-9]{3,20}$/.test(value) ? true : _('Enter a phone number');
+		};
+
+		o = s.taboption('calling', form.Flag, 'call_waiting', _('Call waiting'),
+			_('You hear a tone when a second call comes in during a call. Press FLASH to switch between the calls. The setting is sent to the network, and some networks do not offer it. While SIP is on in the SIP tab, call waiting is turned off and a second caller hears busy.'));
+		o.default = '1';
 		o.rmempty = false;
 
-		o = s.taboption('dnd', form.Flag, 'dnd_allday', _('All day'),
-			_('Keep do not disturb on all the time instead of only during set hours.'));
-		o.default = '0';
-		o.depends('dnd', '1');
+		o = s.taboption('calling', form.Value, 'dial_wait', _('Dial wait (seconds)'),
+			_('The call starts this long after the last digit. Pressing # starts it right away.'));
+		o.datatype = 'range(2,15)';
+		o.placeholder = '4';
 
-		[ [ 'dnd_from', _('From'), '22:00' ], [ 'dnd_to', _('Until'), '07:00' ] ].forEach(function(t) {
-			o = s.taboption('dnd', form.Value, t[0], t[1]);
-			o.placeholder = t[2];
-			o.default = t[2];
-			o.depends({ dnd: '1', dnd_allday: '0' });
+		[
+			[ 'code_redial', _('Redial code'), _('Dial this on the phone to call the last number you dialed.'), '*66', 'code_callback', '*69' ],
+			[ 'code_callback', _('Call back code'), _('Dial this on the phone to call the last person who called you.'), '*69', 'code_redial', '*66' ]
+		].forEach(function(c) {
+			o = s.taboption('calling', form.Value, c[0], c[1],
+				c[2] + ' ' + _('A * and 1 to 6 digits. A speed dial with the same code goes first.'));
+			o.placeholder = c[3];
 			o.validate = function(section_id, value) {
-				return !value || /^([01]?[0-9]|2[0-3]):[0-5][0-9]$/.test(value) ? true : _('Enter a time like 22:00');
+				if (!value)
+					return true;
+				if (!/^\*[0-9]{1,6}$/.test(value))
+					return _('Enter a * and 1 to 6 digits, like %s').format(c[3]);
+				if (value == '*86' || value == (uci.get('fxs', 'main', 'code_dnd_on') || '*78') || value == (uci.get('fxs', 'main', 'code_dnd_off') || '*79'))
+					return _('The phone already uses this code');
+				if (value == (this.section.formvalue(section_id, c[4]) || c[5]))
+					return _('Redial and call back need different codes');
+				return true;
 			};
 		});
 
-		o = s.taboption('dnd', form.Value, 'dnd_repeat', _('Ring on a repeat call within (minutes)'),
-			_('If the same number calls again within this time, the phone rings, so urgent calls get through. 0 turns this off.'));
-		o.datatype = 'range(0,60)';
-		o.placeholder = '3';
-		o.default = '3';
-		o.depends('dnd', '1');
+		o = s.taboption('calling', form.Flag, 'missed_tone', _('Missed call tone'),
+			_('After a missed call, the dial tone stutters for a moment the next time you lift the handset.'));
+		o.default = '0';
+		o.rmempty = false;
 
-		o = s.taboption('dnd', form.DynamicList, 'dnd_allow', _('Always ring for'),
-			_('Calls from these numbers ring even during do not disturb.'));
+		o = s.taboption('calling', form.Flag, 'hotline_enabled', _('Call when handset is lifted'),
+			_('Lifting the handset calls one number by itself. Pressing any key before that gives a normal call. Useful for an older person, a gate or a shop counter.'));
+		o.default = '0';
+		o.rmempty = false;
+
+		o = s.taboption('calling', form.Value, 'hotline', _('Number to call'));
 		o.placeholder = '0771234567';
-		o.depends('dnd', '1');
+		o.depends('hotline_enabled', '1');
 		o.validate = function(section_id, value) {
-			return !value || /^\+?[0-9]{3,20}$/.test(value) ? true : _('Enter a phone number');
+			if (!value)
+				return _('Enter the number to call');
+			return isNumber(section_id, value);
+		};
+
+		o = s.taboption('calling', form.Value, 'hotline_delay', _('Wait before calling (seconds)'),
+			_('With 0 no other number can be dialed, not even an emergency number.'));
+		o.datatype = 'range(0,10)';
+		o.placeholder = '5';
+		o.default = '5';
+		o.depends('hotline_enabled', '1');
+
+		o = s.taboption('advanced', form.Value, 'flash_min', _('Shortest flash (ms)'),
+			_('A hook break shorter than this is ignored. Most phones do not need this changed.'));
+		o.datatype = 'range(20,500)';
+		o.placeholder = '80';
+
+		o = s.taboption('advanced', form.Value, 'flash_max', _('Longest flash (ms)'),
+			_('A longer hook break hangs up. Raise it if your FLASH key ends the call, lower it if a quick hang up acts like FLASH. It has to be at least 100 ms above the shortest flash.'));
+		o.datatype = 'range(300,3000)';
+		o.placeholder = '700';
+		o.validate = function(section_id, value) {
+			var min = +this.section.formvalue(section_id, 'flash_min') || 80;
+
+			return !value || +value >= min + 100 ? true : _('Must be at least 100 ms above the shortest flash');
 		};
 
 		o = s.taboption('history', form.Flag, 'history_autodelete', _('Delete old calls'),
@@ -167,12 +202,14 @@ return view.extend({
 		[
 			[ 'led_ready', _('Line ready'), 'on' ],
 			[ 'led_ringing', _('Incoming call'), 'fast' ],
-			[ 'led_offhook', _('Handset off hook'), 'slow' ]
+			[ 'led_offhook', _('Handset off hook'), 'slow' ],
+			[ 'led_quiet', _('Quiet or do not disturb'), 'blip' ]
 		].forEach(function(l) {
 			o = s.taboption('led', form.ListValue, l[0], l[1]);
 			o.value('on', _('Solid'));
 			o.value('slow', _('Slow blink'));
 			o.value('fast', _('Fast blink'));
+			o.value('blip', _('Short flash every 2 seconds'));
 			o.value('off', _('Off'));
 			o.default = l[2];
 		});

@@ -1,0 +1,11 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2026 perz3us
+
+if [ ! -x /usr/sbin/msipd ]; then
+	echo not-installed
+elif pidof msipd >/dev/null; then
+	echo running
+else
+	echo stopped
+fi

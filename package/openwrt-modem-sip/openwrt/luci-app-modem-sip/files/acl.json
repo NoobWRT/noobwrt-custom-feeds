@@ -1,0 +1,32 @@
+{
+	"luci-app-modem-sip": {
+		"description": "Modem SIP phones",
+		"read": {
+			"ubus": {
+				"modem-sip": [
+					"status",
+					"settings"
+				],
+				"fxs": [
+					"sip_services"
+				]
+			}
+		},
+		"write": {
+			"ubus": {
+				"modem-sip": [
+					"phone_add",
+					"phone_remove",
+					"phone_login",
+					"phone_password",
+					"phone_rename",
+					"set_settings"
+				],
+				"fxs": [
+					"set_sip",
+					"sip_qr"
+				]
+			}
+		}
+	}
+}

@@ -1,0 +1,14 @@
+FROM gcc:14
+RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends cmake libjson-c-dev libssl-dev zlib1g-dev libncurses-dev libopus-dev \
+	&& rm -rf /var/lib/apt/lists/*
+RUN git clone -q https://github.com/openwrt/libubox /src/libubox && cd /src/libubox \
+	&& cmake -DBUILD_LUA=OFF -DBUILD_EXAMPLES=OFF . >/dev/null && make -s -j4 install \
+	&& git clone -q https://github.com/openwrt/uci /src/uci && cd /src/uci \
+	&& cmake -DBUILD_LUA=OFF . >/dev/null && make -s -j4 install \
+	&& git clone -q https://github.com/openwrt/ubus /src/ubus && cd /src/ubus \
+	&& cmake -DBUILD_LUA=OFF -DBUILD_EXAMPLES=OFF . >/dev/null && make -s -j4 install \
+	&& git clone -q --depth 1 -b v3.16.0 https://github.com/baresip/re /src/re && cd /src/re \
+	&& cmake -B build -DCMAKE_BUILD_TYPE=Release >/dev/null && cmake --build build -j4 >/dev/null && cmake --install build >/dev/null \
+	&& git clone -q --depth 1 -b v3.7.3 https://github.com/SIPp/sipp /src/sipp && cd /src/sipp \
+	&& cmake -B build -DUSE_PCAP=0 -DUSE_SSL=0 -DUSE_SCTP=0 >/dev/null && cmake --build build -j4 >/dev/null && cp build/sipp /usr/local/bin/ \
+	&& ldconfig && rm -rf /src

@@ -1,0 +1,6 @@
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2026 perz3us
+TITLE="Modem SIP"
+PACKAGE=modem-sip
+URL=https://github.com/Perz3us/openwrt-modem-sip
+PAGE=admin/services/modem-sip

@@ -1,0 +1,81 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2026 perz3us
+
+valid_name() {
+	[ ${#1} -ge 1 ] && [ ${#1} -le 23 ] || return 1
+	case "$1" in *[!A-Za-z0-9\ _-]*) return 1 ;; esac
+	return 0
+}
+
+valid_password() {
+	[ ${#1} -ge 8 ] && [ ${#1} -le 31 ] || return 1
+	case "$1" in *[!A-Za-z0-9_.!@#%+=:,-]*) return 1 ;; esac
+	return 0
+}
+
+section_of() {
+	for s in $(uci -q show modem_sip | sed -n 's/^modem_sip\.\([^.=]*\)=phone$/\1/p'); do
+		[ "$(uci -q get "modem_sip.$s.name")" = "$1" ] && { echo "$s"; return 0; }
+	done
+	return 1
+}
+
+reload() {
+	pid=$(pidof msipd) && kill -HUP $pid
+	return 0
+}
+
+case "$1" in
+list)
+	online=$(ubus call fxs_sip phones 2>/dev/null)
+	for s in $(uci -q show modem_sip | sed -n 's/^modem_sip\.\([^.=]*\)=phone$/\1/p'); do
+		name=$(uci -q get "modem_sip.$s.name")
+		user=$(uci -q get "modem_sip.$s.user")
+		on=0
+		echo "$online" | tr -d '\n\t ' | grep -q "\"user\":\"$user\",\"online\":true" && on=1
+		printf '%s\t%s\t%s\n' "$name" "$user" "$on"
+	done
+	;;
+add)
+	valid_name "$2" || { echo "bad name" >&2; exit 1; }
+	section_of "$2" >/dev/null && { echo "name in use" >&2; exit 1; }
+	[ "$(uci -q show modem_sip | grep -c '=phone$')" -lt 16 ] || { echo "too many phones" >&2; exit 1; }
+	user="p$(tr -dc 0-9a-f < /dev/urandom | head -c 6)"
+	pass=$(tr -dc A-Za-z0-9 < /dev/urandom | head -c 20)
+	s=$(uci add modem_sip phone)
+	uci set "modem_sip.$s.name=$2"
+	uci set "modem_sip.$s.user=$user"
+	uci set "modem_sip.$s.password=$pass"
+	uci commit modem_sip
+	reload
+	echo "$user"
+	;;
+remove)
+	s=$(section_of "$2") || { echo "no such phone" >&2; exit 1; }
+	uci delete "modem_sip.$s"
+	uci commit modem_sip
+	reload
+	;;
+password)
+	s=$(section_of "$2") || { echo "no such phone" >&2; exit 1; }
+	pass=${3:-$(tr -dc A-Za-z0-9 < /dev/urandom | head -c 20)}
+	valid_password "$pass" || { echo "bad password" >&2; exit 1; }
+	uci set "modem_sip.$s.password=$pass"
+	uci commit modem_sip
+	reload
+	;;
+rename)
+	s=$(section_of "$2") || { echo "no such phone" >&2; exit 1; }
+	valid_name "$3" || { echo "bad name" >&2; exit 1; }
+	[ "$2" = "$3" ] && exit 0
+	section_of "$3" >/dev/null && { echo "name in use" >&2; exit 1; }
+	uci set "modem_sip.$s.name=$3"
+	uci commit modem_sip
+	reload
+	;;
+*)
+	echo "usage: phones list|add NAME|remove NAME|password NAME [PASSWORD]|rename NAME NEW" >&2
+	exit 1
+	;;
+esac

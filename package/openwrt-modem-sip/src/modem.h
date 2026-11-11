@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/* Copyright (C) 2026 perz3us */
+#ifndef MODEM_H
+#define MODEM_H
+
+#include <stddef.h>
+
+void modem_set_port(const char *port);
+int modem_at(const char *cmd, char *resp, size_t n);
+int modem_at_wait(const char *cmd, char *resp, size_t n, int secs, const char *until);
+int modem_direct(void);
+const char *modem_port(void);
+int modem_port_ok(void);
+int modem_restart(void);
+void modem_heal(void);
+void modem_redial(void);
+int modem_data_up(void);
+
+#endif

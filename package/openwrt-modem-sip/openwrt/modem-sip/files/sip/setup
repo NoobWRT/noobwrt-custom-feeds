@@ -1,0 +1,6 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2026 perz3us
+
+[ -n "$(uci -q show modem_sip | grep "=phone$")" ] || echo "Add a phone on the Modem SIP page, then scan its QR code with Linphone."
+exit 0

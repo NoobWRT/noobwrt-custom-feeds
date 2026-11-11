@@ -1,0 +1,165 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2026 perz3us
+
+. /usr/share/libubox/jshn.sh
+
+PHONES=${PHONES:-/usr/share/fxs/sip/modem-sip/phones}
+ACCOUNT=${ACCOUNT:-/usr/share/fxs/sip/modem-sip/account}
+MSIPD_INIT=${MSIPD_INIT:-/etc/init.d/msipd}
+SIP_VPN=${SIP_VPN:-/usr/libexec/fxs-sip-vpn}
+
+result() {
+	json_init
+	json_add_boolean result "$1"
+	[ -n "$2" ] && json_add_string error "$2"
+	json_dump
+}
+
+name_ok() {
+	[ ${#1} -ge 1 ] && [ ${#1} -le 23 ] || return 1
+	case "$1" in *[!A-Za-z0-9\ _-]*) return 1 ;; esac
+}
+
+status() {
+	local tmp=/tmp/modem-sip-phones.$$ name user on
+
+	"$PHONES" list > "$tmp" 2>/dev/null
+	json_init
+	json_add_boolean phone_port "$([ -x /etc/init.d/fxsd ] && echo 1 || echo 0)"
+	json_add_boolean running "$(pidof msipd >/dev/null && echo 1 || echo 0)"
+	json_add_array phones
+	while IFS="	" read -r name user on; do
+		json_add_object
+		json_add_string name "$name"
+		json_add_string user "$user"
+		json_add_boolean online "$on"
+		json_close_object
+	done < "$tmp"
+	rm -f "$tmp"
+	json_close_array
+	json_dump
+}
+
+change() {
+	local input name
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+	name_ok "$name" || { result 0 name; return; }
+	"$PHONES" "$1" "$name" >/dev/null 2>&1 || { result 0 failed; return; }
+	result 1
+}
+
+login() {
+	local input name acc
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+	name_ok "$name" || { result 0 name; return; }
+	acc=$("$ACCOUNT" "$name" 2>/dev/null) || { result 0 failed; return; }
+	json_init
+	json_add_boolean result 1
+	json_add_string server "$(echo "$acc" | sed -n "s/^host=//p")"
+	json_add_int port "$(echo "$acc" | sed -n "s/^port=//p")"
+	json_add_string user "$(echo "$acc" | sed -n "s/^user=//p")"
+	json_add_string password "$(echo "$acc" | sed -n "s/^password=//p")"
+	json_dump
+}
+
+password() {
+	local input name pass
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+	json_get_var pass password
+	name_ok "$name" || { result 0 name; return; }
+	if [ -n "$pass" ]; then
+		[ ${#pass} -ge 8 ] && [ ${#pass} -le 31 ] || { result 0 password; return; }
+		case "$pass" in *[!A-Za-z0-9_.!@#%+=:,-]*) result 0 password; return ;; esac
+	fi
+	"$PHONES" password "$name" ${pass:+"$pass"} >/dev/null 2>&1 || { result 0 failed; return; }
+	result 1
+}
+
+rename() {
+	local input name new
+
+	read -r input
+	json_load "$input"
+	json_get_var name name
+	json_get_var new new
+	name_ok "$name" && name_ok "$new" || { result 0 name; return; }
+	"$PHONES" rename "$name" "$new" >/dev/null 2>&1 || { result 0 failed; return; }
+	result 1
+}
+
+port_ok() {
+	case "$1" in ""|*[!0-9]*) return 1 ;; esac
+	[ "$1" -ge 1024 ] && [ "$1" -le 65535 ]
+}
+
+settings() {
+	local v
+
+	json_init
+	v=$(uci -q get modem_sip.main.port); json_add_int port "${v:-5060}"
+	v=$(uci -q get modem_sip.main.rtp_from); json_add_int rtp_from "${v:-10000}"
+	v=$(uci -q get modem_sip.main.rtp_to); json_add_int rtp_to "${v:-10100}"
+	json_add_boolean hd "$([ "$(uci -q get modem_sip.main.hd)" = 0 ] && echo 0 || echo 1)"
+	json_add_boolean phone_hd "$([ "$(uci -q get fxs.main.hd)" = 1 ] && echo 1 || echo 0)"
+	json_dump
+}
+
+set_settings() {
+	local input port from to hd state moved=0
+
+	read -r input
+	json_load "$input"
+	json_get_var port port
+	json_get_var from rtp_from
+	json_get_var to rtp_to
+	json_get_var hd hd
+	port_ok "$port" && port_ok "$from" && port_ok "$to" || { result 0 port; return; }
+	[ $((to - from)) -ge 10 ] && [ $((to - from)) -le 1000 ] || { result 0 range; return; }
+	[ "$port" -lt "$from" ] || [ "$port" -gt "$to" ] || { result 0 overlap; return; }
+	case "$hd" in 1|true) hd=1 ;; *) hd=0 ;; esac
+	[ "$port" = "$(uci -q get modem_sip.main.port)" ] && [ "$from" = "$(uci -q get modem_sip.main.rtp_from)" ] &&
+		[ "$to" = "$(uci -q get modem_sip.main.rtp_to)" ] || moved=1
+	state=$(ubus call fxs_sip status 2>/dev/null | sed -n 's/.*"state": *"\([a-z]*\)".*/\1/p')
+	case "$moved:$state" in
+	1:idle|1:off|1:|0:*) ;;
+	*) result 0 busy; return ;;
+	esac
+	uci set modem_sip.main.port="$port"
+	uci set modem_sip.main.rtp_from="$from"
+	uci set modem_sip.main.rtp_to="$to"
+	uci set modem_sip.main.hd="$hd"
+	uci commit modem_sip
+	if [ $moved = 1 ]; then
+		"$MSIPD_INIT" restart >/dev/null 2>&1
+		[ -x "$SIP_VPN" ] && "$SIP_VPN" apply >/dev/null 2>&1
+	fi
+	result 1
+}
+
+case "$1" in
+list)
+	echo '{ "status": {}, "phone_add": { "name": "" }, "phone_remove": { "name": "" }, "phone_login": { "name": "" }, "phone_password": { "name": "", "password": "" }, "phone_rename": { "name": "", "new": "" }, "settings": {}, "set_settings": { "port": 0, "rtp_from": 0, "rtp_to": 0, "hd": true } }'
+	;;
+call)
+	case "$2" in
+	status) status ;;
+	phone_add) change add ;;
+	phone_remove) change remove ;;
+	phone_login) login ;;
+	phone_password) password ;;
+	phone_rename) rename ;;
+	settings) settings ;;
+	set_settings) set_settings ;;
+	esac
+	;;
+esac

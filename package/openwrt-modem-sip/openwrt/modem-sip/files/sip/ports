@@ -1,0 +1,9 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2026 perz3us
+
+port=$(uci -q get modem_sip.main.port)
+from=$(uci -q get modem_sip.main.rtp_from)
+to=$(uci -q get modem_sip.main.rtp_to)
+echo "sip ${port:-5060}"
+echo "rtp ${from:-10000}-${to:-10100}"

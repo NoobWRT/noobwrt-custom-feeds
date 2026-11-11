@@ -1,0 +1,8 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+# Copyright (C) 2026 perz3us
+
+[ -x /etc/init.d/msipd ] || exit 0
+/etc/init.d/msipd enable
+/etc/init.d/msipd running || /etc/init.d/msipd start
+exit 0

@@ -5,6 +5,9 @@ set -e
 
 
 export SYNC_REPO_URL="https://github.com/Perz3us/openwrt-aw1000-phone.git"
+# TEMPORARY: test branch with configurable modem PCM slots (upstream PR #16).
+# Revert to the upstream default branch once the fix is merged.
+export SYNC_BRANCH="fix/pcm-slots"
 export SYNC_REMOTE_PATH="."
 export SYNC_DEST_DIR="package/openwrt-aw1000-phone"
 export SYNC_COPY_SUBDIRS=true

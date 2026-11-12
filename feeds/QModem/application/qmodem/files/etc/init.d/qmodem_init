@@ -7,11 +7,13 @@ USE_PROCD=1
 
 start_service() {
 	config_load qmodem
+    config_get block_auto_probe main block_auto_probe 0
+    [ "$block_auto_probe" -eq 1 ] || config_foreach _prepare_pcie_slot modem-slot
     _start_scand
     config_foreach _mk_rundir modem-device
     config_get block_auto_probe main block_auto_probe 0
     config_get enable_pcie_scan main enable_pcie_scan 0
-    config_get enable_usb_scan main enable_usb_scan 1
+    config_get enable_usb_scan main enable_usb_scan 0
     config_get try_preset_usb main try_preset_usb 1
     config_get try_preset_pcie main try_preset_pcie 1
     #once enabled, skip all check or scan
@@ -25,7 +27,7 @@ start_service() {
         _try_vendor_preset_usb
     fi
 
-    # Queue boot scans once the daemon socket is ready.
+    #not enabled by default
     if [ "$enable_usb_scan" -eq 1 ];then
         _scan_usb
     fi
@@ -55,6 +57,19 @@ _try_vendor_preset_pcie()
     config_foreach _try_pcie_slot modem-slot
 }
 
+_prepare_pcie_slot()
+{
+    local type slot driver id
+    config_get type "$1" type
+    [ "$type" = pcie ] || return 0
+    config_get driver "$1" pci_driver
+    [ -n "$driver" ] || return 0
+    config_get slot "$1" slot
+    config_get id "$1" pci_id
+    /usr/share/qmodem/modem_pcie.sh "$slot" "$driver" "$id" || \
+        logger -t modem_init "Unable to prepare PCIe driver for slot $slot"
+}
+
 _try_pcie_slot()
 {
     config_get type "$1" type
@@ -81,33 +96,12 @@ _try_pcie_device()
 
 _scan_usb()
 {
-    _queue_boot_scan usb
+    ( sleep 15; /usr/bin/modem_scanc scan usb >/dev/null 2>&1 ) &
 }
 
 _scan_pcie()
 {
-    _queue_boot_scan pcie
-}
-
-_queue_boot_scan()
-{
-    local scan_type="$1" scan_delay
-    config_get scan_delay main scan_delay 0
-    case "$scan_delay" in ''|*[!0-9]*) scan_delay=0 ;; esac
-    (
-        # procd launches instances after start_service returns. Do not block it
-        # or restart the service from here while waiting for the socket.
-        local attempts=0
-        while [ "$attempts" -lt 30 ]; do
-            if /usr/bin/modem_scanc status >/dev/null 2>&1 &&
-               /usr/bin/modem_scanc scan "$scan_type" "$scan_delay" >/dev/null 2>&1; then
-                exit 0
-            fi
-            attempts=$((attempts + 1))
-            sleep 1
-        done
-        logger -t modem_init "Failed to queue boot $scan_type scan: modem_scand unavailable"
-    ) &
+    ( sleep 15; /usr/bin/modem_scanc scan pcie >/dev/null 2>&1 ) &
 }
 
 _start_scand()

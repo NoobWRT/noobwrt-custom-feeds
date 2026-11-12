@@ -2134,14 +2134,11 @@ msgstr "Trạng thái"
 msgid "Port %d"
 msgstr "Cổng %d"
 
-msgid "antenna not connected"
-msgstr "chưa gắn ăng-ten"
+msgid "Signal too low to assess"
+msgstr "Tín hiệu quá yếu để đánh giá"
 
-msgid "antenna: weak signal"
-msgstr "ăng-ten: tín hiệu yếu"
-
-msgid "antenna: normal"
-msgstr "ăng-ten: bình thường"
+msgid "Signal: good"
+msgstr "Tín hiệu: tốt"
 
 msgid "Applying 3G bands..."
 msgstr "Đang áp dụng băng tần 3G..."
@@ -2161,8 +2158,8 @@ msgstr "Ngắt nguồn khe modem trong vài giây - như khi rút modem ra. Mode
 msgid "“Hide from ModemManager” has been turned off: the ModemManager protocol needs MM to manage this modem"
 msgstr "Đã tắt “Ẩn khỏi ModemManager”: giao thức ModemManager cần MM quản lý modem này"
 
-msgid "antenna: poor signal"
-msgstr "ăng-ten: tín hiệu kém"
+msgid "Signal: poor"
+msgstr "Tín hiệu: kém"
 
 msgid "enabled"
 msgstr "đã bật"
@@ -4873,8 +4870,8 @@ msgstr "loại trừ thủ công"
 msgid "has answered as a modem before"
 msgstr "đã từng phản hồi như modem"
 
-msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. Change it to a word only you know - the default is the same for everyone. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
-msgstr "Từ ĐẦU TIÊN của tin nhắn, trước từ lệnh: \"%s\" chạy lệnh có tên \"reboot\" bên dưới. Hãy đổi thành một từ chỉ bạn biết - giá trị mặc định là như nhau với mọi người. Để trống nghĩa là không có mã, và khi đó lớp bảo vệ duy nhất là danh sách số tin cậy - số người gửi có thể bị giả mạo."
+msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. A random code is set on install, you can change it to a word only you know. Do not use \"secret\": older versions set it on every router. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
+msgstr "Từ ĐẦU TIÊN của tin nhắn, trước từ lệnh: \"%s\" chạy lệnh có tên \"reboot\" bên dưới. Khi cài đặt, một mã ngẫu nhiên được tạo, bạn có thể đổi thành một từ chỉ bạn biết. Đừng dùng \"secret\": các phiên bản cũ đặt nó trên mọi router. Để trống nghĩa là không có mã, và khi đó lớp bảo vệ duy nhất là danh sách số tin cậy - số người gửi có thể bị giả mạo."
 
 msgid "marked as a modem by hand"
 msgstr "được đánh dấu là modem thủ công"
@@ -6118,6 +6115,9 @@ msgstr "Dữ liệu di động"
 
 msgid "To read cellular metrics, enable USB debugging and authorize this router on the phone."
 msgstr "Để đọc thông số mạng di động, hãy bật gỡ lỗi USB và cho phép router này trên điện thoại."
+
+msgid "To manage bands and network mode, enable USB debugging and authorize this router on the phone."
+msgstr "Để quản lý băng tần và chế độ mạng, hãy bật gỡ lỗi USB và cho phép router này trên điện thoại."
 
 msgid "Change the mobile-data SIM on the phone."
 msgstr "Hãy đổi SIM dữ liệu di động trên điện thoại."

@@ -314,7 +314,7 @@ return view.extend({
 	o.modalonly = true;
 
 	o = s.option(form.Flag, 'use_ubus', _('Use Ubus'));
-	o.default = '1';
+	o.default = '0';
 	o.rmempty = false;
 	o.modalonly = true;
 

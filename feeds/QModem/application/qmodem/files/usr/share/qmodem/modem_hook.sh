@@ -10,15 +10,6 @@ case $init_type in
         # pre-add at commands
         cfg_prefix="post_init"
         debug_subject="post_init"
-		if [ -x /usr/sbin/qmodem-settings ]; then
-			use_ubus=$(uci -q get "qmodem.$config_section.use_ubus")
-			use_ubus=${use_ubus:-1}
-			if [ "$use_ubus" = 1 ]; then
-				exec /usr/sbin/qmodem-settings apply "$config_section"
-			fi
-			/usr/sbin/qmodem-settings apply "$config_section" >/dev/null 2>&1 ||
-				m_debug "$config_section: direct settings state update failed"
-		fi
         ;;
     pre_dial)
         # pre-dial at commands
@@ -74,9 +65,3 @@ fi
 
 config_list_foreach $config_section ${cfg_prefix}_at_cmds   _execute_ats
 _execute_lockcell_boot_hook
-
-if [ "$init_type" = post_init ] && [ "${use_ubus:-1}" != 1 ] &&
-	[ -x /usr/sbin/qmodem-settings ]; then
-	/usr/sbin/qmodem-settings direct-ready "$config_section" >/dev/null 2>&1 ||
-		m_debug "$config_section: direct settings completion state failed"
-fi

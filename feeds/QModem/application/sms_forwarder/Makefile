@@ -6,7 +6,6 @@ include ../../version.mk
 PKG_NAME:=sms-forwarder
 PKG_RELEASE:=$(QMODEM_RELEASE)
 PKG_VERSION:=$(QMODEM_VERSION)
-PKG_CONFLICTS:=sms-forwarder-next
 
 include $(INCLUDE_DIR)/package.mk
 

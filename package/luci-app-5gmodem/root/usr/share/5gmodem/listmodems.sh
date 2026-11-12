@@ -59,6 +59,10 @@ for t in /dev/ttyUSB* /dev/ttyACM* /dev/cdc-wdm* /dev/wwan*; do
 	done
 	if [ -z "$idx" ]; then
 		case " $SKIPNODES " in *" $n "*) continue ;; esac
+		if command -v android_phone_path >/dev/null 2>&1 && android_phone_path "${n##*/}"; then
+			SKIPNODES="$SKIPNODES $n"
+			continue
+		fi
 		if command -v usb_is_modem >/dev/null 2>&1 && ! usb_is_modem "$n"; then
 			SKIPNODES="$SKIPNODES $n"
 			continue
@@ -137,9 +141,11 @@ for _nd in /sys/class/net/*; do
 	[ -f "$_dev/idVendor" ] || continue
 	case " $NODES " in *" $_dev "*) continue ;; esac
 	_tskip=0
-	for _tp in "$_dev"/*:*/ttyUSB* "$_dev"/*:*/tty/tty* "$_dev"/*:*/usbmisc/*; do
-		[ -e "$_tp" ] && { _tskip=1; break; }
-	done
+	if ! { command -v android_phone_path >/dev/null 2>&1 && android_phone_path "${_dev##*/}"; }; then
+		for _tp in "$_dev"/*:*/ttyUSB* "$_dev"/*:*/tty/tty* "$_dev"/*:*/usbmisc/*; do
+			[ -e "$_tp" ] && { _tskip=1; break; }
+		done
+	fi
 	[ "$_tskip" = 1 ] && continue
 	_tkm=0
 	command -v known_modem_path >/dev/null 2>&1 && known_modem_path "${_dev##*/}" && _tkm=1
@@ -249,7 +255,11 @@ PORTREC_EOF
 		model=""
 	fi
 	_mv=$(uci -q get "5gmodem.$_sec.model_vp" 2>/dev/null)
-	[ -n "$_mv" ] && [ "$_mv" != "$vid:$pid" ] && model=""
+	# A phone changes its product id when USB debugging is switched; its saved model holds while the vendor is the same.
+	if [ -n "$_mv" ] && [ "$_mv" != "$vid:$pid" ] \
+	   && ! { [ "${_mv%%:*}" = "$vid" ] && command -v android_vid >/dev/null 2>&1 && android_vid "$vid"; }; then
+		model=""
+	fi
 	if [ -z "$model" ]; then
 		_prodraw=$(cat "$n/product" 2>/dev/null)
 		model=$(model_alias "$_prodraw")

@@ -215,6 +215,39 @@ android_vid() {
 	return 1
 }
 
+# True for a phone the router handles as an Android tether (SIM switching, network modes, SMS). The section's
+# "tether=android" is written once at setup. A phone changes its USB composition, and with it the product id, whenever
+# tethering or debugging is switched; that looks like a mode change of a modem and used to wipe the key, so while the key
+# is missing the vendor of the live device decides.
+android_tether_path() {
+	_atp_sec="m_$(printf '%s' "$1" | sed 's/[^A-Za-z0-9]/_/g')"
+	[ "$(uci -q get "5gmodem.$_atp_sec.kind")" = tether ] || return 1
+	_atp_t=$(uci -q get "5gmodem.$_atp_sec.tether")
+	[ "$_atp_t" = android ] && return 0
+	[ -z "$_atp_t" ] && [ "$(tether_os "$1")" = android ]
+}
+
+# A phone of an Android vendor that shares its USB tethering (RNDIS). Some phones (Samsung) add a CDC-ACM "modem"
+# port next to RNDIS: it is the phone's own service interface, not an AT modem of the router, so such a port must not
+# turn the phone into a modem. Serial ports of the "option" kind (ttyUSB: diag/AT of a real baseband) still do.
+android_phone_path() {
+	[ -n "$1" ] && [ -f "/sys/bus/usb/devices/$1/idVendor" ] || return 1
+	known_modem_path "$1" && return 1
+	read -r _ap_v < "/sys/bus/usb/devices/$1/idVendor"
+	android_vid "$_ap_v" || return 1
+	_ap_rndis=""
+	for _ap_i in "/sys/bus/usb/devices/$1":*; do
+		[ -f "$_ap_i/bInterfaceClass" ] || continue
+		case "$(cat "$_ap_i/bInterfaceClass" 2>/dev/null)/$(cat "$_ap_i/bInterfaceSubClass" 2>/dev/null)/$(cat "$_ap_i/bInterfaceProtocol" 2>/dev/null)" in
+			ef/04/01|e0/01/03) _ap_rndis=1 ;;
+		esac
+		for _ap_t in "$_ap_i"/ttyUSB* "$_ap_i"/tty/ttyUSB*; do
+			[ -e "$_ap_t" ] && return 1
+		done
+	done
+	[ -n "$_ap_rndis" ]
+}
+
 known_modem_path() {
 	_km_d="/sys/bus/usb/devices/$1"
 	[ -n "$1" ] && [ -f "$_km_d/idVendor" ] || return 1
@@ -980,6 +1013,8 @@ model_alias() {
 	set -- "$(at_strip_ok "$1")"
 	case "$1" in
 		*VOS_5G*|*RXMG1*|*SG500M2*) echo "Compal RXM-G1" ;;
+		# every Samsung phone and tablet shares this USB tethering name; the model needs USB debugging
+		SAMSUNG_Android) echo "Samsung Galaxy" ;;
 		SIMCOM_*) echo "SIMCom ${1#SIMCOM_}" ;;
 		SIMCOM\ *) echo "SIMCom ${1#SIMCOM }" ;;
 		*DW5821e*[Ee][Ss][Ii][Mm]*) echo "Dell DW5821e eSIM" ;;
@@ -1402,6 +1437,44 @@ net_proxy_port() {
 	printf '%s' "$_np_r"
 }
 
+# Ways around a blocked direct path, best first, one curl option set per line:
+# clash's mixed port, then every port a running proxy core listens on locally
+# (sing-box, xray, ss-local...), then VPN and tun interfaces that are up.
+# Nothing is configured: net_fetch probes each one and takes the first that works.
+net_alt_paths() {
+	_ap_cp=$(net_proxy_port 2>/dev/null) && [ -n "$_ap_cp" ] && echo "-x http://127.0.0.1:$_ap_cp"
+	_ap_ino=""
+	for _ap_d in /proc/[0-9]*; do
+		{ read -r _ap_c < "$_ap_d/comm"; } 2>/dev/null || continue
+		case "$_ap_c" in
+			mihomo|*clash*|sing-box|xray|v2ray|ss-local|sslocal|hysteria*|tuic*|naive|trojan*|juicity*) ;;
+			*) continue ;;
+		esac
+		_ap_ino="$_ap_ino $(ls -l "$_ap_d/fd" 2>/dev/null | sed -n 's/.*socket:\[\([0-9]*\)\].*/\1/p' | xargs)"
+	done
+	case "$_ap_ino" in *[0-9]*) ;; *) _ap_ino=0 ;; esac
+	for _ap_h in $(awk -v ino="$_ap_ino" '
+		BEGIN { n = split(ino, a, " "); for (i = 1; i <= n; i++) w[a[i]] = 1 }
+		$4 == "0A" && ($10 in w) {
+			split($2, l, ":")
+			if (l[1] ~ /^(0100007F|0+|0+10+)$/ && !seen[l[2]]++) print l[2]
+		}' /proc/net/tcp /proc/net/tcp6 2>/dev/null); do
+		_ap_p=$(printf '%d' "0x$_ap_h")
+		[ "$_ap_p" = "$_ap_cp" ] && continue
+		echo "-x socks5h://127.0.0.1:$_ap_p"
+		echo "-x http://127.0.0.1:$_ap_p"
+	done
+	# the default-route device is the direct path that already failed
+	_ap_def=" $(ip -4 route show default 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | xargs) "
+	for _ap_n in /sys/class/net/*; do
+		case "$_ap_def" in *" ${_ap_n##*/} "*) continue ;; esac
+		# 65534 (ARPHRD_NONE) covers wireguard, amneziawg and tun; bit 1 of flags is IFF_UP
+		[ "$(cat "$_ap_n/type" 2>/dev/null)" = 65534 ] || continue
+		[ $(( $(cat "$_ap_n/flags" 2>/dev/null || echo 0) & 1 )) -ne 0 ] || continue
+		echo "--interface ${_ap_n##*/}"
+	done
+}
+
 net_fetch() {
 	_nf_t="$1"; _nf_u="$2"; _nf_o="$3"
 	if [ -n "$_nf_o" ]; then
@@ -1411,28 +1484,34 @@ net_fetch() {
 		_nf_b=$(wget -qO- --timeout="$_nf_t" "$_nf_u" 2>/dev/null)
 		[ -n "$_nf_b" ] && { printf '%s' "$_nf_b"; return 0; }
 	fi
-	_nf_p=$(net_proxy_port) || return 1
-	[ -n "$_nf_p" ] || return 1
-	logger -t 5gmodem "net: direct fetch failed - retrying via local proxy 127.0.0.1:$_nf_p"
-	if command -v curl >/dev/null 2>&1; then
+	if ! command -v curl >/dev/null 2>&1; then
+		_nf_p=$(net_proxy_port) && [ -n "$_nf_p" ] || return 1
+		logger -t 5gmodem "net: direct fetch failed - retrying via local proxy 127.0.0.1:$_nf_p"
 		if [ -n "$_nf_o" ]; then
-			curl -fsSL -m "$_nf_t" -x "http://127.0.0.1:$_nf_p" -o "$_nf_o" "$_nf_u" 2>/dev/null \
-				&& [ -s "$_nf_o" ] && return 0
+			http_proxy="http://127.0.0.1:$_nf_p" https_proxy="http://127.0.0.1:$_nf_p" \
+				wget -qO "$_nf_o" --timeout="$_nf_t" "$_nf_u" 2>/dev/null && [ -s "$_nf_o" ] && return 0
 			rm -f "$_nf_o" 2>/dev/null; return 1
 		fi
-		_nf_b=$(curl -fsSL -m "$_nf_t" -x "http://127.0.0.1:$_nf_p" "$_nf_u" 2>/dev/null)
+		_nf_b=$(http_proxy="http://127.0.0.1:$_nf_p" https_proxy="http://127.0.0.1:$_nf_p" \
+			wget -qO- --timeout="$_nf_t" "$_nf_u" 2>/dev/null)
 		[ -n "$_nf_b" ] && { printf '%s' "$_nf_b"; return 0; }
 		return 1
 	fi
-	if [ -n "$_nf_o" ]; then
-		http_proxy="http://127.0.0.1:$_nf_p" https_proxy="http://127.0.0.1:$_nf_p" \
-			wget -qO "$_nf_o" --timeout="$_nf_t" "$_nf_u" 2>/dev/null && [ -s "$_nf_o" ] && return 0
-		rm -f "$_nf_o" 2>/dev/null; return 1
-	fi
-	_nf_b=$(http_proxy="http://127.0.0.1:$_nf_p" https_proxy="http://127.0.0.1:$_nf_p" \
-		wget -qO- --timeout="$_nf_t" "$_nf_u" 2>/dev/null)
-	[ -n "$_nf_b" ] && { printf '%s' "$_nf_b"; return 0; }
-	return 1
+	net_alt_paths | {
+		while read -r _nf_a; do
+			# a one-byte probe, so a dead path costs seconds and not the whole timeout
+			curl -fsSL --connect-timeout 4 -m 8 -r 0-0 -o /dev/null $_nf_a "$_nf_u" 2>/dev/null || continue
+			logger -t 5gmodem "net: direct fetch failed - using $_nf_a"
+			if [ -n "$_nf_o" ]; then
+				curl -fsSL -m "$_nf_t" $_nf_a -o "$_nf_o" "$_nf_u" 2>/dev/null && [ -s "$_nf_o" ] && exit 0
+				rm -f "$_nf_o" 2>/dev/null
+			else
+				_nf_b=$(curl -fsSL -m "$_nf_t" $_nf_a "$_nf_u" 2>/dev/null)
+				[ -n "$_nf_b" ] && { printf '%s' "$_nf_b"; exit 0; }
+			fi
+		done
+		exit 1
+	}
 }
 
 is_p2p_dev() {
@@ -1581,4 +1660,51 @@ xmm_other_at() {
 		echo "/dev/${_xo_t##*/}"; return 0
 	done
 	return 1
+}
+
+# Primary uplink = the IPv4 default route with the lowest metric in the main
+# table. When it differs from the last one seen, fire
+#   ACTION=primary INTERFACE DEVICE PREVIOUS PREVIOUS_DEVICE REASON
+#   /sbin/hotplug-call 5gmodem-uplink   (and ubus event 5gmodem.uplink)
+# in the background. Contract: docs/subsystems/internet-priority.md#primary-uplink-event
+# $1 = reason (netpri, health, iface)
+uplink_notify() {
+	[ -x /sbin/hotplug-call ] || return 0
+	mkdir -p /tmp/5gmodem 2>/dev/null
+	(
+		exec 5>/tmp/5gmodem/uplink.lock 2>/dev/null || exit 0
+		flock 5
+		_un_dev=$(ip -4 route show default 2>/dev/null | awk '
+			$1 == "default" && $2 != "from" {
+				m = 0; d = ""
+				for (i = 2; i < NF; i++) { if ($i == "dev") d = $(i + 1); if ($i == "metric") m = $(i + 1) + 0 }
+				if (d != "" && (b == "" || m < bm)) { bm = m; b = d }
+			}
+			END { print b }')
+		_un_if=""
+		if [ -n "$_un_dev" ]; then
+			_un_dump=$(ubus call network.interface dump 2>/dev/null)
+			for _un_c in $(printf '%s' "$_un_dump" | jsonfilter \
+					-e "@.interface[@.l3_device=\"$_un_dev\"].interface" 2>/dev/null); do
+				[ -n "$(printf '%s' "$_un_dump" | jsonfilter \
+					-e "@.interface[@.interface=\"$_un_c\"][\"ipv4-address\"][0].address" 2>/dev/null)" ] \
+					&& { _un_if="$_un_c"; break; }
+				[ -n "$_un_if" ] || _un_if="$_un_c"
+			done
+			[ -n "$_un_if" ] || _un_if="$_un_dev"
+		fi
+		_un_prev=""; _un_pdev=""
+		[ -f /tmp/5gmodem/uplink.primary ] && read -r _un_prev _un_pdev < /tmp/5gmodem/uplink.primary
+		[ "$_un_if" = "$_un_prev" ] && [ "$_un_dev" = "$_un_pdev" ] && exit 0
+		echo "$_un_if $_un_dev" > /tmp/5gmodem/uplink.primary
+		logger -t 5gmodem "uplink: primary ${_un_prev:-none} -> ${_un_if:-none} (${1:-unknown})"
+		(
+			exec 5>&- 6>&- 7>&- 8>&- 9>&-
+			unset _AT_LOCK_HELD
+			ACTION=primary INTERFACE="$_un_if" DEVICE="$_un_dev" \
+			PREVIOUS="$_un_prev" PREVIOUS_DEVICE="$_un_pdev" REASON="${1:-unknown}" \
+				/sbin/hotplug-call 5gmodem-uplink
+			ubus send 5gmodem.uplink "{\"action\":\"primary\",\"interface\":\"$_un_if\",\"device\":\"$_un_dev\",\"previous\":\"$_un_prev\",\"previous_device\":\"$_un_pdev\",\"reason\":\"${1:-unknown}\"}"
+		) >/dev/null 2>&1 </dev/null &
+	) >/dev/null 2>&1 </dev/null
 }

@@ -1,3 +1,0 @@
-#!/bin/sh
-# Compatibility entry point: SIP registration and SMS do not wait for voice.
-exec /usr/bin/qmodem_voip_sip_consumer "$@"

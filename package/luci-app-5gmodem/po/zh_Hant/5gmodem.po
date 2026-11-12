@@ -2134,14 +2134,11 @@ msgstr "狀態"
 msgid "Port %d"
 msgstr "埠 %d"
 
-msgid "antenna not connected"
-msgstr "天線未連接"
+msgid "Signal too low to assess"
+msgstr "信號過弱，無法評估"
 
-msgid "antenna: weak signal"
-msgstr "天線：信號弱"
-
-msgid "antenna: normal"
-msgstr "天線：正常"
+msgid "Signal: good"
+msgstr "信號：良好"
 
 msgid "Applying 3G bands..."
 msgstr "正在應用 3G 頻段..."
@@ -2161,8 +2158,8 @@ msgstr "切斷數據機插槽供電幾秒鐘——相當於將其拔出。約 1 
 msgid "“Hide from ModemManager” has been turned off: the ModemManager protocol needs MM to manage this modem"
 msgstr "「對 ModemManager 隱藏」已關閉：ModemManager 協議需要 MM 來管理此數據機"
 
-msgid "antenna: poor signal"
-msgstr "天線：信號差"
+msgid "Signal: poor"
+msgstr "信號：差"
 
 msgid "enabled"
 msgstr "已啟用"
@@ -4873,8 +4870,8 @@ msgstr "已手動排除"
 msgid "has answered as a modem before"
 msgstr "此前曾以數據機身分回應"
 
-msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. Change it to a word only you know - the default is the same for everyone. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
-msgstr "訊息的第一個詞，位於命令詞之前：“%s” 會執行下面名為 “reboot” 的命令。請把它改成只有您知道的詞——預設值對所有人都一樣。留空表示完全不用密語，那時唯一的保護就是信任號碼清單，而傳送號碼是可以偽造的。"
+msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. A random code is set on install, you can change it to a word only you know. Do not use \"secret\": older versions set it on every router. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
+msgstr "訊息的第一個詞，位於命令詞之前：“%s” 會執行下面名為 “reboot” 的命令。安裝時會設定一個隨機密語，您可以把它改成只有您知道的詞。不要使用 “secret”：舊版本在每台路由器上都設定了它。留空表示完全不用密語，那時唯一的保護就是信任號碼清單，而傳送號碼是可以偽造的。"
 
 msgid "marked as a modem by hand"
 msgstr "已手動標記為數據機"
@@ -6118,6 +6115,9 @@ msgstr "行動數據"
 
 msgid "To read cellular metrics, enable USB debugging and authorize this router on the phone."
 msgstr "要讀取行動網路參數，請啟用 USB 偵錯，並在手機上授權此路由器。"
+
+msgid "To manage bands and network mode, enable USB debugging and authorize this router on the phone."
+msgstr "要管理頻段和網路模式，請啟用 USB 偵錯，並在手機上授權此路由器。"
 
 msgid "Change the mobile-data SIM on the phone."
 msgstr "請在手機上更換用於行動數據的 SIM 卡。"

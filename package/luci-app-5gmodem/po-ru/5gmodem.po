@@ -2325,14 +2325,11 @@ msgstr "Состояние"
 msgid "Port %d"
 msgstr "Порт %d"
 
-msgid "antenna not connected"
-msgstr "антенна не подключена"
+msgid "Signal too low to assess"
+msgstr "Сигнал слишком слабый для оценки"
 
-msgid "antenna: weak signal"
-msgstr "слабый сигнал"
-
-msgid "antenna: normal"
-msgstr "норма"
+msgid "Signal: good"
+msgstr "Сигнал: хороший"
 
 msgid "Applying 3G bands..."
 msgstr "Применяем диапазоны 3G…"
@@ -2353,8 +2350,8 @@ msgstr "Снимает питание со слота модема на неск
 msgid "“Hide from ModemManager” has been turned off: the ModemManager protocol needs MM to manage this modem"
 msgstr "Галка «Скрыть от ModemManager» снята: протоколу ModemManager нужно, чтобы модемом управлял MM"
 
-msgid "antenna: poor signal"
-msgstr "плохой сигнал"
+msgid "Signal: poor"
+msgstr "Сигнал: плохой"
 
 msgid "enabled"
 msgstr "включён"
@@ -5147,8 +5144,8 @@ msgstr "исключено вручную"
 msgid "has answered as a modem before"
 msgstr "уже отвечало модемом"
 
-msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. Change it to a word only you know - the default is the same for everyone. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
-msgstr "ПЕРВОЕ слово сообщения, перед словом команды: «%s» выполнит команду «reboot» из списка ниже. Смените его на слово, которое знаете только вы, - по умолчанию оно у всех одинаковое. Пустое поле означает, что кода нет вовсе, и защитой остаётся только список доверенных номеров, а номер отправителя подделывается."
+msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. A random code is set on install, you can change it to a word only you know. Do not use \"secret\": older versions set it on every router. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
+msgstr "ПЕРВОЕ слово сообщения, перед словом команды: «%s» выполнит команду «reboot» из списка ниже. При установке задаётся случайный код, его можно сменить на слово, которое знаете только вы. Не используйте «secret»: старые версии ставили его на всех роутерах. Пустое поле означает, что кода нет вовсе, и защитой остаётся только список доверенных номеров, а номер отправителя подделывается."
 
 msgid "marked as a modem by hand"
 msgstr "отмечено модемом вручную"
@@ -6403,6 +6400,9 @@ msgstr "Мобильный интернет"
 
 msgid "To read cellular metrics, enable USB debugging and authorize this router on the phone."
 msgstr "Чтобы читать параметры сотовой сети, включите отладку по USB и разрешите доступ этому роутеру на телефоне."
+
+msgid "To manage bands and network mode, enable USB debugging and authorize this router on the phone."
+msgstr "Чтобы управлять диапазонами и режимом сети, включите отладку по USB и разрешите доступ этому роутеру на телефоне."
 
 msgid "Change the mobile-data SIM on the phone."
 msgstr "Сменить SIM-карту для мобильного интернета можно на телефоне."

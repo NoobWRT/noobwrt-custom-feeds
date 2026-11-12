@@ -2134,14 +2134,11 @@ msgstr "状态"
 msgid "Port %d"
 msgstr "端口 %d"
 
-msgid "antenna not connected"
-msgstr "天线未连接"
+msgid "Signal too low to assess"
+msgstr "信号过弱，无法评估"
 
-msgid "antenna: weak signal"
-msgstr "天线：信号弱"
-
-msgid "antenna: normal"
-msgstr "天线：正常"
+msgid "Signal: good"
+msgstr "信号：良好"
 
 msgid "Applying 3G bands..."
 msgstr "正在应用 3G 频段..."
@@ -2161,8 +2158,8 @@ msgstr "切断调制解调器插槽供电几秒钟——相当于将其拔出。
 msgid "“Hide from ModemManager” has been turned off: the ModemManager protocol needs MM to manage this modem"
 msgstr "「对 ModemManager 隐藏」已关闭：ModemManager 协议需要 MM 来管理此调制解调器"
 
-msgid "antenna: poor signal"
-msgstr "天线：信号差"
+msgid "Signal: poor"
+msgstr "信号：差"
 
 msgid "enabled"
 msgstr "已启用"
@@ -4873,8 +4870,8 @@ msgstr "已手动排除"
 msgid "has answered as a modem before"
 msgstr "此前曾以调制解调器身份应答"
 
-msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. Change it to a word only you know - the default is the same for everyone. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
-msgstr "消息的第一个词，位于命令词之前：“%s” 会执行下面名为 “reboot” 的命令。请把它改成只有您知道的词——默认值对所有人都一样。留空表示完全不用口令，那时唯一的保护就是可信号码列表，而发送号码是可以伪造的。"
+msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. A random code is set on install, you can change it to a word only you know. Do not use \"secret\": older versions set it on every router. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
+msgstr "消息的第一个词，位于命令词之前：“%s” 会执行下面名为 “reboot” 的命令。安装时会设置一个随机口令，您可以把它改成只有您知道的词。不要使用 “secret”：旧版本在每台路由器上都设置了它。留空表示完全不用口令，那时唯一的保护就是可信号码列表，而发送号码是可以伪造的。"
 
 msgid "marked as a modem by hand"
 msgstr "已手动标记为调制解调器"
@@ -6118,6 +6115,9 @@ msgstr "移动数据"
 
 msgid "To read cellular metrics, enable USB debugging and authorize this router on the phone."
 msgstr "要读取蜂窝网络参数，请启用 USB 调试，并在手机上授权此路由器。"
+
+msgid "To manage bands and network mode, enable USB debugging and authorize this router on the phone."
+msgstr "要管理频段和网络模式，请启用 USB 调试，并在手机上授权此路由器。"
 
 msgid "Change the mobile-data SIM on the phone."
 msgstr "请在手机上更换用于移动数据的 SIM 卡。"

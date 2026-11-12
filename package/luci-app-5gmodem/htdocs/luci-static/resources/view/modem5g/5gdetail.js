@@ -1673,12 +1673,12 @@ function fillAntPorts(raw, rxdiv) {
 		if (isNaN(rsrp)) {
 			st = '-'; col = null;
 		} else if (rsrp <= -130) {
-			st = _('antenna not connected'); col = 'red';
+			st = _('Signal too low to assess'); col = 'red';
 		} else {
 			col = caQuality('rsrp', rsrp);
-			st = (col === 'green' || col === 'yellow') ? _('antenna: normal')
-			   : (col === 'orange') ? _('antenna: weak signal')
-			   : _('antenna: poor signal');
+			st = (col === 'green' || col === 'yellow') ? _('Signal: good')
+			   : (col === 'orange') ? _('Signal: weak')
+			   : _('Signal: poor');
 		}
 		var paint = function(cell, key, v, text, cap) {
 			paintMetricCell(cell, key, v, text, undefined, cap);
@@ -2910,7 +2910,7 @@ simDialog: baseclass.extend({
 	
 	load: function() {
 		var self = this, args = arguments;
-		return fresh.check(30937, [ bandsui, extip, modemtabs, mutil, netpri, healthform, netarrange, mobileview ]).then(function() { return self._load5g.apply(self, args); });
+		return fresh.check(30942, [ bandsui, extip, modemtabs, mutil, netpri, healthform, netarrange, mobileview ]).then(function() { return self._load5g.apply(self, args); });
 	},
 
 	_load5g: function() {

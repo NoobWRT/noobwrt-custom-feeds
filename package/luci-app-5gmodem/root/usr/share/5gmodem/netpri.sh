@@ -470,7 +470,9 @@ MF_EOF
 		2c7c:0512) echo "Quectel EG12"; return ;;
 		2c7c:0620) echo "Quectel EM160R"; return ;;
 		2c7c:0800) echo "Quectel RM500Q"; return ;;
-		2c7c:0801) echo "Quectel RM520N"; return ;;
+		2c7c:0801)
+			case "$prod" in RG520N*|RM520N*) echo "Quectel $prod" ;; *) echo "Quectel 5G" ;; esac
+			return ;;
 		2c7c:0900) echo "Quectel RM500U"; return ;;
 		2c7c:0901) echo "Quectel EC200U"; return ;;
 		2c7c:6005) echo "Quectel EC200A"; return ;;
@@ -685,6 +687,17 @@ _rerank_iface_routes() {
 			done
 		done
 	done
+}
+
+# Like mihomo unified-delay: two requests over one connection, the second one
+# is timed, so DNS, TCP and TLS setup stay out of the number. Prints
+# "<http_code> <seconds>" of the last answered request (the first one if the
+# second failed), nothing if neither got an answer. $1 = URL, rest = curl options.
+_curl_rtt() {
+	_cr_u="$1"; shift
+	curl -s "$@" -o /dev/null -o /dev/null -w '%{http_code} %{time_starttransfer}\n' \
+		"$_cr_u" "$_cr_u" 2>/dev/null \
+		| awk '$1 != "" && $1 != "000" { c = $1; t = $2 } END { if (c != "") print c, t }'
 }
 
 _clash_ping() {
@@ -1004,6 +1017,7 @@ set)
 	for n in $(wan_nets); do
 		[ -n "$n" ] && [ "$n" != "$CH" ] && { _add_once "$n" "$_m" && _m=$((_m + 10)); }
 	done
+	uplink_notify netpri
 	echo '{"result":"ok","active":"'"$CH"'","changed":'"$_np_changed"',"mode":"live-route"}'
 	;;
 
@@ -1028,6 +1042,7 @@ reapply)
 	done
 	_rerank_default_route "$_ra_n" "$_ra_m" "$_ra_d" "$_devs"
 	_rerank_iface_routes "$_ra_d" "$_ra_m" "$_ra_n"
+	uplink_notify netpri
 	;;
 
 worder)
@@ -1139,6 +1154,7 @@ order)
 		_rerank_iface_routes "$_dv" "$_rank" "$n"
 		_rank=$((_rank + 10))
 	done
+	uplink_notify netpri
 	echo '{"result":"ok","changed":true,"mode":"order"}'
 	;;
 
@@ -1196,7 +1212,7 @@ ping)
 		case "$_tp_cu" in
 			http://?*|https://?*)
 				_tp_k=""; [ "$(uci -q get 5gmodem.sms.tg_api_insecure)" = 1 ] && _tp_k="-k"
-				_tp_w=$(curl -o /dev/null -s -m 6 $_tp_k -w '%{http_code} %{time_starttransfer}' "${_tp_cu%/}/" 2>/dev/null)
+				_tp_w=$(_curl_rtt "${_tp_cu%/}/" -m 6 $_tp_k)
 				_tp_c="${_tp_w%% *}"; _tp_t="${_tp_w##* }"
 				if [ -n "$_tp_c" ] && [ "$_tp_c" != "000" ]; then
 					printf '{"ok":1,"ms":%s,"via":"custom"}\n' "$(printf '%s' "$_tp_t" | awk '{printf "%d", $1 * 1000}')"
@@ -1216,10 +1232,8 @@ ping)
 		[ -n "$_tp_ip" ] || _tp_ip=149.154.167.220
 		if command -v curl >/dev/null 2>&1; then
 			if [ -z "$_tp_fake" ]; then
-				_tp_w=$(curl -o /dev/null -s -m 5 \
-					--resolve "api.telegram.org:443:$_tp_ip" \
-					-w '%{http_code} %{time_starttransfer}' \
-					"https://api.telegram.org/" 2>/dev/null)
+				_tp_w=$(_curl_rtt "https://api.telegram.org/" -m 5 \
+					--resolve "api.telegram.org:443:$_tp_ip")
 				_tp_c="${_tp_w%% *}"; _tp_t="${_tp_w##* }"
 				if [ -n "$_tp_c" ] && [ "$_tp_c" != "000" ]; then
 					_tg_cidr_refresh
@@ -1231,9 +1245,7 @@ ping)
 			_tp_pp=$(sed -n 's/^\(mixed-port\|port\) *: *\([0-9]*\).*/\2/p' \
 				/opt/clash/config.yaml /etc/clash/config.yaml 2>/dev/null | head -1)
 			if [ -n "$_tp_pp" ] && [ "$_tp_pp" != "0" ]; then
-				_tp_w=$(curl -o /dev/null -s -m 6 -x "http://127.0.0.1:$_tp_pp" \
-					-w '%{http_code} %{time_starttransfer}' \
-					"https://api.telegram.org/" 2>/dev/null)
+				_tp_w=$(_curl_rtt "https://api.telegram.org/" -m 6 -x "http://127.0.0.1:$_tp_pp")
 				_tp_c="${_tp_w%% *}"; _tp_t="${_tp_w##* }"
 				if [ -n "$_tp_c" ] && [ "$_tp_c" != "000" ]; then
 					printf '{"ok":1,"ms":%s,"via":"proxy"}\n' \
@@ -1254,7 +1266,7 @@ ping)
 	case "$_po" in
 		*"(198.18."*|*"(198.19."*)
 			if command -v curl >/dev/null 2>&1; then
-				_hw=$(curl -o /dev/null -s -m 4 -w '%{http_code} %{time_starttransfer}' "https://$_h/" 2>/dev/null)
+				_hw=$(_curl_rtt "https://$_h/" -m 4)
 				_hc="${_hw%% *}"; _ht="${_hw##* }"
 				if [ -n "$_hc" ] && [ "$_hc" != "000" ]; then
 					printf '{"ok":1,"ms":%s,"via":"http"}\n' "$(printf '%s' "$_ht" | awk '{printf "%d", $1 * 1000}')"
@@ -1277,7 +1289,7 @@ ping)
 				printf '{"ok":1,"ms":%s}\n' "$_ms"
 			else
 				if command -v curl >/dev/null 2>&1; then
-					_hw=$(curl -o /dev/null -s -m 4 -w '%{http_code} %{time_starttransfer}' "https://$_h/" 2>/dev/null)
+					_hw=$(_curl_rtt "https://$_h/" -m 4)
 					_hc="${_hw%% *}"; _ht="${_hw##* }"
 					if [ -n "$_hc" ] && [ "$_hc" != "000" ]; then
 						printf '{"ok":1,"ms":%s,"via":"http"}\n' "$(printf '%s' "$_ht" | awk '{printf "%d", $1 * 1000}')"

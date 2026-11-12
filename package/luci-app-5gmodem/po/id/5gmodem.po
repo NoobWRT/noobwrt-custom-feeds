@@ -2134,14 +2134,11 @@ msgstr "Kondisi"
 msgid "Port %d"
 msgstr "Port %d"
 
-msgid "antenna not connected"
-msgstr "antena tidak terhubung"
+msgid "Signal too low to assess"
+msgstr "Sinyal terlalu lemah untuk dinilai"
 
-msgid "antenna: weak signal"
-msgstr "antena: sinyal lemah"
-
-msgid "antenna: normal"
-msgstr "antena: normal"
+msgid "Signal: good"
+msgstr "Sinyal: baik"
 
 msgid "Applying 3G bands..."
 msgstr "Menerapkan pita 3G..."
@@ -2161,8 +2158,8 @@ msgstr "Memutus daya slot modem selama beberapa detik - seolah-olah Anda mencabu
 msgid "“Hide from ModemManager” has been turned off: the ModemManager protocol needs MM to manage this modem"
 msgstr "“Sembunyikan dari ModemManager” telah dimatikan: protokol ModemManager memerlukan MM untuk mengelola modem ini"
 
-msgid "antenna: poor signal"
-msgstr "antena: sinyal buruk"
+msgid "Signal: poor"
+msgstr "Sinyal: buruk"
 
 msgid "enabled"
 msgstr "diaktifkan"
@@ -4873,8 +4870,8 @@ msgstr "dikecualikan secara manual"
 msgid "has answered as a modem before"
 msgstr "pernah merespons sebagai modem"
 
-msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. Change it to a word only you know - the default is the same for everyone. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
-msgstr "Kata PERTAMA pesan, sebelum kata perintah: \"%s\" menjalankan perintah bernama \"reboot\" di bawah. Ganti dengan kata yang hanya Anda ketahui - bawaannya sama untuk semua orang. Kosong berarti tanpa kode sama sekali, sehingga satu-satunya perlindungan adalah daftar nomor tepercaya - nomor pengirim dapat dipalsukan."
+msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. A random code is set on install, you can change it to a word only you know. Do not use \"secret\": older versions set it on every router. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
+msgstr "Kata PERTAMA pesan, sebelum kata perintah: \"%s\" menjalankan perintah bernama \"reboot\" di bawah. Kode acak dibuat saat instalasi, Anda dapat menggantinya dengan kata yang hanya Anda ketahui. Jangan gunakan \"secret\": versi lama memasangnya di setiap router. Kosong berarti tanpa kode sama sekali, sehingga satu-satunya perlindungan adalah daftar nomor tepercaya - nomor pengirim dapat dipalsukan."
 
 msgid "marked as a modem by hand"
 msgstr "ditandai sebagai modem secara manual"
@@ -6118,6 +6115,9 @@ msgstr "Data seluler"
 
 msgid "To read cellular metrics, enable USB debugging and authorize this router on the phone."
 msgstr "Untuk membaca metrik seluler, aktifkan USB debugging dan izinkan router ini di ponsel."
+
+msgid "To manage bands and network mode, enable USB debugging and authorize this router on the phone."
+msgstr "Untuk mengatur band dan mode jaringan, aktifkan USB debugging dan izinkan router ini di ponsel."
 
 msgid "Change the mobile-data SIM on the phone."
 msgstr "Ubah SIM data seluler di ponsel."

@@ -143,7 +143,7 @@ return view.extend({
 			var ubusCheckbox = E('input', {
 				'type': 'checkbox',
 				'id': 'use_ubus_' + modem.id,
-				'checked': modem.use_ubus !== '0'
+				'checked': modem.use_ubus === '1'
 			});
 			
 			ubusField.appendChild(ubusCheckbox);

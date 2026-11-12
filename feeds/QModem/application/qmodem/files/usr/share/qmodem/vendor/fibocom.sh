@@ -503,20 +503,10 @@ set_mode()
     json_close_object
 }
 
-# Read the first RAT value independently of spacing and serial CRLF framing.
-fibocom_gtact_rat()
-{
-    awk -F'[:,]' '/^[[:space:]]*\+GTACT:/ {
-        gsub(/[[:space:]]/, "", $2)
-        print $2
-        exit
-    }'
-}
-
 #获取网络偏好
 get_network_prefer_nr()
 {
-    local network_prefer_num=$(cmd_gtact_query "$at_port" | fibocom_gtact_rat)
+    local network_prefer_num=$(cmd_gtact_query "$at_port" | grep "+GTACT:" | awk -F',' '{print $1}' | sed 's/+GTACT: //g')
     
     local network_prefer_3g="0";
     local network_prefer_4g="0";
@@ -550,8 +540,9 @@ get_network_prefer_nr()
             network_prefer_5g="1"
         ;;
         *)
-            json_add_string "error" "Invalid or unsupported GTACT response"
-            return 1
+            network_prefer_3g="1"
+            network_prefer_4g="1"
+            network_prefer_5g="1"
         ;;
     esac
 
@@ -560,16 +551,6 @@ get_network_prefer_nr()
     json_add_string 4G $network_prefer_4g
     json_add_string 5G $network_prefer_5g
     json_close_object
-}
-
-fibocom_gtact_set_result()
-{
-    if printf '%s\n' "$1" | tr -d '\r' | grep -qE '^[[:space:]]*OK[[:space:]]*$' &&
-       ! printf '%s\n' "$1" | grep -q 'ERROR'; then
-        json_add_boolean "success" 1
-    else
-        json_add_boolean "success" 0
-    fi
 }
 
 #设置网络偏好
@@ -633,7 +614,6 @@ set_network_prefer_nr()
     res=$(cmd_gtact_set "$at_port" "$gtact_params")
     json_add_object "result"
     json_add_string "status" "$res"
-    fibocom_gtact_set_result "$res"
     json_add_string "command" "AT+GTACT=$gtact_params"
     json_close_object
 }
@@ -641,7 +621,7 @@ set_network_prefer_nr()
 #获取网络偏好
 get_network_prefer_lte()
 {
-    local network_prefer_num=$(cmd_gtact_query "$at_port" | fibocom_gtact_rat)
+    local network_prefer_num=$(cmd_gtact_query "$at_port" | grep "+GTACT:" | awk -F',' '{print $1}' | sed 's/+GTACT: //g')
     
     local network_prefer_3g="0";
     local network_prefer_4g="0";
@@ -659,8 +639,8 @@ get_network_prefer_lte()
             network_prefer_4g="1"
         ;;
         *)
-            json_add_string "error" "Invalid or unsupported GTACT response"
-            return 1
+            network_prefer_3g="1"
+            network_prefer_4g="1"
         ;;
     esac
 
@@ -697,7 +677,6 @@ set_network_prefer_lte()
     res=$(cmd_gtact_set "$at_port" "$network_prefer_num")
     json_add_object "result"
     json_add_string "status" "$res"
-    fibocom_gtact_set_result "$res"
     json_add_string raw "$1"
     json_add_string "network_prefer_num" "$network_prefer_num"
     json_add_string "network_prefer_3g" "$network_prefer_3g"
@@ -826,9 +805,6 @@ fibocom_get_carrier()
             carrier=$(cmd_gtcurcar_query "$at_port" | awk -F'"' '/^\+GTCURCAR:/ {print $2; exit}')
             ;;
     esac
-    case "$(printf '%s' "$carrier" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')" in
-        generic|unknown) carrier="" ;;
-    esac
     [ -n "$carrier" ] || carrier=$(cmd_cops_query "$at_port" | grep "+COPS" | awk -F'"' '{print $2}')
     echo "$carrier"
 }
@@ -836,6 +812,7 @@ fibocom_get_carrier()
 #SIM卡信息
 sim_info()
 {
+    local isp="" sim_number="" imsi="" iccid=""
     m_debug "Fibocom sim info"
     
     #SIM Slot（SIM卡卡槽）
@@ -851,37 +828,35 @@ sim_info()
     }
     sim_status=$(get_sim_status "$sim_status_flag")
 
-    if [ "$sim_status" != "ready" ]; then
-        return
+    if [ "$sim_status" = "ready" ]; then
+        #ISP（互联网服务提供商）
+        isp=$(fibocom_get_carrier)
+        # if [ "$isp" = "CHN-CMCC" ] || [ "$isp" = "CMCC" ]|| [ "$isp" = "46000" ]; then
+        #     isp="中国移动"
+        # elif [ "$isp" = "CHN-UNICOM" ] || [ "$isp" = "UNICOM" ] || [ "$isp" = "46001" ]; then
+        #     isp="中国联通"
+        # elif [ "$isp" = "CHN-CT" ] || [ "$isp" = "CT" ] || [ "$isp" = "46011" ]; then
+        #     isp="中国电信"
+        # fi
+
+        #SIM Number（SIM卡号码，手机号）
+        sim_number=$(cmd_cnum "$at_port" | grep "+CNUM: " | awk -F'"' '{print $2}')
+        [ -z "$sim_number" ] && {
+            sim_number=$(cmd_cnum "$at_port" | grep "+CNUM: " | awk -F'"' '{print $4}')
+        }
+
+        #IMSI（国际移动用户识别码）
+        imsi=$(cmd_cimi "$at_port" | grep "+CIMI: " | awk -F' ' '{print $2}' | sed 's/"//g' | sed 's/\r//g')
+        [ -z "$sim_number" ] && {
+            imsi=$(cmd_cimi "$at_port" | grep "+CIMI: " | awk -F'"' '{print $2}')
+        }
+
+        #ICCID（集成电路卡识别码）
+        iccid=$(cmd_iccid "$at_port" | grep -o "+ICCID:[ ]*[-0-9]\+" | grep -o "[-0-9]\{1,4\}")
+        [ -z "$iccid" ] && {
+            iccid=$(cmd_ccid "$at_port" | grep -o "+CCID:[ ]*[-0-9]\+" | awk -F' ' '{print $2}')
+        }
     fi
-
-    #ISP（互联网服务提供商）
-    isp=$(fibocom_get_carrier)
-    # if [ "$isp" = "CHN-CMCC" ] || [ "$isp" = "CMCC" ]|| [ "$isp" = "46000" ]; then
-    #     isp="中国移动"
-    # elif [ "$isp" = "CHN-UNICOM" ] || [ "$isp" = "UNICOM" ] || [ "$isp" = "46001" ]; then
-    #     isp="中国联通"
-    # elif [ "$isp" = "CHN-CT" ] || [ "$isp" = "CT" ] || [ "$isp" = "46011" ]; then
-    #     isp="中国电信"
-    # fi
-
-    #SIM Number（SIM卡号码，手机号）
-    sim_number=$(cmd_cnum "$at_port" | grep "+CNUM: " | awk -F'"' '{print $2}')
-    [ -z "$sim_number" ] && {
-        sim_number=$(cmd_cnum "$at_port" | grep "+CNUM: " | awk -F'"' '{print $4}')
-    }
-	
-    #IMSI（国际移动用户识别码）
-    imsi=$(cmd_cimi "$at_port" | grep "+CIMI: " | awk -F' ' '{print $2}' | sed 's/"//g' | sed 's/\r//g')
-    [ -z "$sim_number" ] && {
-        imsi=$(cmd_cimi "$at_port" | grep "+CIMI: " | awk -F'"' '{print $2}')
-    }
-
-    #ICCID（集成电路卡识别码）
-    iccid=$(cmd_iccid "$at_port" | grep -o "+ICCID:[ ]*[-0-9]\+" | grep -o "[-0-9]\{1,4\}")
-		[ -z "$iccid" ] && {
-        iccid=$(cmd_ccid "$at_port" | grep -o "+CCID:[ ]*[-0-9]\+" | awk -F' ' '{print $2}')
-    }
     class="SIM Information"
     case "$sim_status" in
         "ready")

@@ -1,4 +1,0 @@
-config sipd 'main'
- option schema_version '2'
-# Add a group with an explicit local modem_id, then at most one direction of each kind.
-# SMS and voice flags are the activation controls; no separate enabled option.

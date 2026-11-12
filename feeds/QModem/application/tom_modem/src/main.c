@@ -249,7 +249,6 @@ static void signal_cleanup(int sig __attribute__((unused)))
 int main(int argc, char *argv[])
 {
     PROFILE_T *profile = &s_profile;
-    int result;
     parse_user_input(argc, argv, profile);
     dump_profile();
     
@@ -293,12 +292,18 @@ int main(int argc, char *argv[])
     }
     
     // Run operation
-    result = run_op(profile, &s_transport);
-    if (result != SUCCESS)
+    if (run_op(profile, &s_transport))
     {
         err_msg("Failed to run operation %d", profile->op);
+#ifdef USE_SEMAPHORE
+        if (profile->transport == TRANSPORT_TTY && unlock_at_port(profile->tty_dev))
+        {
+            err_msg("Failed to unlock tty device");
+        }
+#endif
+        kill(getpid(), SIGINT); 
     }
     
     dbg_msg("Exit");
-    return result;
+    return SUCCESS;
 }

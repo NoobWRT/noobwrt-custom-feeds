@@ -23,10 +23,6 @@
 #include <time.h>
 #include <unistd.h>
 
-#ifndef QMODEM_SYSFS_ROOT
-#define QMODEM_SYSFS_ROOT "/sys"
-#endif
-
 enum event_type {
 	EV_ADD,
 	EV_REMOVE,
@@ -64,7 +60,6 @@ struct port_rule {
 	int has_rule;
 	int option_driver;
 	struct str_list include;
-	char voice_pcm_interface[32];
 };
 
 struct modem_profile {
@@ -93,8 +88,6 @@ struct scan_result {
 	char modem_path[256];
 	char vid[16];
 	char pid[16];
-	char voice_pcm_port[160];
-	char voice_pcm_interface[32];
 	int option_driver;
 };
 
@@ -111,6 +104,7 @@ struct daemon_state {
 	int at_probe_workers;
 	int at_timeout_fast;
 	int at_timeout_model;
+	int at_timeout_lock;
 	int add_retry_delay;
 	int add_retry_max;
 	enum log_level log_level;
@@ -552,8 +546,6 @@ static int load_port_rule(const char *vid, const char *pid, struct port_rule *ru
 		return 0;
 	rule->has_rule = 1;
 	rule->option_driver = json_get_int_default(obj, "option_driver", 0);
-	snprintf(rule->voice_pcm_interface, sizeof(rule->voice_pcm_interface), "%s",
-		json_get_string_default(obj, "voice_pcm_interface", ""));
 	if (json_get_obj(obj, "include", &include) && json_object_is_type(include, json_type_array)) {
 		int n = json_object_array_length(include);
 		for (int i = 0; i < n; i++) {
@@ -597,10 +589,10 @@ static void scan_usb_slot(const char *slot, struct scan_result *res)
 	DIR *d;
 	struct dirent *de;
 
-	snprintf(slot_path, sizeof(slot_path), "%s/bus/usb/devices/%s", QMODEM_SYSFS_ROOT, slot);
+	snprintf(slot_path, sizeof(slot_path), "/sys/bus/usb/devices/%s", slot);
 	if (!is_dir(slot_path))
 		return;
-	snprintf(res->modem_path, sizeof(res->modem_path), "%s/bus/usb/devices/%s/", QMODEM_SYSFS_ROOT, slot);
+	snprintf(res->modem_path, sizeof(res->modem_path), "/sys/bus/usb/devices/%s/", slot);
 	snprintf(vid_path, sizeof(vid_path), "%s/idVendor", slot_path);
 	snprintf(pid_path, sizeof(pid_path), "%s/idProduct", slot_path);
 	read_file_trim(vid_path, res->vid, sizeof(res->vid));
@@ -626,42 +618,19 @@ static void scan_usb_slot(const char *slot, struct scan_result *res)
 		suffix = strrchr(de->d_name, ':');
 		if (suffix)
 			snprintf(if_port, sizeof(if_port), "%s", suffix + 1);
+		if (!interface_allowed(&rule, if_port)) {
+			log_msg(LOG_L_DEBUG, "skip usb %s interface %s by modem_port_rule", slot, if_port);
+			continue;
+		}
 		snprintf(driver_path, sizeof(driver_path), "%s/%s/driver", slot_path, de->d_name);
 		if (!path_exists(driver_path) || readlink_basename(driver_path, driver, sizeof(driver)) < 0)
 			continue;
 
 		snprintf(path, sizeof(path), "%s/%s", slot_path, de->d_name);
-		if (rule.voice_pcm_interface[0] &&
-		    !strcmp(if_port, rule.voice_pcm_interface) &&
-		    (!strcmp(driver, "option") || !strcmp(driver, "cdc_acm") ||
-		     !strcmp(driver, "qcserial") || !strcmp(driver, "usbserial_generic") ||
-		     !strcmp(driver, "usbserial"))) {
-			struct str_list ttys;
-			sl_init(&ttys);
-			list_child_matching(path, "ttyUSB", &ttys);
-			list_child_matching(path, "ttyACM", &ttys);
-			if (ttys.len == 1) {
-				snprintf(res->voice_pcm_port, sizeof(res->voice_pcm_port),
-					"/dev/%s", ttys.items[0]);
-				snprintf(res->voice_pcm_interface,
-					sizeof(res->voice_pcm_interface), "%s", if_port);
-			} else {
-				log_msg(LOG_L_WARN,
-					"usb %s voice PCM interface %s has %zu tty devices",
-					slot, if_port, ttys.len);
-			}
-			sl_free(&ttys);
-			continue;
-		}
 		if (!strcmp(driver, "option") || !strcmp(driver, "cdc_acm") ||
 		    !strcmp(driver, "qcserial") || !strcmp(driver, "usbserial_generic") ||
 		    !strcmp(driver, "usbserial")) {
 			struct str_list ttys;
-			/* The include rule filters AT ports, not network interfaces. */
-			if (!interface_allowed(&rule, if_port)) {
-				log_msg(LOG_L_DEBUG, "skip usb %s AT interface %s by modem_port_rule", slot, if_port);
-				continue;
-			}
 			sl_init(&ttys);
 			list_child_matching(path, "ttyUSB", &ttys);
 			list_child_matching(path, "ttyACM", &ttys);
@@ -699,6 +668,10 @@ static void scan_associated_usb(const char *pcie_slot, struct scan_result *res)
 }
 
 /* Resolve WWAN ports by ancestry: controller and WWAN indices are independent. */
+#ifndef QMODEM_SYSFS_ROOT
+#define QMODEM_SYSFS_ROOT "/sys"
+#endif
+
 static int pcie_owned_path(const char *slot_path, const char *path)
 {
     char slot_real[PATH_MAX], real[PATH_MAX];
@@ -798,28 +771,80 @@ static void scan_pcie_slot(const char *slot, struct scan_result *res)
 	scan_pcie_wwan(slot_path, res);
 }
 
+static long long monotonic_ms(void)
+{
+	struct timespec now;
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (long long)now.tv_sec * 1000 + now.tv_nsec / 1000000;
+}
+
+/* Use the same per-port flock as at()/fastat(), before starting the I/O timer. */
+static int lock_at_port(const char *port, int timeout)
+{
+	char path[512] = "/var/lock/qmodem-at-";
+	size_t used = strlen(path);
+	long long start = monotonic_ms();
+	int fd;
+	if (!port || !*port)
+		return -1;
+	for (const unsigned char *p = (const unsigned char *)port; *p; p++) {
+		if (used + sizeof(".lock") >= sizeof(path))
+			return -1;
+		path[used++] = ((*p >= 'A' && *p <= 'Z') || (*p >= 'a' && *p <= 'z') ||
+			(*p >= '0' && *p <= '9') || *p == '_') ? *p : '_';
+	}
+	memcpy(path + used, ".lock", sizeof(".lock"));
+	mkdir("/var/lock", 0755);
+	fd = open(path, O_WRONLY | O_CREAT | O_CLOEXEC, 0600);
+	if (fd < 0)
+		return -1;
+	while (flock(fd, LOCK_EX | LOCK_NB) < 0) {
+		if (errno != EWOULDBLOCK && errno != EAGAIN && errno != EINTR) {
+			close(fd);
+			return -1;
+		}
+		if (monotonic_ms() - start >= (long long)timeout * 1000) {
+			close(fd);
+			return -3;
+		}
+		usleep(20000);
+	}
+	return fd;
+}
+
 static int at_command(const char *port, const char *cmd, int fast, int timeout, char *out, size_t out_len)
 {
 	int pipefd[2];
+	int lock_fd;
 	pid_t pid;
 	size_t used = 0;
 	int status = 0;
-	time_t start;
+	long long start;
 	const char *script =
 		". /usr/share/qmodem/modem_util.sh; "
+		"QMODEM_AT_LOCK_HELD=1; export QMODEM_AT_LOCK_HELD; "
 		"if [ \"$1\" = 1 ]; then "
 		"fastat \"$2\" \"$3\"; "
 		"else at \"$2\" \"$3\"; fi";
 
 	if (out_len)
 		out[0] = '\0';
-	if (pipe(pipefd) < 0)
+	lock_fd = lock_at_port(port, g.at_timeout_lock > 0 ? g.at_timeout_lock : 8);
+	if (lock_fd < 0) {
+		if (lock_fd == -3)
+			log_msg(LOG_L_WARN, "AT lock wait timeout port=%s cmd=%s phase=queue", port, cmd);
+		return lock_fd;
+	}
+	if (pipe(pipefd) < 0) {
+		close(lock_fd);
 		return -1;
+	}
 
 	pid = fork();
 	if (pid < 0) {
 		close(pipefd[0]);
 		close(pipefd[1]);
+		close(lock_fd);
 		return -1;
 	}
 	if (pid == 0) {
@@ -828,13 +853,17 @@ static int at_command(const char *port, const char *cmd, int fast, int timeout, 
 		dup2(pipefd[1], STDERR_FILENO);
 		close(pipefd[0]);
 		close(pipefd[1]);
+		if (dup2(lock_fd, 6) < 0 || fcntl(6, F_SETFD, 0) < 0)
+			_exit(127);
+		if (lock_fd != 6)
+			close(lock_fd);
 		execl("/bin/sh", "sh", "-c", script, "qmodem-at", fast ? "1" : "0", port, cmd, NULL);
 		_exit(127);
 	}
 
 	close(pipefd[1]);
 	fcntl(pipefd[0], F_SETFL, fcntl(pipefd[0], F_GETFL, 0) | O_NONBLOCK);
-	start = time(NULL);
+	start = monotonic_ms();
 	for (;;) {
 		fd_set rfds;
 		struct timeval tv = { .tv_sec = 0, .tv_usec = 100000 };
@@ -859,18 +888,20 @@ static int at_command(const char *port, const char *cmd, int fast, int timeout, 
 		r = waitpid(pid, &status, WNOHANG);
 		if (r == pid)
 			break;
-		if (timeout > 0 && time(NULL) - start >= timeout) {
+		if (timeout > 0 && monotonic_ms() - start >= (long long)timeout * 1000) {
 			kill(-pid, SIGTERM);
 			usleep(200000);
 			if (waitpid(pid, &status, WNOHANG) == 0)
 				kill(-pid, SIGKILL);
 			waitpid(pid, &status, 0);
 			close(pipefd[0]);
-			log_msg(LOG_L_WARN, "AT timeout port=%s cmd=%s", port, cmd);
+			close(lock_fd);
+			log_msg(LOG_L_WARN, "AT timeout port=%s cmd=%s phase=io", port, cmd);
 			return -2;
 		}
 	}
 	close(pipefd[0]);
+	close(lock_fd);
 	return WIFEXITED(status) ? WEXITSTATUS(status) : -1;
 }
 
@@ -1158,8 +1189,6 @@ static int add_modem(const char *slot, const char *slot_type)
 		snprintf(key, sizeof(key), "qmodem.%s.tty_devices", section); uci_del(key);
 		snprintf(key, sizeof(key), "qmodem.%s.net_devices", section); uci_del(key);
 		snprintf(key, sizeof(key), "qmodem.%s.ports", section); uci_del(key);
-		snprintf(key, sizeof(key), "qmodem.%s.voice_pcm_port", section); uci_del(key);
-		snprintf(key, sizeof(key), "qmodem.%s.voice_pcm_interface", section); uci_del(key);
 		snprintf(key, sizeof(key), "qmodem.%s.state", section); uci_set(key, "enabled");
 	} else {
 		char modem_count_s[32] = "", metric[32];
@@ -1180,7 +1209,6 @@ static int add_modem(const char *slot, const char *slot_type)
 		snprintf(key, sizeof(key), "qmodem.%s.path", section); uci_set(key, res.modem_path);
 		snprintf(key, sizeof(key), "qmodem.%s.data_interface", section); uci_set(key, slot_type);
 		snprintf(key, sizeof(key), "qmodem.%s.enable_dial", section); uci_set(key, "1");
-		snprintf(key, sizeof(key), "qmodem.%s.use_ubus", section); uci_set(key, "1");
 		snprintf(key, sizeof(key), "qmodem.%s.soft_reboot", section); uci_set(key, "1");
 		snprintf(key, sizeof(key), "qmodem.%s.extend_prefix", section); uci_set(key, "1");
 		snprintf(key, sizeof(key), "qmodem.%s.pdp_type", section); uci_set(key, "ipv4v6");
@@ -1210,12 +1238,6 @@ static int add_modem(const char *slot, const char *slot_type)
 	for (size_t i = 0; i < res.at_ports.len; i++) {
 		snprintf(key, sizeof(key), "qmodem.%s.ports", section);
 		uci_add_list(key, res.at_ports.items[i]);
-	}
-	if (res.voice_pcm_port[0]) {
-		snprintf(key, sizeof(key), "qmodem.%s.voice_pcm_port", section);
-		uci_set(key, res.voice_pcm_port);
-		snprintf(key, sizeof(key), "qmodem.%s.voice_pcm_interface", section);
-		uci_set(key, res.voice_pcm_interface);
 	}
 	if (res.option_driver) {
 		snprintf(key, sizeof(key), "qmodem.%s.option_driver", section);
@@ -1696,6 +1718,7 @@ static void load_config_defaults(void)
 	g.at_probe_workers = 4;
 	g.at_timeout_fast = 2;
 	g.at_timeout_model = 8;
+	g.at_timeout_lock = 8;
 	g.add_retry_delay = 8;
 	g.add_retry_max = 5;
 	g.log_level = LOG_L_INFO;
@@ -1707,6 +1730,8 @@ static void load_config_defaults(void)
 		g.at_timeout_fast = atoi(val);
 	if (!uci_get("qmodem.main.at_timeout_model", val, sizeof(val)) && atoi(val) > 0)
 		g.at_timeout_model = atoi(val);
+	if (!uci_get("qmodem.main.at_timeout_lock", val, sizeof(val)) && atoi(val) > 0)
+		g.at_timeout_lock = atoi(val);
 	if (!uci_get("qmodem.main.add_retry_delay", val, sizeof(val)) && atoi(val) >= 0)
 		g.add_retry_delay = atoi(val);
 	if (!uci_get("qmodem.main.add_retry_max", val, sizeof(val)) && atoi(val) >= 0)
@@ -1723,14 +1748,6 @@ static void sig_handler(int signo)
 	(void)signo;
 	g.stop = 1;
 	pthread_cond_broadcast(&g.queue_cond);
-}
-
-static void setup_signals(void)
-{
-	/* A hotplug client may exit before its queued response is written. */
-	signal(SIGPIPE, SIG_IGN);
-	signal(SIGTERM, sig_handler);
-	signal(SIGINT, sig_handler);
 }
 
 int main(int argc, char **argv)
@@ -1754,7 +1771,8 @@ int main(int argc, char **argv)
 		return 1;
 	}
 
-	setup_signals();
+	signal(SIGTERM, sig_handler);
+	signal(SIGINT, sig_handler);
 	sockfd = setup_socket();
 	if (sockfd < 0) {
 		syslog(LOG_ERR, "failed to setup socket %s: %s", QMODEM_SCAND_SOCKET, strerror(errno));

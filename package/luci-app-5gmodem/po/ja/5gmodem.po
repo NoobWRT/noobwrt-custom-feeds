@@ -2134,14 +2134,11 @@ msgstr "状態"
 msgid "Port %d"
 msgstr "ポート %d"
 
-msgid "antenna not connected"
-msgstr "アンテナ未接続"
+msgid "Signal too low to assess"
+msgstr "信号が弱すぎて判定できません"
 
-msgid "antenna: weak signal"
-msgstr "アンテナ: 信号が弱い"
-
-msgid "antenna: normal"
-msgstr "アンテナ: 正常"
+msgid "Signal: good"
+msgstr "信号: 良好"
 
 msgid "Applying 3G bands..."
 msgstr "3G バンドを適用中..."
@@ -2161,8 +2158,8 @@ msgstr "モデムスロットの電源を数秒間切ります (抜き差しし�
 msgid "“Hide from ModemManager” has been turned off: the ModemManager protocol needs MM to manage this modem"
 msgstr "「ModemManager から隠す」をオフにしました: ModemManager プロトコルでは MM がこのモデムを管理する必要があります"
 
-msgid "antenna: poor signal"
-msgstr "アンテナ: 信号が悪い"
+msgid "Signal: poor"
+msgstr "信号: 悪い"
 
 msgid "enabled"
 msgstr "有効"
@@ -4873,8 +4870,8 @@ msgstr "手動で除外"
 msgid "has answered as a modem before"
 msgstr "以前モデムとして応答したことがあります"
 
-msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. Change it to a word only you know - the default is the same for everyone. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
-msgstr "メッセージの最初の単語 (コマンドの単語の前) です: \"%s\" と送ると、下の \"reboot\" という名前のコマンドが実行されます。自分だけが知っている単語に変えてください (既定値は全員共通です)。空欄にするとコードなしになり、守りは信頼する番号の一覧だけになります (送信元の番号は偽装できます)。"
+msgid "The FIRST word of the message, before the command word: \"%s\" runs the command named \"reboot\" below. A random code is set on install, you can change it to a word only you know. Do not use \"secret\": older versions set it on every router. Empty means no code at all, and then the only protection is the list of trusted numbers - a sender number can be forged."
+msgstr "メッセージの最初の単語 (コマンドの単語の前) です: \"%s\" と送ると、下の \"reboot\" という名前のコマンドが実行されます。インストール時にランダムなコードが設定されます。自分だけが知っている単語に変えることもできます。\"secret\" は使わないでください (古いバージョンはすべてのルーターにこれを設定していました)。空欄にするとコードなしになり、守りは信頼する番号の一覧だけになります (送信元の番号は偽装できます)。"
 
 msgid "marked as a modem by hand"
 msgstr "手動でモデムに指定"
@@ -6118,6 +6115,9 @@ msgstr "モバイルデータ"
 
 msgid "To read cellular metrics, enable USB debugging and authorize this router on the phone."
 msgstr "モバイル回線の指標を読み取るには、USB デバッグを有効にし、スマートフォンでこのルーターを許可してください。"
+
+msgid "To manage bands and network mode, enable USB debugging and authorize this router on the phone."
+msgstr "バンドとネットワークモードを管理するには、USB デバッグを有効にし、スマートフォンでこのルーターを許可してください。"
 
 msgid "Change the mobile-data SIM on the phone."
 msgstr "モバイルデータ用の SIM はスマートフォンで変更してください。"

@@ -1,0 +1,11 @@
+{
+	"luci-app-aw1000-voice": {
+		"description": "Open the phone management interface",
+		"read": {
+			"ubus": {
+				"aw1000-voice": [ "info" ],
+				"fxs": [ "status" ]
+			}
+		}
+	}
+}

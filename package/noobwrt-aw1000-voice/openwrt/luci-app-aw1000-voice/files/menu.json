@@ -1,0 +1,13 @@
+{
+	"admin/services/aw1000-voice": {
+		"title": "Phone",
+		"order": 60,
+		"action": {
+			"type": "view",
+			"path": "aw1000-voice/launcher"
+		},
+		"depends": {
+			"acl": [ "luci-app-aw1000-voice" ]
+		}
+	}
+}

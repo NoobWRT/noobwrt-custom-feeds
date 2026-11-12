@@ -1,0 +1,141 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2026 Lahiru S Liyanage (NoobLK)
+#
+# Small helpers for the phone management interface: where it is served,
+# package versions, the missed-call "seen" mark and service restarts.
+
+. /usr/share/libubox/jshn.sh
+
+SEEN=/etc/fxs/missed.seen
+
+pkg_version() {
+	local v
+
+	v=$(apk list -I "$1" 2>/dev/null | sed -n "s/^$1-\([^ ]*\) .*/\1/p" | head -1)
+	[ -n "$v" ] || v=$(opkg list-installed "$1" 2>/dev/null | sed -n "s/^$1 - //p")
+	echo "$v"
+}
+
+web_port() {
+	local p
+
+	p=$(uci -q get aw1000_voice.web.port)
+	case "$p" in ''|*[!0-9]*) p=$(uci -q get uhttpd.phone.listen_http | sed -n 's/.*:\([0-9]*\).*/\1/p' | head -1) ;; esac
+	echo "${p:-7766}"
+}
+
+info() {
+	json_init
+	json_add_int port "$(web_port)"
+	json_add_string lan "$(uci -q get network.lan.ipaddr | awk '{ print $1 }' | cut -d/ -f1)"
+	json_add_string hostname "$(uci -q get system.@system[0].hostname)"
+	json_add_int now "$(date +%s)"
+	json_add_int missed_seen "$(cat "$SEEN" 2>/dev/null || echo 0)"
+	json_add_object versions
+	json_add_string web "$(pkg_version aw1000-voice-web)"
+	json_add_string fxsd "$(pkg_version fxsd)"
+	json_add_string driver "$(pkg_version kmod-aw1000-fxs)"
+	json_add_string msipd "$(pkg_version modem-sip)"
+	json_close_object
+	json_add_boolean msipd_installed "$([ -x /etc/init.d/msipd ] && echo 1 || echo 0)"
+	json_add_boolean msipd_running "$(pidof msipd >/dev/null && echo 1 || echo 0)"
+	json_dump
+}
+
+missed_seen() {
+	local input t
+
+	read -r input
+	json_load "$input" 2>/dev/null
+	json_get_var t time
+	case "$t" in ''|*[!0-9]*) t=$(date +%s) ;; esac
+	mkdir -p /etc/fxs
+	echo "$t" > "$SEEN"
+	json_init
+	json_add_boolean result 1
+	json_add_int missed_seen "$t"
+	json_dump
+}
+
+restart() {
+	local input name
+
+	read -r input
+	json_load "$input" 2>/dev/null
+	json_get_var name name
+	case "$name" in
+	fxsd|msipd) ;;
+	*) echo '{ "result": false, "error": "name" }'; return ;;
+	esac
+	[ -x "/etc/init.d/$name" ] || { echo '{ "result": false, "error": "not-installed" }'; return; }
+	"/etc/init.d/$name" restart >/dev/null 2>&1
+	echo '{ "result": true }'
+}
+
+HOOK=/etc/fxs/hook.sh
+NOTIFY_ERR=/var/run/aw1000-voice-notify.err
+
+notify_status() {
+	local hook=missing
+
+	[ -f "$HOOK" ] && hook=custom
+	grep -q 'aw1000-voice-web' "$HOOK" 2>/dev/null && hook=managed
+	json_init
+	json_add_string hook "$hook"
+	json_add_boolean curl "$(command -v curl >/dev/null 2>&1 && echo 1 || echo 0)"
+	[ -s "$NOTIFY_ERR" ] && json_add_string last_error "$(head -c 300 "$NOTIFY_ERR")"
+	json_dump
+}
+
+notify_test() {
+	local out rc
+
+	out=$(/usr/libexec/aw1000-voice-notify test 2>&1)
+	rc=$?
+	json_init
+	json_add_boolean result "$([ $rc = 0 ] && echo 1 || echo 0)"
+	[ $rc = 0 ] || json_add_string error "$(printf '%s' "$out" | head -c 300)"
+	json_dump
+}
+
+hook_install() {
+	# Put the managed hook back, replacing a custom one only when asked.
+	if [ -f "$HOOK" ] && ! grep -q 'aw1000-voice-web' "$HOOK"; then
+		mv "$HOOK" "$HOOK.custom.$(date +%s)"
+	fi
+	rm -f "$HOOK"
+	/usr/libexec/aw1000-voice-web-setup >/dev/null 2>&1
+	notify_status
+}
+
+log() {
+	local tmp=/tmp/aw1000-voice-log.$$ l
+
+	logread 2>/dev/null | grep -E ' (fxsd|msipd|fxs-bringup)(\[[0-9]+\])?: ' | tail -n 60 > "$tmp"
+	json_init
+	json_add_array lines
+	while IFS= read -r l; do
+		json_add_string "" "$l"
+	done < "$tmp"
+	rm -f "$tmp"
+	json_close_array
+	json_dump
+}
+
+case "$1" in
+list)
+	echo '{ "info": {}, "missed_seen": { "time": 0 }, "restart": { "name": "" }, "notify_status": {}, "notify_test": {}, "hook_install": {}, "log": {} }'
+	;;
+call)
+	case "$2" in
+	info) info ;;
+	missed_seen) missed_seen ;;
+	restart) restart ;;
+	notify_status) notify_status ;;
+	notify_test) notify_test ;;
+	hook_install) hook_install ;;
+	log) log ;;
+	esac
+	;;
+esac

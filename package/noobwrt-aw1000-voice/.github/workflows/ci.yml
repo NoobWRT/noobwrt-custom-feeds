@@ -1,0 +1,58 @@
+name: Checks
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  web:
+    name: Web interface
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: Modules, import map, JSON
+        run: node scripts/check-web.mjs
+
+  shell:
+    name: Shell scripts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install BusyBox ash
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq busybox
+      - name: Syntax with ash, as on the router
+        run: |
+          set -e
+          files="openwrt/aw1000-voice-web/files/aw1000-voice.defaults
+          openwrt/aw1000-voice-web/files/aw1000-voice-notify
+          openwrt/aw1000-voice-web/files/aw1000-voice.hotplug
+          openwrt/aw1000-voice-web/files/rpcd/aw1000-voice
+          openwrt/aw1000-voice-web/files/rpcd/fxs
+          openwrt/aw1000-voice-web/files/rpcd/modem-sip
+          openwrt/fxsd/files/fxsd.init
+          openwrt/fxsd/files/fxs.defaults
+          openwrt/fxsd/files/fxs-mqtt
+          openwrt/fxsd/files/fxs-sip-qr
+          openwrt/fxsd/files/fxs-sip-vpn
+          openwrt/modem-sip/files/msipd.init"
+          for f in $files; do busybox ash -n "$f" && echo "ok $f"; done
+          for f in sip/*/* openwrt/modem-sip/files/sip/*; do
+            head -1 "$f" | grep -q '^#!' || continue
+            busybox ash -n "$f" && echo "ok $f"
+          done
+
+  fxsd:
+    name: fxsd unit tests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build and run
+        run: make -C fxsd test

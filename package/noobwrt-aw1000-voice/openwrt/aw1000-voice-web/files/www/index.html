@@ -1,0 +1,55 @@
+<!doctype html>
+<html lang="en">
+<head>
+	<meta charset="utf-8">
+	<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+	<meta name="color-scheme" content="light dark">
+	<meta name="theme-color" content="#0f172a">
+	<meta name="mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-capable" content="yes">
+	<meta name="apple-mobile-web-app-title" content="Phone">
+	<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+	<title>Phone · AW1000</title>
+	<link rel="icon" href="favicon.svg" type="image/svg+xml">
+	<link rel="apple-touch-icon" href="icons/icon-180.png">
+	<link rel="manifest" href="manifest.webmanifest">
+	<!-- Edit css/theme.css to restyle the whole interface: colors, radius, fonts. -->
+	<link rel="stylesheet" href="css/theme.css?v=@VERSION@">
+	<link rel="stylesheet" href="css/app.css?v=@VERSION@">
+	<!-- Every module carries the package version, so a browser never mixes an old
+	     cached file with a new one after an update. Add new modules here too
+	     (the CI check fails when one is missing). -->
+	<script type="importmap">
+	{
+		"imports": {
+			"/js/app.js": "/js/app.js?v=@VERSION@",
+			"/js/api.js": "/js/api.js?v=@VERSION@",
+			"/js/ui.js": "/js/ui.js?v=@VERSION@",
+			"/js/forms.js": "/js/forms.js?v=@VERSION@",
+			"/js/calllog.js": "/js/calllog.js?v=@VERSION@",
+			"/js/pages/dashboard.js": "/js/pages/dashboard.js?v=@VERSION@",
+			"/js/pages/calls.js": "/js/pages/calls.js?v=@VERSION@",
+			"/js/pages/recordings.js": "/js/pages/recordings.js?v=@VERSION@",
+			"/js/pages/phonebook.js": "/js/pages/phonebook.js?v=@VERSION@",
+			"/js/pages/blocking.js": "/js/pages/blocking.js?v=@VERSION@",
+			"/js/pages/quiet.js": "/js/pages/quiet.js?v=@VERSION@",
+			"/js/pages/alarms.js": "/js/pages/alarms.js?v=@VERSION@",
+			"/js/pages/services.js": "/js/pages/services.js?v=@VERSION@",
+			"/js/pages/sip.js": "/js/pages/sip.js?v=@VERSION@",
+			"/js/pages/line.js": "/js/pages/line.js?v=@VERSION@",
+			"/js/pages/alerts.js": "/js/pages/alerts.js?v=@VERSION@",
+			"/js/pages/settings.js": "/js/pages/settings.js?v=@VERSION@",
+			"/js/pages/backup.js": "/js/pages/backup.js?v=@VERSION@"
+		}
+	}
+	</script>
+</head>
+<body>
+	<div id="app" tabindex="-1">
+		<div class="boot"><span class="spinner"></span></div>
+	</div>
+	<noscript>This interface needs JavaScript.</noscript>
+	<!-- Imported, not src=, so the import map versions the entry module too. -->
+	<script type="module">import '/js/app.js';</script>
+</body>
+</html>

@@ -1,0 +1,91 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+#
+# Serve the phone management interface from its own uhttpd instance.
+#
+#   aw1000_voice.web.port    the port (7766)
+#   aw1000_voice.web.listen  lan (default): only the LAN address answers
+#                            all: every address, as before 0.2
+#
+# Runs at install, from the Settings page notes, and on every ifup of the LAN
+# (hotplug.d/iface/95-aw1000-voice-web) so a changed LAN address is followed.
+# uhttpd is only reloaded when the listen addresses really change.
+
+. /lib/functions/network.sh 2>/dev/null
+
+# Configs kept from an older version miss the newer sections.
+touch /etc/config/aw1000_voice
+if [ "$(uci -q get aw1000_voice.web)" != web ]; then
+	uci -q set aw1000_voice.web=web
+	uci -q set aw1000_voice.web.port=7766
+	uci -q commit aw1000_voice
+fi
+if [ "$(uci -q get aw1000_voice.notify)" != notify ]; then
+	uci -q batch <<EOF
+set aw1000_voice.notify=notify
+set aw1000_voice.notify.enabled='0'
+set aw1000_voice.notify.service='ntfy'
+add_list aw1000_voice.notify.events='missed'
+commit aw1000_voice
+EOF
+fi
+
+port=$(uci -q get aw1000_voice.web.port)
+case "$port" in ''|*[!0-9]*) port=7766 ;; esac
+mode=$(uci -q get aw1000_voice.web.listen)
+
+ip=
+if [ "$mode" != all ]; then
+	network_get_ipaddr ip lan 2>/dev/null
+	[ -n "$ip" ] || ip=$(uci -q get network.lan.ipaddr | awk '{ print $1 }' | cut -d/ -f1)
+fi
+
+if [ -n "$ip" ]; then
+	want="$ip:$port"
+else
+	want="0.0.0.0:$port [::]:$port"
+fi
+have=$(uci -q get uhttpd.phone.listen_http)
+
+changed=0
+[ "$(uci -q get uhttpd.phone)" = uhttpd ] || changed=1
+[ "$have" = "$want" ] || changed=1
+
+if [ "$changed" = 1 ]; then
+	uci -q batch <<EOF
+set uhttpd.phone=uhttpd
+delete uhttpd.phone.listen_http
+set uhttpd.phone.home='/www/aw1000-voice'
+set uhttpd.phone.rfc1918_filter='1'
+set uhttpd.phone.max_requests='10'
+set uhttpd.phone.max_connections='50'
+set uhttpd.phone.cgi_prefix='/cgi-bin'
+set uhttpd.phone.ubus_prefix='/ubus'
+set uhttpd.phone.script_timeout='60'
+set uhttpd.phone.network_timeout='30'
+set uhttpd.phone.http_keepalive='20'
+set uhttpd.phone.tcp_keepalive='1'
+EOF
+	for l in $want; do
+		uci add_list uhttpd.phone.listen_http="$l"
+	done
+	uci commit uhttpd
+	/etc/init.d/uhttpd reload >/dev/null 2>&1
+fi
+
+# Missed-call alerts go through fxsd's call event hook. Install ours unless the
+# owner already has a hook of their own; the Alerts page says which it is.
+HOOK=/etc/fxs/hook.sh
+if [ ! -e "$HOOK" ] || grep -q 'aw1000-voice-web' "$HOOK" 2>/dev/null; then
+	mkdir -p /etc/fxs
+	cat > "$HOOK" <<'EOF'
+#!/bin/sh
+# Managed by aw1000-voice-web: call alerts. Remove this file to stop them, or
+# replace it with your own hook (the Alerts page then leaves it alone).
+[ -x /usr/libexec/aw1000-voice-notify ] && /usr/libexec/aw1000-voice-notify "$@" </dev/null >/dev/null 2>&1 &
+exit 0
+EOF
+	chmod 755 "$HOOK"
+fi
+
+exit 0

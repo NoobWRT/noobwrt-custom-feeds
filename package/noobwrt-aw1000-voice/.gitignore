@@ -1,0 +1,9 @@
+build/
+dist/
+*.o
+*.ko
+*.apk
+*.ipk
+/private/
+si3226x_stock_tables.h
+si3226x_patch.bin

@@ -1,0 +1,34 @@
+{
+	"aw1000-voice": {
+		"description": "Manage the AW1000 phone port and SIP phones",
+		"read": {
+			"ubus": {
+				"aw1000-voice": [ "info", "notify_status", "log" ],
+				"fxs": [ "status", "version", "calls", "history", "backup", "sip_services", "forward_get", "mqtt_status", "sip_vpn_status", "rec_status", "quiet_status" ],
+				"modem-sip": [ "status", "settings" ],
+				"uci": [ "get", "state", "configs", "changes" ],
+				"session": [ "access" ]
+			},
+			"cgi-io": [ "download" ],
+			"file": {
+				"/root/phone-recordings/*.wav": [ "read" ],
+				"/mnt/*/phone-recordings/*.wav": [ "read" ]
+			},
+			"uci": [ "fxs", "modem_sip", "aw1000_voice" ]
+		},
+		"write": {
+			"ubus": {
+				"aw1000-voice": [ "missed_seen", "restart", "notify_test", "hook_install" ],
+				"fxs": [ "clear_guard", "set_enabled", "ring_test", "ring", "click_call", "restore", "set_sip", "clear_history", "delete_calls", "forward_set", "ussd", "ussd_end", "set_sip_vpn", "sip_qr", "rec_keep", "rec_delete", "quiet_set", "quiet_seen" ],
+				"modem-sip": [ "phone_add", "phone_remove", "phone_login", "phone_password", "phone_rename", "set_settings" ],
+				"uci": [ "set", "add", "delete", "rename", "order", "commit", "revert" ],
+				"file": [ "write" ]
+			},
+			"cgi-io": [ "upload" ],
+			"file": {
+				"/tmp/fxs-restore.json": [ "write" ]
+			},
+			"uci": [ "fxs", "modem_sip", "aw1000_voice" ]
+		}
+	}
+}

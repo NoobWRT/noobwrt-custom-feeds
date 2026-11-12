@@ -1,0 +1,7 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Follow the LAN address: the management interface listens on it only.
+[ "$ACTION" = ifup ] || exit 0
+[ "$INTERFACE" = lan ] || exit 0
+[ -x /usr/libexec/aw1000-voice-web-setup ] && /usr/libexec/aw1000-voice-web-setup
+exit 0

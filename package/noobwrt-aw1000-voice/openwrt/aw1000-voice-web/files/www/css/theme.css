@@ -1,0 +1,87 @@
+/* SPDX-License-Identifier: GPL-2.0-only
+ *
+ * Theme tokens. Everything the interface draws reads these variables, so
+ * changing a color or the radius here restyles every page. Light values sit in
+ * :root, dark values in the two dark blocks (system dark mode, or the
+ * Light / dark switch in the sidebar). */
+
+:root {
+	--font: "Inter", "Segoe UI", system-ui, -apple-system, Roboto, "Helvetica Neue", Arial, sans-serif;
+	--font-mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+
+	--radius: 12px;
+	--radius-sm: 8px;
+	--sidebar-width: 248px;
+
+	--bg: #f4f6fb;
+	--surface: #ffffff;
+	--surface-2: #f0f3f9;
+	--border: #e2e7f0;
+	--text: #172033;
+	--muted: #66728a;
+
+	--accent: #2563eb;
+	--accent-strong: #1d4ed8;
+	--accent-soft: #e6eeff;
+	--on-accent: #ffffff;
+
+	--ok: #16a34a;
+	--ok-soft: #e3f6ea;
+	--warn: #d97706;
+	--warn-soft: #fdf1dc;
+	--bad: #dc2626;
+	--bad-soft: #fde6e6;
+	--info: #7c3aed;
+	--info-soft: #f0e9fe;
+
+	--sidebar-bg: #0f172a;
+	--sidebar-text: #c7cfdd;
+	--sidebar-muted: #7d889c;
+	--sidebar-active: #1e293b;
+	--sidebar-accent: #60a5fa;
+
+	--shadow: 0 1px 2px rgba(16, 24, 40, .05), 0 4px 16px rgba(16, 24, 40, .06);
+	--shadow-lg: 0 12px 40px rgba(16, 24, 40, .22);
+}
+
+@media (prefers-color-scheme: dark) {
+	:root:not([data-theme="light"]) {
+		--bg: #0b1120;
+		--surface: #111a2e;
+		--surface-2: #17223a;
+		--border: #24314d;
+		--text: #e6ebf5;
+		--muted: #93a0b8;
+		--accent: #60a5fa;
+		--accent-strong: #3b82f6;
+		--accent-soft: #172a4d;
+		--on-accent: #0b1120;
+		--ok-soft: #12301f;
+		--warn-soft: #3a2a0e;
+		--bad-soft: #3d1616;
+		--info-soft: #2a1d4d;
+		--sidebar-bg: #070c18;
+		--sidebar-active: #131d33;
+		--shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 16px rgba(0, 0, 0, .3);
+	}
+}
+
+:root[data-theme="dark"] {
+	--bg: #0b1120;
+	--surface: #111a2e;
+	--surface-2: #17223a;
+	--border: #24314d;
+	--text: #e6ebf5;
+	--muted: #93a0b8;
+	--accent: #60a5fa;
+	--accent-strong: #3b82f6;
+	--accent-soft: #172a4d;
+	--on-accent: #0b1120;
+	--ok-soft: #12301f;
+	--warn-soft: #3a2a0e;
+	--bad-soft: #3d1616;
+	--info-soft: #2a1d4d;
+	--sidebar-bg: #070c18;
+	--sidebar-active: #131d33;
+	--shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 4px 16px rgba(0, 0, 0, .3);
+}

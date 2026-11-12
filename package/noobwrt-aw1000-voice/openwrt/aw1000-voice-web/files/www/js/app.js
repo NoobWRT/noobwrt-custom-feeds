@@ -26,7 +26,8 @@ const PAGES = [
 	{ group: 'System', items: [
 		{ id: 'alerts', title: 'Alerts', icon: 'ring' },
 		{ id: 'settings', title: 'Settings', icon: 'settings' },
-		{ id: 'backup', title: 'Backup', icon: 'backup' }
+		{ id: 'backup', title: 'Backup', icon: 'backup' },
+		{ id: 'about', title: 'About', icon: 'info' }
 	] }
 ];
 
@@ -130,8 +131,28 @@ function loginView(message) {
 
 // ---- layout ----------------------------------------------------------------
 
+// The menu button opens the drawer on a phone, and folds the sidebar to an
+// icon rail on a wider screen (remembered per browser).
+const NARROW = () => matchMedia('(max-width: 820px)').matches;
+
+function toggleMenu() {
+	if (NARROW()) {
+		document.body.classList.toggle('nav-open');
+		return;
+	}
+	const on = document.body.classList.toggle('nav-collapsed');
+	try { localStorage.setItem('aw1kv.nav', on ? 'collapsed' : 'open'); } catch (e) {}
+}
+
+function initNav() {
+	try {
+		if (localStorage.getItem('aw1kv.nav') === 'collapsed')
+			document.body.classList.add('nav-collapsed');
+	} catch (e) {}
+}
+
 function navLink(p) {
-	return h('a', { href: '#/' + p.id, class: 'nav-link', 'data-page': p.id, onclick: () => document.body.classList.remove('nav-open') },
+	return h('a', { href: '#/' + p.id, class: 'nav-link', 'data-page': p.id, title: p.title, onclick: () => document.body.classList.remove('nav-open') },
 		icon(p.icon), h('span', p.title), p.badge ? h('span', { class: 'nav-badge', 'data-badge': p.badge, hidden: true }) : null);
 }
 
@@ -145,11 +166,12 @@ function shell() {
 			h('div', { class: 'sidebar-foot' },
 				h('button', { class: 'nav-link', type: 'button', onclick: toggleTheme }, icon('theme'), h('span', 'Light / dark')),
 				h('button', { class: 'nav-link', type: 'button', onclick: async () => { await api.logout(); loginView(); } }, icon('logout'), h('span', 'Sign out')),
-				h('div', { class: 'version muted small', id: 'version' }))),
+				h('a', { class: 'version muted small', href: '#/about', title: 'About and credits' },
+					h('span', { id: 'version' }), h('span', { class: 'credit' }, 'by NoobLK · credits')))),
 		h('div', { class: 'scrim', onclick: () => document.body.classList.remove('nav-open') }),
 		h('div', { class: 'main' },
 			h('div', { class: 'topbar' },
-				h('button', { class: 'icon-btn menu-btn', type: 'button', 'aria-label': 'Menu', onclick: () => document.body.classList.toggle('nav-open') }, icon('menu')),
+				h('button', { class: 'icon-btn menu-btn', type: 'button', 'aria-label': 'Show or hide the menu', title: 'Show or hide the menu', onclick: toggleMenu }, icon('menu')),
 				h('div', { class: 'topbar-title', id: 'topbar-title' }),
 				h('div', { class: 'line-pill', id: 'line-pill' })),
 			h('main', { class: 'content', id: 'content' })));
@@ -258,6 +280,7 @@ window.addEventListener('hashchange', () => { if (api.loggedIn()) route(); });
 document.addEventListener('visibilitychange', () => { if (!document.hidden && api.loggedIn()) poll(); });
 
 initTheme();
+initNav();
 if (api.loggedIn())
 	start();
 else

@@ -26,6 +26,7 @@ const SHOTS = [
 	{ name: 'desktop-sip', page: 'sip', w: 1440, h: 900, scale: 1 },
 	{ name: 'desktop-messages', page: 'messages', w: 1440, h: 900, scale: 1, click: '.thread:nth-child(2)' },
 	{ name: 'desktop-settings', page: 'settings', w: 1440, h: 900, scale: 1 },
+	{ name: 'desktop-about', page: 'about', w: 1440, h: 900, scale: 1 },
 	{ name: 'desktop-dark-dashboard', page: 'dashboard', w: 1440, h: 900, scale: 1, theme: 'dark' },
 	{ name: 'mobile-dashboard', page: 'dashboard', w: 390, h: 844, scale: 2, mobile: true },
 	{ name: 'mobile-calls', page: 'calls', w: 390, h: 844, scale: 2, mobile: true },

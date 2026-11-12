@@ -41,7 +41,7 @@ for (const url of Object.keys(map))
 	if (!modules.some(m => '/' + relative(WWW, m).replace(/\\/g, '/') === url)) fail('import map entry without a file: ' + url);
 
 const app = readFileSync(join(WWW, 'js', 'app.js'), 'utf8');
-for (const [, id] of app.matchAll(/\{ id: '([a-z]+)'/g))
+for (const [, id] of app.matchAll(/\{ id: '([a-z]+)', title: /g))
 	if (!modules.some(m => m.endsWith(join('pages', id + '.js')))) fail('navigation page without a module: ' + id);
 
 for (const f of [ join(WEB, 'acl.json'), join(WWW, 'manifest.webmanifest'),

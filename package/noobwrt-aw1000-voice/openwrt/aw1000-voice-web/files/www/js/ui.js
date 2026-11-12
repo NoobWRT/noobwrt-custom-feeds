@@ -72,7 +72,8 @@ const ICONS = {
 	key: 'M12.65 10A6 6 0 1 0 7 18a6 6 0 0 0 5.65-4H17v4h4v-4h2v-4zM7 14a2 2 0 1 1 0-4 2 2 0 0 1 0 4z',
 	ring: 'M12 22a2 2 0 0 0 2-2h-4a2 2 0 0 0 2 2zm6-6v-5c0-3.07-1.64-5.64-4.5-6.32V4a1.5 1.5 0 0 0-3 0v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1z',
 	check: 'M9 16.2 4.8 12l-1.4 1.4L9 19 21 7l-1.4-1.4z',
-	sms: 'M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 9h10v2H7zm6 5H7v-2h6zm4-6H7V6h10z',
+	info: 'M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20zm1 15h-2v-6h2zm0-8h-2V7h2z',
+	sms:'M20 2H4a2 2 0 0 0-2 2v18l4-4h14a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2zM7 9h10v2H7zm6 5H7v-2h6zm4-6H7V6h10z',
 	pulse:'M3 13h4l2.5-6 4 12 3-8 1.5 2H21v-2h-1.8l-2.7-4-3 8-4-12L6 11H3z',
 	close: 'M19 6.41 17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z'
 };
@@ -205,9 +206,14 @@ export function empty(text, iconName = 'calls') {
 	return h('div', { class: 'empty' }, icon(iconName), h('p', text));
 }
 
-export function stat(label, value, kind = '', onclick) {
-	return h(onclick ? 'button' : 'div', { class: 'stat' + (kind ? ' stat-' + kind : ''), type: onclick ? 'button' : null, onclick },
-		h('div', { class: 'stat-value' }, value), h('div', { class: 'stat-label' }, label));
+// A KPI tile. iconName and sub (a small second line) are optional.
+export function stat(label, value, kind = '', onclick, iconName, sub) {
+	return h(onclick ? 'button' : 'div', { class: 'stat' + (kind ? ' stat-' + kind : '') + (iconName ? ' stat-icon' : ''), type: onclick ? 'button' : null, onclick },
+		iconName ? h('div', { class: 'stat-badge' }, icon(iconName)) : null,
+		h('div', { class: 'stat-text' },
+			h('div', { class: 'stat-value' }, value),
+			h('div', { class: 'stat-label' }, label),
+			sub ? h('div', { class: 'stat-sub' }, sub) : null));
 }
 
 export function kv(rows) {

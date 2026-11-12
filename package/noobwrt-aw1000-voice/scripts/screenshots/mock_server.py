@@ -64,7 +64,7 @@ FXS = {
 
 REPLIES = {
     ('aw1000-voice', 'info'): {'port': 7766, 'lan': '192.168.1.1', 'hostname': 'NoobWRT', 'now': NOW, 'missed_seen': ago(2 * DAY),
-                               'versions': {'web': '0.3.0-r1', 'fxsd': '0.8.1-r2', 'driver': '6.12.94.0.4.0-r1', 'msipd': '0.2.0-r1'},
+                               'versions': {'web': '0.3.2-r1', 'fxsd': '0.8.1-r2', 'driver': '6.12.94.0.4.0-r1', 'msipd': '0.2.0-r1'},
                                'msipd_installed': True, 'msipd_running': True},
     ('aw1000-voice', 'notify_status'): {'hook': 'managed', 'curl': True},
     ('aw1000-voice', 'log'): {'lines': [

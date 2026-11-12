@@ -201,8 +201,35 @@ node scripts/screenshots/shoot.mjs <chrome> # retake docs/img/*.png
 [Recording](docs/recording.md) · [SIP phones](docs/sip.md) · [SIP services](docs/sip-services.md) ·
 [Scripts and MQTT](docs/scripts.md) · [Problems](docs/problems.md)
 
-## Credits and license
+## Credits
 
-GPL-2.0, see [LICENSE](LICENSE) and [CREDITS.md](CREDITS.md). The phone port and SIP
-server are the work of perz3us. `msipd/src/g722.c` comes from spandsp and stays under
-LGPL-2.1.
+### Maintainer and developer
+
+**Lahiru S Liyanage (NoobLK)**, maintainer of this repository and developer of the
+management interface, SMS and SMS over SIP, alerts, line health, the combined feed and
+its [NoobWRT](https://github.com/nooblk-98/noobwrt-arcadyan-aw1k) integration.
+
+- GitHub: [@nooblk-98](https://github.com/nooblk-98)
+- Telegram: [@itsme_nooblk](https://t.me/itsme_nooblk)
+- Email: liyanagelsofficial@gmail.com
+
+Bug reports and ideas: [open an issue](https://github.com/nooblk-98/noobwrt-aw1000-voice/issues).
+
+### Built on
+
+| Project | Author | Used for |
+| --- | --- | --- |
+| [openwrt-aw1000-phone](https://github.com/Perz3us/openwrt-aw1000-phone) | perz3us | The RJ11 phone port: `aw1000-fxs` driver, `fxsd`, SIP service hooks, tools, docs |
+| [openwrt-modem-sip](https://github.com/Perz3us/openwrt-modem-sip) | perz3us | `msipd`, the SIP server for LAN phones and apps |
+| [PR #16](https://github.com/Perz3us/openwrt-aw1000-phone/pull/16) | NoobWRT | Configurable modem PCM slots in `fxsd` |
+| [openwrt-aw1000-voice-awvoice](https://github.com/Pr0Luci/openwrt-aw1000-voice-awvoice) | Pr0Luci | Ideas for the planned answering machine and line health tools |
+| spandsp | Steve Underwood and contributors | G.722 codec in `msipd/src/g722.c` (LGPL-2.1) |
+| [LuCI](https://github.com/openwrt/luci) `luci-lib-uqr` | OpenWrt project | QR codes on the SIP page (Apache-2.0), loaded from the router |
+
+Thanks to perz3us for the phone port and SIP server this whole repository stands on.
+The details, file by file, are in [CREDITS.md](CREDITS.md).
+
+## License
+
+GPL-2.0, see [LICENSE](LICENSE). Every file keeps the copyright notice of the person who
+wrote it. `msipd/src/g722.c` stays under LGPL-2.1.

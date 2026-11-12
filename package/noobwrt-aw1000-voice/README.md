@@ -29,6 +29,111 @@ One feed that brings together the AW1000 phone stack:
 The management interface is for managing the phone: missed calls, the call history, SMS,
 recordings and every setting. Calls are made and answered on the RJ11 phone or a SIP phone.
 
+## Features
+
+### RJ11 phone port
+
+- Any analog phone works through the SIM: dial tone, ringing, ringback and busy tones.
+- **Caller ID** in Bellcore, ETSI or DTMF format. The number can be shown as you would dial it
+  or as it was received. Caller ID can come before the first ring, after it, or with RP-AS.
+- **Ring patterns**: standard, short, double (UK and Australia) or your own timing.
+- **Call waiting**, plus hold and swap with FLASH. You can set how long a hook flash lasts.
+- **Speed dial** codes, **redial** (`*66`), **call back the last caller** (`*69`) and a
+  **hotline** that calls a number when you lift the handset.
+- An optional stuttered dial tone after a missed call, and adjustable dial wait.
+- **Gains and volume** for each direction, and the modem's speaker and RX gain.
+- **HD calling** at 16 kHz. One switch turns it on for the RJ11 port and the SIP phones
+  together.
+- **Phone LED** states for ready, ringing, off hook and quiet.
+- **Modem PCM slots** you can change from uci, for boards that are wired differently.
+
+### SIP phones and apps
+
+- `msipd` is a small SIP server on the router. Phones and apps on the LAN (Linphone, Zoiper
+  and others) make and answer calls through the SIM alongside the RJ11 phone.
+- **Every phone rings on an incoming call** and the first to answer gets the call. The call
+  history shows which phone answered.
+- **A login for each phone**, with a **QR code** to set up Linphone. The QR setup file is
+  deleted after 5 minutes.
+- **HD codecs** Opus and G.722, and PCMA and PCMU for narrowband.
+- **Away from home** over WireGuard or Tailscale. SIP is opened on the VPN interface only,
+  never to the internet.
+- With the phone port turned off, SIP calling keeps working without the RJ11 phone.
+
+### SMS
+
+- **An SMS inbox in conversation threads**, with phonebook names and unread counts. You can
+  read, reply to, write and delete SMS. A part counter shows how many SMS a long message
+  takes. SMS go through ModemManager.
+- **SMS over SIP**: each new SMS reaches the chat on the SIP phones as a SIP `MESSAGE`.
+  A phone that is away gets it when it logs in again (kept up to 7 days, 32 messages).
+- **A chat reply from a SIP phone goes out as an SMS.** You can also start a chat with
+  `sip:<number>@<router>`. If sending fails, the phone gets a chat message that says why.
+- A watcher service checks for new SMS (every 10 seconds by default) and passes them to the
+  alerts and to the SIP phones.
+
+### Calls, people and quiet time
+
+- **Call history** with filters (missed, incoming, outgoing, blocked, SIP), search, names and
+  the reason a call ended, plus CSV export. Old calls can be deleted automatically after a set
+  number of days.
+- **Missed calls not seen yet** show on the dashboard and in the menu badge, with a
+  *mark as seen* button.
+- **A phonebook** where each contact has its own ring and do-not-disturb priority.
+- **Blocking**: numbers and ranges, calls without a number, and outgoing allow or block
+  lists. Numbers are matched on the last 9 digits, so local and international forms are the
+  same number.
+- **Do not disturb**: quiet now (for 1 hour, 2 hours or until you turn it off), weekly
+  windows, holidays and an always-ring list. A second call from the same number within a few
+  minutes rings anyway. Phone codes `*78` and `*79` turn quiet on and off from the handset.
+- **Alarm calls** that ring the phone at set times on chosen days.
+- **Phone services**: call forwarding and USSD codes through the modem.
+
+### Recording
+
+- Record every call, every call except some numbers, or only chosen numbers, on the RJ11
+  phone and on SIP phones.
+- Recordings are stereo WAV with each side on its own channel, or mono for half the size.
+  They are saved on the router or on a USB stick, and each place has its own space limit.
+- Play, download, keep or delete recordings from the browser.
+
+### Alerts and automation
+
+- **Push alerts** for missed calls and new SMS. Blocked calls, every call, SIP answers and new
+  recordings can also send alerts. They go out through **ntfy**, a **Telegram** bot or any
+  **webhook**, with phonebook names and a test button.
+- A **call event hook** (`/etc/fxs/hook.sh`) for your own scripts.
+- **MQTT** for Home Assistant, which finds the phone and its Quiet switch by itself.
+- **ubus** calls from scripts and other tools: ring the phone (for a doorbell or an alarm),
+  click to call, and send a chat message to the SIP phones.
+
+### Line health
+
+- Battery voltage, line voltage and loop current. Checks for the driver and the SLIC patch.
+- A warning when a call had no audio from the modem. Ring tests, service restarts and the
+  phone log.
+- A start guard that stops a crashing daemon from restarting in a loop, with a button to
+  clear it.
+
+### Management interface
+
+- **Its own web interface** on `http://<router>:7766/`. It runs on its own uhttpd instance,
+  listens on the LAN address only and follows the address if it changes. It does not depend
+  on LuCI.
+- **Sign in with the router login** (rpcd), with an option to stay signed in.
+- **Works on phones and desktops**: a sidebar that folds to an icon rail on a desktop and a
+  drawer on a phone. Light and dark themes. It can be added to the home screen and then opens
+  full screen.
+- **A compact dashboard**: KPI tiles, line state, quiet controls, SIP phones, recent calls
+  and recent messages.
+- **Backup and restore** of every phone setting and the call history.
+- **Easy to customize**: plain HTML, CSS and JavaScript modules with no build step. The theme
+  lives in one CSS file, and module URLs carry the version so a stale cache never mixes with
+  an update.
+- **LuCI shortcut**: Services → Phone shows the line state and an
+  *Open management interface* button.
+- **About page** with versions and credits.
+
 ## Tested with
 
 > [!IMPORTANT]

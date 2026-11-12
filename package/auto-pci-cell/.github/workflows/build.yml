@@ -1,0 +1,53 @@
+name: Build
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    container: debian:bookworm
+    steps:
+      - run: |
+          apt-get update -qq
+          apt-get install -y -qq --no-install-recommends build-essential perl python3 python3-setuptools \
+            file rsync gawk unzip bzip2 xz-utils zstd bison flex libncurses-dev wget git ca-certificates \
+            swig gettext libelf-dev
+      - uses: actions/checkout@v6
+      - run: |
+          V=25.12.5
+          N=openwrt-sdk-$V-qualcommax-ipq807x_gcc-14.3.0_musl.Linux-x86_64
+          mkdir -p /cache
+          wget -q -O- "https://downloads.openwrt.org/releases/$V/targets/qualcommax/ipq807x/$N.tar.zst" | tar -C /cache --zstd -x
+          ln -s "$GITHUB_WORKSPACE" /src
+          sh build.sh
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packages
+          path: |
+            dist/*.apk
+            dist/*.ipk
+
+  release:
+    needs: build
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+    steps:
+      - uses: actions/download-artifact@v8
+        with:
+          name: packages
+          path: dist
+      - run: |
+          if gh release view "$GITHUB_REF_NAME" --repo "$GITHUB_REPOSITORY" >/dev/null 2>&1; then
+            gh release upload "$GITHUB_REF_NAME" dist/* --clobber --repo "$GITHUB_REPOSITORY"
+          else
+            gh release create "$GITHUB_REF_NAME" dist/* --title "${GITHUB_REF_NAME#v}" --repo "$GITHUB_REPOSITORY" \
+              --notes "NoobWRT: the .apk file. MyWRT: the .ipk file. Install steps are in the README."
+          fi

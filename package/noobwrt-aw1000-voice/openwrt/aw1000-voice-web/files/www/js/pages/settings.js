@@ -22,7 +22,7 @@ function tabsFor(main) {
 			num('rx_gain', 'Earpiece gain (dB)', -20, 6, '0', 'Extra level of the other side in the handset.'),
 			{ name: 'ringback', label: 'Ringback tone', type: 'toggle', default: '1', help: 'Play a ringing tone while the other phone rings.' },
 			{ name: 'hd', label: 'HD calling', type: 'toggle', default: '0',
-				help: 'Wideband (16 kHz) audio when the network supports it. Changing this restarts the modem, so mobile data drops for about 30 seconds.' }
+				help: 'Wideband (16 kHz) audio when the network supports it, on the RJ11 phone and on the SIP phones (Opus, G.722). Changing this restarts the modem, so mobile data drops for about 30 seconds.' }
 		] },
 		{ id: 'callerid', title: 'Caller ID', fields: [
 			{ name: 'callerid', label: 'Caller ID', type: 'select', default: 'bellcore', options: [
@@ -106,6 +106,11 @@ export default async function settings(ctx) {
 			active === 'mqtt' && mqtt.last_error ? h('div', { class: 'alert alert-error' }, 'Last error: ' + mqtt.last_error) : null,
 			sectionForm({ config: 'fxs', section: 'main', values: main, fields: tab.fields, onsaved: async () => {
 				main = (await api.uci.get('fxs')).main || {};
+				// One HD switch for both: msipd uses HD only when fxs and modem_sip agree.
+				if (active === 'general' && ctx.info.msipd_installed) {
+					await api.uci.set('modem_sip', 'main', { hd: main.hd === '1' ? '1' : '0' }).catch(() => {});
+					await api.uci.commit('modem_sip').catch(() => {});
+				}
 				await ctx.refresh();
 			} }));
 	};

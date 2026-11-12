@@ -118,10 +118,9 @@ export default async function sip(ctx) {
 		const settingsForm = settings ? fieldset([
 			{ name: 'port', label: 'SIP port', type: 'number', min: 1024, max: 65535, default: String(settings.port) },
 			{ name: 'rtp_from', label: 'Audio ports from', type: 'number', min: 1024, max: 65535, default: String(settings.rtp_from) },
-			{ name: 'rtp_to', label: 'Audio ports to', type: 'number', min: 1024, max: 65535, default: String(settings.rtp_to) },
-			{ name: 'hd', label: 'HD calls (Opus, G.722)', type: 'toggle', default: settings.hd ? '1' : '0',
-				help: settings.phone_hd ? 'Used when the network carries HD calling.' : 'HD calling is off on the phone port, so SIP calls use narrowband too.' }
+			{ name: 'rtp_to', label: 'Audio ports to', type: 'number', min: 1024, max: 65535, default: String(settings.rtp_to) }
 		]) : null;
+		const hdOn = settings && settings.phone_hd && settings.hd;
 
 		const vpnForm = fieldset([
 			{ name: 'enabled', label: 'Allow phones over VPN', type: 'toggle', default: vpn.enabled ? '1' : '0',
@@ -162,12 +161,18 @@ export default async function sip(ctx) {
 					card('Phones', h('div', { class: 'alert alert-warn' }, 'The modem-sip package is not installed, so SIP phones cannot log in.')),
 
 				h('div', { class: 'grid grid-2' },
-					settingsForm ? card('Server settings', settingsForm.el, h('div', { class: 'form-actions' },
+					settingsForm ? card('Server settings', settingsForm.el,
+						h('div', { class: 'field' }, h('div', { class: 'field-label' }, 'HD calls'),
+							h('div', { class: 'field-control' },
+								hdOn ? badge('On: Opus, G.722', 'ok') : badge('Off'),
+								h('div', { class: 'field-help' }, 'One switch for the RJ11 phone and the SIP phones: ',
+									h('a', { href: '#/settings' }, 'Settings, HD calling'), '.'))),
+						h('div', { class: 'form-actions' },
 						button('Save', { kind: 'primary', icon: 'check', onclick: async e => {
 							if (!settingsForm.validate()) return;
 							const v = settingsForm.values();
 							await busy(e.currentTarget, async () => check(await api.call('modem-sip', 'set_settings', {
-								port: +v.port, rtp_from: +v.rtp_from, rtp_to: +v.rtp_to, hd: v.hd === '1' })), 'Saved');
+								port: +v.port, rtp_from: +v.rtp_from, rtp_to: +v.rtp_to, hd: !!settings.phone_hd })), 'Saved');
 							await load();
 						} }))) : null,
 					card('Away from home', vpnForm.el,

@@ -6,6 +6,7 @@ import { fieldset } from '../forms.js';
 
 const EVENTS = [
 	[ 'missed', 'Missed calls' ],
+	[ 'sms', 'New SMS (with the text)' ],
 	[ 'blocked', 'Blocked calls' ],
 	[ 'incoming', 'Every incoming call' ],
 	[ 'elsewhere', 'Calls answered on a SIP phone' ],

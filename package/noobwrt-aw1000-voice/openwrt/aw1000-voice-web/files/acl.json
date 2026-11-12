@@ -3,7 +3,7 @@
 		"description": "Manage the AW1000 phone port and SIP phones",
 		"read": {
 			"ubus": {
-				"aw1000-voice": [ "info", "notify_status", "log" ],
+				"aw1000-voice": [ "info", "notify_status", "log", "sms_list" ],
 				"fxs": [ "status", "version", "calls", "history", "backup", "sip_services", "forward_get", "mqtt_status", "sip_vpn_status", "rec_status", "quiet_status" ],
 				"modem-sip": [ "status", "settings" ],
 				"uci": [ "get", "state", "configs", "changes" ],
@@ -18,7 +18,7 @@
 		},
 		"write": {
 			"ubus": {
-				"aw1000-voice": [ "missed_seen", "restart", "notify_test", "hook_install" ],
+				"aw1000-voice": [ "missed_seen", "restart", "notify_test", "hook_install", "sms_send", "sms_delete", "sms_read" ],
 				"fxs": [ "clear_guard", "set_enabled", "ring_test", "ring", "click_call", "restore", "set_sip", "clear_history", "delete_calls", "forward_set", "ussd", "ussd_end", "set_sip_vpn", "sip_qr", "rec_keep", "rec_delete", "quiet_set", "quiet_seen" ],
 				"modem-sip": [ "phone_add", "phone_remove", "phone_login", "phone_password", "phone_rename", "set_settings" ],
 				"uci": [ "set", "add", "delete", "rename", "order", "commit", "revert" ],

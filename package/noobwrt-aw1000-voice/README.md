@@ -21,12 +21,23 @@ One feed that brings together the AW1000 phone stack:
   [openwrt-aw1000-phone](https://github.com/Perz3us/openwrt-aw1000-phone), at 0.8.1 with
   configurable modem PCM slots;
 - **SIP phones and apps** on the LAN that call through the modem SIM: `msipd` from
-  [openwrt-modem-sip](https://github.com/Perz3us/openwrt-modem-sip);
-- a new **management interface** on its own port, with **missed-call alerts** to your
-  phone, and a LuCI shortcut to it.
+  [openwrt-modem-sip](https://github.com/Perz3us/openwrt-modem-sip), extended here with
+  **SMS over SIP**: new SMS arrive in the phones' chat, and a chat reply goes out as an SMS;
+- a new **management interface** on its own port, with an **SMS inbox**, **alerts** for
+  missed calls and new SMS, and a LuCI shortcut to it.
 
-The management interface is for managing the phone: missed calls, the call history,
+The management interface is for managing the phone: missed calls, the call history, SMS,
 recordings and every setting. Calls are made and answered on the RJ11 phone or a SIP phone.
+
+## Tested with
+
+> [!IMPORTANT]
+> Tested only on an Arcadyan AW1000 (Quectel RG500Q-EA) running
+> [NoobWRT](https://github.com/nooblk-98/noobwrt-arcadyan-aw1k) firmware with
+> **ModemManager** driving the modem (OpenWrt 25.12.5, kernel 6.12.94).
+> It is **not tested with QModem**. SMS needs ModemManager (`mmcli`); the phone port and
+> SIP calls talk to the modem's AT port, as in openwrt-aw1000-phone, and may work with
+> QModem, but nobody has tried.
 
 ## Screenshots
 
@@ -35,12 +46,12 @@ All numbers and names in the screenshots are made up.
 | Desktop | |
 | --- | --- |
 | ![Dashboard](docs/img/desktop-dashboard.png) | ![Call history](docs/img/desktop-calls.png) |
-| ![SIP phones](docs/img/desktop-sip.png) | ![Settings](docs/img/desktop-settings.png) |
-| ![Dark theme](docs/img/desktop-dark-dashboard.png) | |
+| ![Messages](docs/img/desktop-messages.png) | ![SIP phones](docs/img/desktop-sip.png) |
+| ![Settings](docs/img/desktop-settings.png) | ![Dark theme](docs/img/desktop-dark-dashboard.png) |
 
-| Mobile | | |
-| --- | --- | --- |
-| ![Dashboard on a phone](docs/img/mobile-dashboard.png) | ![Calls on a phone](docs/img/mobile-calls.png) | ![Alerts, dark theme](docs/img/mobile-alerts.png) |
+| Mobile | | | |
+| --- | --- | --- | --- |
+| ![Dashboard on a phone](docs/img/mobile-dashboard.png) | ![Calls on a phone](docs/img/mobile-calls.png) | ![Messages on a phone](docs/img/mobile-messages.png) | ![Alerts, dark theme](docs/img/mobile-alerts.png) |
 
 ## Packages
 
@@ -48,8 +59,8 @@ All numbers and names in the screenshots are made up.
 | --- | --- |
 | `kmod-aw1000-fxs` | Clocks, SPI and PCM bridge for the Si32261 SLIC. Built for the exact kernel of your firmware. |
 | `fxsd` | The phone port daemon: dial tone, ringing, caller ID, call waiting, DND, recording, alarms, MQTT. |
-| `modem-sip` | `msipd`, a small SIP server so LAN phones and apps share the SIM with the RJ11 phone. |
-| `aw1000-voice-web` | The management interface (port 7766), alerts, and the `fxs`, `modem-sip` and `aw1000-voice` rpcd backends. Replaces `luci-app-fxs` and `luci-app-modem-sip`. |
+| `modem-sip` | `msipd`, a small SIP server so LAN phones and apps share the SIM with the RJ11 phone, for calls and SMS (SIP MESSAGE). |
+| `aw1000-voice-web` | The management interface (port 7766), the SMS watcher, alerts, and the `fxs`, `modem-sip` and `aw1000-voice` rpcd backends. Replaces `luci-app-fxs` and `luci-app-modem-sip`. |
 | `luci-app-aw1000-voice` | Services → Phone in LuCI: the line state and an **Open management interface** button. |
 
 ## The management interface
@@ -60,6 +71,7 @@ All numbers and names in the screenshots are made up.
 | --- | --- |
 | Dashboard | Line state, missed calls not seen yet, calls today, quick quiet, recent calls, versions |
 | Calls | History with filters (missed, incoming, outgoing, blocked, SIP), search, names and reasons, recordings, add a caller to the phonebook or block them in one tap, CSV export |
+| Messages | SMS on the SIM as conversations, with phonebook names and unread counts: read, reply, write a new SMS (with a part counter), delete; SMS watcher and SIP chat settings |
 | Recordings | Play, save, keep or delete recordings; recording rules and space limits |
 | Phonebook | Contacts with ring and DND priority, and speed dial codes |
 | Blocking | Blocked numbers and ranges, hidden numbers, outgoing allow or block lists |
@@ -68,7 +80,7 @@ All numbers and names in the screenshots are made up.
 | Phone services | Call forwarding and USSD codes through the modem |
 | SIP phones | Turn the SIP service on, add phones, QR codes for Linphone, logins, ports, HD, VPN |
 | Line health | Battery, line voltage and loop current, driver and patch checks, the no-audio-from-modem warning, ring tests, service restarts, the phone log |
-| Alerts | Push a message to your phone for missed calls (and blocked calls, every call, SIP answers or new recordings) through **ntfy**, a **Telegram** bot or a **webhook** |
+| Alerts | Push a message to your phone for missed calls and new SMS (and blocked calls, every call, SIP answers or new recordings) through **ntfy**, a **Telegram** bot or a **webhook** |
 | Settings | Every `fxsd` option: caller ID, ringing, calling, history, LED, MQTT, advanced |
 | Backup | Download and restore every phone setting and the call history |
 
@@ -100,6 +112,32 @@ uci commit aw1000_voice
 that hands the event to `/usr/libexec/aw1000-voice-notify`, which looks the caller up in the
 phonebook and sends the message. If you already have your own `hook.sh`, it is left alone;
 call `/usr/libexec/aw1000-voice-notify "$1" "$2"` from it to keep both.
+
+### SMS and SMS over SIP
+
+SMS are read and sent through ModemManager (`mmcli`). The `aw1000-voice-sms` service checks
+the modem every 10 seconds; each new SMS goes to the alerts (event **New SMS**) and to the SIP
+phones:
+
+- **SMS to the SIP phones.** `msipd` sends a SIP `MESSAGE` from `sip:<sender>@<router>`
+  to every phone that is logged in, so the text shows in the app's chat (Linphone and most
+  SIP apps), with the phonebook name. A phone that is away gets it when it logs in again
+  (kept in memory for a week, up to 32 messages).
+- **SMS from the SIP phones.** Write in the chat to the sender, or start a chat with
+  `sip:<number>@<router>`: `msipd` hands the text to the modem as an SMS. If it fails,
+  the phone gets a chat message that says why.
+- Typing and delivery notices from the apps are accepted and ignored; only text messages
+  become SMS. Senders like `Airtel` or `700` cannot be answered.
+
+```sh
+uci set aw1000_voice.sms.enabled=1    # watch for new SMS
+uci set aw1000_voice.sms.sip=1        # forward them to the SIP phones
+uci commit aw1000_voice
+```
+
+Other tools can use the same paths: `ubus call fxs_sip sms '{"from":"+9477...","name":"...","text":"..."}'`
+sends a chat message to the phones, and `/usr/libexec/aw1000-voice-sms list|send|delete`
+reads and sends SMS.
 
 ### Modem PCM slots
 

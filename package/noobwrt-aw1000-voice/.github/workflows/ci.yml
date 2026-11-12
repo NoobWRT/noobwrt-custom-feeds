@@ -33,6 +33,8 @@ jobs:
           set -e
           files="openwrt/aw1000-voice-web/files/aw1000-voice.defaults
           openwrt/aw1000-voice-web/files/aw1000-voice-notify
+          openwrt/aw1000-voice-web/files/aw1000-voice-sms
+          openwrt/aw1000-voice-web/files/aw1000-voice-sms.init
           openwrt/aw1000-voice-web/files/aw1000-voice.hotplug
           openwrt/aw1000-voice-web/files/rpcd/aw1000-voice
           openwrt/aw1000-voice-web/files/rpcd/fxs

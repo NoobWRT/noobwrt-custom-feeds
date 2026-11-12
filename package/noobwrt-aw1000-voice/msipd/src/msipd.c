@@ -16,7 +16,7 @@
 #include "phones.h"
 #include "sip.h"
 
-#define MSIPD_VERSION	"0.1.0"
+#define MSIPD_VERSION	"0.2.0"
 #define POLL_MS		500
 
 static struct re_fhs *bus_fhs;

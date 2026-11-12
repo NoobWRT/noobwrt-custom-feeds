@@ -5,6 +5,7 @@
 #include <time.h>
 #include "bus.h"
 #include "phones.h"
+#include "sip.h"
 
 static struct ubus_context *ubus;
 static struct blob_buf bb;
@@ -80,7 +81,40 @@ static int m_phones(struct ubus_context *ctx, struct ubus_object *obj, struct ub
 	return 0;
 }
 
+enum { S_FROM, S_NAME, S_TEXT, S_TO, S_MAX };
+
+static const struct blobmsg_policy sms_policy[S_MAX] = {
+	[S_FROM] = { "from", BLOBMSG_TYPE_STRING },
+	[S_NAME] = { "name", BLOBMSG_TYPE_STRING },
+	[S_TEXT] = { "text", BLOBMSG_TYPE_STRING },
+	[S_TO] = { "to", BLOBMSG_TYPE_STRING },
+};
+
+/* ubus call fxs_sip sms '{"from":"+9477...","name":"Amma","text":"..."[,"to":"Pixel"]}' */
+static int m_sms(struct ubus_context *ctx, struct ubus_object *obj, struct ubus_request_data *req,
+		 const char *method, struct blob_attr *msg)
+{
+	struct blob_attr *tb[S_MAX];
+	int sent, queued = 0;
+
+	(void)obj;
+	(void)method;
+	blobmsg_parse(sms_policy, S_MAX, tb, blob_data(msg), blob_len(msg));
+	if (!tb[S_TEXT] || !*blobmsg_get_string(tb[S_TEXT]) || strlen(blobmsg_get_string(tb[S_TEXT])) > 1600)
+		return UBUS_STATUS_INVALID_ARGUMENT;
+	sent = sip_sms(tb[S_FROM] ? blobmsg_get_string(tb[S_FROM]) : "",
+		       tb[S_NAME] ? blobmsg_get_string(tb[S_NAME]) : "",
+		       blobmsg_get_string(tb[S_TEXT]),
+		       tb[S_TO] ? blobmsg_get_string(tb[S_TO]) : NULL, &queued);
+	blob_buf_init(&bb, 0);
+	blobmsg_add_u32(&bb, "sent", sent);
+	blobmsg_add_u32(&bb, "queued", queued);
+	ubus_send_reply(ctx, req, bb.head);
+	return 0;
+}
+
 static const struct ubus_method methods[] = {
+	UBUS_METHOD("sms", m_sms, sms_policy),
 	UBUS_METHOD_NOARG("phones", m_phones),
 	UBUS_METHOD_NOARG("status", m_request),
 	UBUS_METHOD("dial", m_request, args_policy),

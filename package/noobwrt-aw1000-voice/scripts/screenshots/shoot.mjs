@@ -24,11 +24,13 @@ const SHOTS = [
 	{ name: 'desktop-dashboard', page: 'dashboard', w: 1440, h: 900, scale: 1 },
 	{ name: 'desktop-calls', page: 'calls', w: 1440, h: 900, scale: 1 },
 	{ name: 'desktop-sip', page: 'sip', w: 1440, h: 900, scale: 1 },
+	{ name: 'desktop-messages', page: 'messages', w: 1440, h: 900, scale: 1, click: '.thread:nth-child(2)' },
 	{ name: 'desktop-settings', page: 'settings', w: 1440, h: 900, scale: 1 },
 	{ name: 'desktop-dark-dashboard', page: 'dashboard', w: 1440, h: 900, scale: 1, theme: 'dark' },
 	{ name: 'mobile-dashboard', page: 'dashboard', w: 390, h: 844, scale: 2, mobile: true },
 	{ name: 'mobile-calls', page: 'calls', w: 390, h: 844, scale: 2, mobile: true },
-	{ name: 'mobile-alerts', page: 'alerts', w: 390, h: 844, scale: 2, mobile: true, theme: 'dark' }
+	{ name: 'mobile-alerts', page: 'alerts', w: 390, h: 844, scale: 2, mobile: true, theme: 'dark' },
+	{ name: 'mobile-messages', page: 'messages', w: 390, h: 844, scale: 2, mobile: true, click: '.thread:nth-child(2)' }
 ];
 
 mkdirSync(OUT, { recursive: true });
@@ -76,6 +78,10 @@ for (const s of SHOTS) {
 	await sleep(200);
 	await send('Page.navigate', { url });
 	await sleep(2500);
+	if (s.click) {
+		await send('Runtime.evaluate', { expression: `document.querySelector(${JSON.stringify(s.click)})?.click()` });
+		await sleep(800);
+	}
 	const shot = await send('Page.captureScreenshot', { format: 'png' });
 	writeFileSync(join(OUT, s.name + '.png'), Buffer.from(shot.data, 'base64'));
 	console.log('docs/img/' + s.name + '.png');

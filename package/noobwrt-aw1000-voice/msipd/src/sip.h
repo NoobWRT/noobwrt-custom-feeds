@@ -19,4 +19,9 @@ void sip_connected(void);
 void sip_bye(void);
 void sip_stop(void);
 
+/* SMS over SIP: send to every phone (or only the phone named 'to'); returns
+ * the number sent now, *queued the number kept for phones that are away. */
+int sip_sms(const char *from, const char *name, const char *text, const char *to, int *queued);
+void sms_flush(const char *user);
+
 #endif

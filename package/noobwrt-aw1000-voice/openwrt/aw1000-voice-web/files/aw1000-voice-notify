@@ -52,12 +52,19 @@ blocked) title="Blocked call"; text="Blocked a call from $who." ;;
 incoming) title="Incoming call"; text="Call from $who." ;;
 elsewhere) title="Answered on SIP"; text="Call from $who was answered on a SIP phone." ;;
 recorded) title="Call recorded"; text="A call was recorded ($number)." ;;
+sms)
+	# $3 is a file with the message text (it comes from the network)
+	title="SMS from $who"
+	text=$(head -c 1000 "$3" 2>/dev/null)
+	[ -n "$text" ] || text="(empty message)"
+	;;
 *) title="Phone"; text="$event $who" ;;
 esac
 
-# JSON string escape for the webhook and Telegram bodies.
+# JSON string escape for the webhook and Telegram bodies (SMS text can hold
+# quotes, backslashes, tabs and line breaks).
 js() {
-	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g'
+	printf '%s' "$1" | sed 's/\\/\\\\/g; s/"/\\"/g; s/\r/\\r/g; s/\t/\\t/g' | sed ':a;N;$!ba;s/\n/\\n/g'
 }
 
 # post <url> <body> <content-type> ["Header: value"]...

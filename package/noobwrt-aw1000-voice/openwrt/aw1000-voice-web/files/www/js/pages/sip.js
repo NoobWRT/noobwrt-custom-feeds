@@ -131,7 +131,7 @@ export default async function sip(ctx) {
 		]);
 
 		clear(root,
-			pageHeader('SIP phones', 'Phones and apps on your network log in to the router, and calls on the SIM ring all of them together with the RJ11 phone.'),
+			pageHeader('SIP phones', 'Phones and apps on your network log in to the router, and calls on the SIM ring all of them together with the RJ11 phone. New SMS arrive in their chat, and a chat reply goes out as an SMS (see Messages).'),
 			h('div', { class: 'stack' },
 				card('SIP service', { actions: [ toggle ] },
 					kv([

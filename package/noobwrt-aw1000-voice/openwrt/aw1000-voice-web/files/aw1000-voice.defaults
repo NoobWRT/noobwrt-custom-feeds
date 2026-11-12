@@ -30,6 +30,16 @@ commit aw1000_voice
 EOF
 fi
 
+if [ "$(uci -q get aw1000_voice.sms)" != sms ]; then
+	uci -q batch <<EOF
+set aw1000_voice.sms=sms
+set aw1000_voice.sms.enabled='1'
+set aw1000_voice.sms.sip='1'
+set aw1000_voice.sms.interval='10'
+commit aw1000_voice
+EOF
+fi
+
 port=$(uci -q get aw1000_voice.web.port)
 case "$port" in ''|*[!0-9]*) port=7766 ;; esac
 mode=$(uci -q get aw1000_voice.web.listen)

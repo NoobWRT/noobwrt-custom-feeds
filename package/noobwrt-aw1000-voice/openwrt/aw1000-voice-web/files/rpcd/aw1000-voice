@@ -123,9 +123,66 @@ log() {
 	json_dump
 }
 
+SMS=/usr/libexec/aw1000-voice-sms
+
+sms_send() {
+	local input number text f out
+
+	read -r input
+	json_load "$input" 2>/dev/null
+	json_get_var number number
+	json_get_var text text
+	case "$number" in
+	+[0-9][0-9][0-9]*|[0-9][0-9][0-9]*) ;;
+	*) echo '{ "result": false, "error": "number" }'; return ;;
+	esac
+	case "${number#+}" in *[!0-9]*) echo '{ "result": false, "error": "number" }'; return ;; esac
+	[ -n "$text" ] || { echo '{ "result": false, "error": "empty" }'; return; }
+	[ "${#text}" -le 1600 ] || { echo '{ "result": false, "error": "long" }'; return; }
+	f=$(mktemp /tmp/aw1000-voice-sms-out.XXXXXX)
+	printf '%s' "$text" > "$f"
+	out=$("$SMS" send "$number" "$f" 2>&1)
+	json_init
+	if [ "$out" = ok ]; then
+		json_add_boolean result 1
+	else
+		json_add_boolean result 0
+		json_add_string error "$out"
+	fi
+	json_dump
+}
+
+sms_delete() {
+	local input keys k v list=
+
+	read -r input
+	json_load "$input" 2>/dev/null
+	if json_select indexes 2>/dev/null; then
+		json_get_keys keys
+		for k in $keys; do
+			json_get_var v "$k"
+			case "$v" in ''|*[!0-9]*) continue ;; esac
+			list="$list $v"
+		done
+	fi
+	[ -n "$list" ] || { echo '{ "result": false, "error": "indexes" }'; return; }
+	# shellcheck disable=SC2086
+	[ "$("$SMS" delete $list 2>&1)" = ok ] && echo '{ "result": true }' || echo '{ "result": false, "error": "delete" }'
+}
+
+sms_read() {
+	local input t
+
+	read -r input
+	json_load "$input" 2>/dev/null
+	json_get_var t time
+	"$SMS" read "$t" >/dev/null 2>&1
+	echo '{ "result": true }'
+}
+
 case "$1" in
 list)
-	echo '{ "info": {}, "missed_seen": { "time": 0 }, "restart": { "name": "" }, "notify_status": {}, "notify_test": {}, "hook_install": {}, "log": {} }'
+	echo '{ "info": {}, "missed_seen": { "time": 0 }, "restart": { "name": "" }, "notify_status": {}, "notify_test": {}, "hook_install": {}, "log": {}, "sms_list": {}, "sms_send": { "number": "", "text": "" }, "sms_delete": { "indexes": [] }, "sms_read": { "time": 0 } }'
 	;;
 call)
 	case "$2" in
@@ -136,6 +193,10 @@ call)
 	notify_test) notify_test ;;
 	hook_install) hook_install ;;
 	log) log ;;
+	sms_list) "$SMS" list 2>/dev/null || echo '{ "modem": false, "messages": [], "unread": 0 }' ;;
+	sms_send) sms_send ;;
+	sms_delete) sms_delete ;;
+	sms_read) sms_read ;;
 	esac
 	;;
 esac

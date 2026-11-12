@@ -5,7 +5,7 @@
 include $(TOPDIR)/rules.mk
 
 PKG_NAME:=aw1000-voice-web
-PKG_VERSION:=0.2.0
+PKG_VERSION:=0.3.0
 PKG_RELEASE:=1
 PKG_LICENSE:=GPL-2.0-only
 PKG_MAINTAINER:=Lahiru S Liyanage <liyanagelsofficial@gmail.com>
@@ -60,7 +60,10 @@ define Package/aw1000-voice-web/install
 	$(INSTALL_DIR) $(1)/usr/libexec $(1)/etc/hotplug.d/iface
 	$(INSTALL_BIN) ./files/aw1000-voice.defaults $(1)/usr/libexec/aw1000-voice-web-setup
 	$(INSTALL_BIN) ./files/aw1000-voice-notify $(1)/usr/libexec/aw1000-voice-notify
+	$(INSTALL_BIN) ./files/aw1000-voice-sms $(1)/usr/libexec/aw1000-voice-sms
 	$(INSTALL_DATA) ./files/aw1000-voice.hotplug $(1)/etc/hotplug.d/iface/95-aw1000-voice-web
+	$(INSTALL_DIR) $(1)/etc/init.d
+	$(INSTALL_BIN) ./files/aw1000-voice-sms.init $(1)/etc/init.d/aw1000-voice-sms
 endef
 
 define Package/aw1000-voice-web/postinst
@@ -69,12 +72,16 @@ define Package/aw1000-voice-web/postinst
 /usr/libexec/aw1000-voice-web-setup
 rm -f /etc/uci-defaults/90-aw1000-voice-web
 /etc/init.d/rpcd reload
+/etc/init.d/aw1000-voice-sms enable
+/etc/init.d/aw1000-voice-sms restart
 exit 0
 endef
 
 define Package/aw1000-voice-web/prerm
 #!/bin/sh
 [ -n "$$IPKG_INSTROOT" ] && exit 0
+/etc/init.d/aw1000-voice-sms stop
+/etc/init.d/aw1000-voice-sms disable
 uci -q delete uhttpd.phone && uci commit uhttpd && /etc/init.d/uhttpd reload
 exit 0
 endef

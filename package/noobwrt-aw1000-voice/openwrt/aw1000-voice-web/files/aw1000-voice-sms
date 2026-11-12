@@ -1,0 +1,241 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0-only
+# Copyright (C) 2026 Lahiru S Liyanage (NoobLK)
+#
+# SMS through ModemManager, for the management interface and msipd.
+#
+#   aw1000-voice-sms list                     JSON: messages, unread count
+#   aw1000-voice-sms send <number> <file> [phone]
+#                                             send the text in <file> (removed
+#                                             afterwards); msipd names the SIP
+#                                             phone to tell when it fails
+#   aw1000-voice-sms delete <index>...        delete messages from the modem
+#   aw1000-voice-sms read [time]              mark received messages as read
+#   aw1000-voice-sms watch                    service loop: new SMS go to the
+#                                             alerts and to the SIP phones
+#
+# Message text is never put on a command line or into a shell string that is
+# evaluated: it goes through files and jshn.
+
+. /usr/share/libubox/jshn.sh
+
+READ=/etc/aw1000-voice/sms.read
+SEEN=/etc/aw1000-voice/sms.seen
+LOG_TAG=aw1000-voice-sms
+mkdir -p /etc/aw1000-voice
+
+log() { logger -t "$LOG_TAG" "$*"; }
+
+modem() {
+	local m
+
+	m=$(mmcli -L 2>/dev/null | sed -n 's#.*/Modem/\([0-9][0-9]*\).*#\1#p' | head -1)
+	[ -n "$m" ] || return 1
+	echo "$m"
+}
+
+# Last 9 digits, so 0771234567 and +94771234567 match.
+digits9() { printf '%s' "$1" | tr -cd '0-9' | tail -c 9; }
+
+name_of() {
+	local d s n
+
+	d=$(digits9 "$1")
+	[ -n "$d" ] || return 0
+	for s in $(uci -q show fxs | sed -n "s/^fxs\.\([^.=]*\)=\(contact\|speed\|block\)$/\1/p"); do
+		n=$(digits9 "$(uci -q get "fxs.$s.number")")
+		[ "$n" = "$d" ] || continue
+		uci -q get "fxs.$s.name"
+		return 0
+	done
+}
+
+# epoch from an ISO 8601 timestamp like 2026-11-12T10:15:30+05:30
+epoch() {
+	local t="${1%%+*}"
+
+	t="${t%Z}"
+	case "$t" in *T*-[0-9][0-9]:[0-9][0-9]) t="${t%-[0-9][0-9]:[0-9][0-9]}" ;; esac
+	date -D '%Y-%m-%dT%H:%M:%S' -d "$t" +%s 2>/dev/null || date +%s
+}
+
+# One SMS as shell variables: idx number text ts state type storage
+load_sms() {
+	local j
+
+	j=$(mmcli -s "$1" -J 2>/dev/null) || return 1
+	json_cleanup
+	json_load "$j" 2>/dev/null || return 1
+	json_select sms 2>/dev/null || return 1
+	json_select content; json_get_var number number; json_get_var text text; json_select ..
+	json_select properties; json_get_var ts timestamp; json_get_var state state; json_get_var type pdu-type
+	json_get_var storage storage; json_select ..
+	idx=$1
+	return 0
+}
+
+sms_indexes() {
+	local m
+
+	m=$(modem) || return 1
+	mmcli -m "$m" --messaging-list-sms 2>/dev/null | sed -n 's#.*/SMS/\([0-9][0-9]*\).*#\1#p'
+}
+
+cmd_list() {
+	local i read_at n_unread=0 rows=/tmp/aw1000-voice-sms.$$ at name has_modem=0
+
+	read_at=$(cat "$READ" 2>/dev/null || echo 0)
+	modem >/dev/null && has_modem=1
+	# Pass 1: read every SMS (json_load reuses the jshn buffer, so the
+	# reply is built only afterwards, from these files).
+	: > "$rows.out"
+	for i in $(sms_indexes); do
+		load_sms "$i" || continue
+		at=$(epoch "$ts")
+		name=$(name_of "$number")
+		# '|' separated: tabs would collapse an empty name in read
+		printf '%s|%s|%s|%s|%s|%s\n' "$i" "$at" "$state" "$type" "$number" "$(printf '%s' "$name" | tr '|\n' '/ ')" >> "$rows.out"
+		printf '%s' "$text" > "$rows.$i"
+	done
+	# Pass 2: the reply.
+	json_init
+	json_add_boolean modem "$has_modem"
+	json_add_array messages
+	[ -f "$rows.out" ] && while IFS="|" read -r i at state type number name; do
+		json_add_object
+		json_add_int index "$i"
+		json_add_int time "$at"
+		json_add_string number "$number"
+		json_add_string name "$name"
+		json_add_string text "$(cat "$rows.$i")"
+		json_add_string state "$state"
+		json_add_string direction "$([ "$type" = submit ] && echo out || echo in)"
+		if [ "$type" != submit ] && [ "$at" -gt "$read_at" ]; then
+			json_add_boolean unread 1
+			n_unread=$((n_unread + 1))
+		fi
+		json_close_object
+	done < "$rows.out"
+	json_close_array
+	json_add_int unread "$n_unread"
+	json_add_int read_at "$read_at"
+	rm -f "$rows".*
+	json_dump
+}
+
+cmd_send() {
+	local number="$1" file="$2" phone="$3" m out path err
+
+	case "$number" in
+	+[0-9][0-9][0-9]*|[0-9][0-9][0-9]*) ;;
+	*) echo "bad number"; rm -f "$file"; return 1 ;;
+	esac
+	case "${number#+}" in *[!0-9]*) echo "bad number"; rm -f "$file"; return 1 ;; esac
+	[ -s "$file" ] || { echo "empty message"; rm -f "$file"; return 1; }
+	if ! m=$(modem); then
+		err="the modem is not managed by ModemManager"
+	elif ! out=$(mmcli -m "$m" --messaging-create-sms="number='$number'" --messaging-create-sms-with-text="$file" 2>&1); then
+		err="could not create the SMS: $(printf '%s' "$out" | tail -1)"
+	else
+		path=$(printf '%s' "$out" | sed -n 's#.*\(/org/freedesktop/ModemManager1/SMS/[0-9][0-9]*\).*#\1#p' | head -1)
+		if [ -z "$path" ]; then
+			err="the modem did not create the SMS"
+		elif ! out=$(mmcli -s "${path##*/}" --send 2>&1); then
+			err="the network did not take it: $(printf '%s' "$out" | tail -1)"
+		fi
+	fi
+	rm -f "$file"
+	if [ -n "$err" ]; then
+		log "SMS to $number failed: $err"
+		if [ -n "$phone" ] && pidof msipd >/dev/null 2>&1; then
+			json_init
+			json_add_string from "SMS"
+			json_add_string name "SMS not sent"
+			json_add_string text "Your SMS to $number was not sent: $err"
+			json_add_string to "$phone"
+			ubus call fxs_sip sms "$(json_dump)" >/dev/null 2>&1
+		fi
+		echo "$err"
+		return 1
+	fi
+	log "SMS sent to $number${phone:+ from $phone}"
+	echo ok
+	return 0
+}
+
+cmd_delete() {
+	local m i
+
+	m=$(modem) || { echo "no modem"; return 1; }
+	for i in "$@"; do
+		case "$i" in ''|*[!0-9]*) continue ;; esac
+		mmcli -m "$m" --messaging-delete-sms="$i" >/dev/null 2>&1 || { echo "could not delete $i"; return 1; }
+	done
+	echo ok
+}
+
+cmd_read() {
+	local t="$1"
+
+	case "$t" in ''|*[!0-9]*) t=$(date +%s) ;; esac
+	echo "$t" > "$READ"
+	echo ok
+}
+
+# A message is identified by its number, time and text, not by the ModemManager
+# index, which changes whenever ModemManager restarts.
+sms_key() { printf '%s|%s|%s' "$number" "$ts" "$text" | md5sum | cut -c1-16; }
+
+deliver() {
+	local name
+
+	name=$(name_of "$number")
+	log "new SMS from $number${name:+ ($name)}"
+	if [ "$(uci -q get aw1000_voice.notify.enabled)" = 1 ]; then
+		printf '%s' "$text" > /tmp/aw1000-voice-sms.alert
+		/usr/libexec/aw1000-voice-notify sms "$number" /tmp/aw1000-voice-sms.alert >/dev/null 2>&1
+		rm -f /tmp/aw1000-voice-sms.alert
+	fi
+	if [ "$(uci -q get aw1000_voice.sms.sip)" != 0 ] && pidof msipd >/dev/null 2>&1; then
+		json_init
+		json_add_string from "$number"
+		json_add_string name "$name"
+		json_add_string text "$text"
+		ubus call fxs_sip sms "$(json_dump)" >/dev/null 2>&1 || log "msipd did not take the SMS from $number"
+	fi
+}
+
+cmd_watch() {
+	local first=1 i k tmp
+
+	touch "$SEEN"
+	while :; do
+		tmp=$(mktemp)
+		for i in $(sms_indexes); do
+			load_sms "$i" || continue
+			[ "$type" = deliver ] || continue
+			[ "$state" = received ] || continue
+			k=$(sms_key)
+			echo "$k" >> "$tmp"
+			grep -qx "$k" "$SEEN" && continue
+			# Messages already on the modem when the service starts for the
+			# first time are old: remember them without announcing them.
+			[ "$first" = 1 ] && [ ! -s "$SEEN" ] && continue
+			deliver
+		done
+		# keep only keys of messages still on the modem (plus the new ones)
+		sort -u "$tmp" > "$SEEN.new" && mv "$SEEN.new" "$SEEN"
+		rm -f "$tmp"
+		first=0
+		sleep "$(uci -q get aw1000_voice.sms.interval || echo 10)"
+	done
+}
+
+case "$1" in
+list) cmd_list ;;
+send) shift; cmd_send "$@" ;;
+delete) shift; cmd_delete "$@" ;;
+read) cmd_read "$2" ;;
+watch) cmd_watch ;;
+*) echo "usage: $0 list | send <number> <file> [phone] | delete <index>... | read [time] | watch" >&2; exit 1 ;;
+esac

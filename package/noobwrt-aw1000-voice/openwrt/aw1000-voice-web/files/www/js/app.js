@@ -9,6 +9,7 @@ const PAGES = [
 	{ group: 'Overview', items: [
 		{ id: 'dashboard', title: 'Dashboard', icon: 'dashboard' },
 		{ id: 'calls', title: 'Calls', icon: 'calls', badge: 'missed' },
+		{ id: 'messages', title: 'Messages', icon: 'sms', badge: 'sms' },
 		{ id: 'recordings', title: 'Recordings', icon: 'rec' }
 	] },
 	{ group: 'People', items: [
@@ -42,14 +43,18 @@ const ctx = {
 	info: {},
 	calls: [],
 	missed: 0,
+	smsUnread: 0,
+	redraw: () => drawStatus(),
 	async refresh() {
-		const [ status, info, hist ] = await Promise.all([
+		const [ status, info, hist, sms ] = await Promise.all([
 			api.maybe('fxs', 'status', {}, {}),
 			api.maybe('aw1000-voice', 'info', {}, {}),
-			api.maybe('fxs', 'history', {}, { log: '' })
+			api.maybe('fxs', 'history', {}, { log: '' }),
+			api.maybe('aw1000-voice', 'sms_list', {}, { unread: 0 })
 		]);
 		this.status = status;
 		this.info = info;
+		this.smsUnread = sms.unread || 0;
 		this.calls = parse(hist.log, status.state && status.state !== 'idle' && status.state !== 'stopped');
 		this.missed = this.calls.filter(c => isMissed(c) && c.start > (info.missed_seen || 0)).length;
 		drawStatus();
@@ -168,14 +173,16 @@ function drawStatus() {
 	}
 	clear(pill, h('span', { class: 'dot dot-' + kind }), h('span', text), s.dnd || s.silent ? badge('Quiet', 'muted') : null);
 
-	for (const b of document.querySelectorAll('[data-badge="missed"]')) {
-		b.textContent = ctx.missed > 99 ? '99+' : ctx.missed;
-		b.hidden = !ctx.missed;
-	}
+	for (const [ kind, n ] of [ [ 'missed', ctx.missed ], [ 'sms', ctx.smsUnread ] ])
+		for (const b of document.querySelectorAll('[data-badge="' + kind + '"]')) {
+			b.textContent = n > 99 ? '99+' : n;
+			b.hidden = !n;
+		}
 	const v = document.getElementById('version');
 	if (v && ctx.info.versions)
 		v.textContent = 'web ' + (ctx.info.versions.web || '?') + ' · fxsd ' + (ctx.info.versions.fxsd || '?');
-	document.title = (ctx.missed ? '(' + ctx.missed + ') ' : '') + 'Phone · ' + (ctx.info.hostname || 'AW1000');
+	const pending = ctx.missed + ctx.smsUnread;
+	document.title = (pending ? '(' + pending + ') ' : '') + 'Phone · ' + (ctx.info.hostname || 'AW1000');
 }
 
 // ---- routing ---------------------------------------------------------------

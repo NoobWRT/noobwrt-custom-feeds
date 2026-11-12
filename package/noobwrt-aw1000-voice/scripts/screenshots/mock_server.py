@@ -64,7 +64,7 @@ FXS = {
 
 REPLIES = {
     ('aw1000-voice', 'info'): {'port': 7766, 'lan': '192.168.1.1', 'hostname': 'NoobWRT', 'now': NOW, 'missed_seen': ago(2 * DAY),
-                               'versions': {'web': '0.2.0-r1', 'fxsd': '0.8.1-r2', 'driver': '6.12.94.0.4.0-r1', 'msipd': '0.1.0-r1'},
+                               'versions': {'web': '0.3.0-r1', 'fxsd': '0.8.1-r2', 'driver': '6.12.94.0.4.0-r1', 'msipd': '0.2.0-r1'},
                                'msipd_installed': True, 'msipd_running': True},
     ('aw1000-voice', 'notify_status'): {'hook': 'managed', 'curl': True},
     ('aw1000-voice', 'log'): {'lines': [
@@ -92,6 +92,12 @@ REPLIES = {
         {'name': 'Living room', 'user': 'p91ab07', 'online': True},
         {'name': 'Laptop', 'user': 'p2c7e19', 'online': False}]},
     ('modem-sip', 'settings'): {'port': 5060, 'rtp_from': 10000, 'rtp_to': 10100, 'hd': True, 'phone_hd': True},
+    ('aw1000-voice', 'sms_list'): {'modem': True, 'unread': 2, 'read_at': ago(DAY), 'messages': [
+        {'index': 0, 'time': ago(3 * DAY), 'number': 'Dialog', 'name': '', 'text': 'Your data balance is 18.4 GB, valid until 30/11.', 'state': 'received', 'direction': 'in'},
+        {'index': 1, 'time': ago(60 * 140), 'number': '+94712345678', 'name': 'Amma', 'text': 'Are you coming for lunch on Sunday?', 'state': 'received', 'direction': 'in'},
+        {'index': 2, 'time': ago(60 * 132), 'number': '+94712345678', 'name': 'Amma', 'text': 'Yes, around 12. Shall I bring anything?', 'state': 'sent', 'direction': 'out'},
+        {'index': 3, 'time': ago(60 * 40), 'number': '+94712345678', 'name': 'Amma', 'text': 'Just bring the kids 😊', 'state': 'received', 'direction': 'in', 'unread': True},
+        {'index': 4, 'time': ago(60 * 12), 'number': '+94768881122', 'name': 'Nimal', 'text': 'Meeting moved to 4pm, see you there.', 'state': 'received', 'direction': 'in', 'unread': True}]},
 }
 
 
@@ -103,7 +109,8 @@ def uci_get(config):
     if config == 'aw1000_voice':
         return {'web': {'.type': 'web', '.name': 'web', 'port': '7766', 'listen': 'lan'},
                 'notify': {'.type': 'notify', '.name': 'notify', 'enabled': '1', 'service': 'ntfy',
-                           'events': ['missed', 'blocked'], 'ntfy_url': 'https://ntfy.sh/my-phone-alerts'}}
+                           'events': ['missed', 'sms', 'blocked'], 'ntfy_url': 'https://ntfy.sh/my-phone-alerts'},
+                'sms': {'.type': 'sms', '.name': 'sms', 'enabled': '1', 'sip': '1', 'interval': '10'}}
     return {}
 
 

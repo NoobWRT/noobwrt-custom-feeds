@@ -39,6 +39,61 @@ var CSS = '\
 .apc-note { font-size:.9em; opacity:.8; margin:0 0 1em; }\
 ';
 
+var PHONE_CSS = '@keyframes apc-amber-pulse{0%,100%{opacity:1;transform:scale(1);box-shadow:0 0 0 0 rgba(234,179,8,0.55)}50%{opacity:0.35;transform:scale(0.86);box-shadow:0 0 0 4px rgba(234,179,8,0)}}@keyframes apc-rj11-rock{0%,100%{transform:rotate(0deg)}15%{transform:rotate(-3.4deg)}30%{transform:rotate(3.4deg)}45%{transform:rotate(-2.8deg)}60%{transform:rotate(2.8deg)}75%{transform:rotate(-1.5deg)}}@keyframes apc-rj11-wave-in{0%,100%{opacity:0.18}35%,65%{opacity:1}}@keyframes apc-rj11-wave-out{0%,20%,100%{opacity:0.1}55%,80%{opacity:0.95}}@keyframes apc-rj11-key-blink{0%,100%{fill:#8e96a0;r:3.3px}50%{fill:#eab308;r:4.1px}}.apc-rj11-widget{flex:0 0 auto;display:flex;flex-direction:column;align-items:center;justify-content:center;min-width:118px;user-select:none}.apc-rj11-svg{width:90px;height:62px;overflow:visible;display:block}.apc-rj11-phone{transform-origin:90px 85px}.apc-rj11-base{fill:#393e46;stroke:#8e96a0;stroke-width:2.6;stroke-linejoin:round}.apc-rj11-plunger{fill:#8e96a0;transition:transform 0.22s ease}.apc-rj11-key{fill:#8e96a0;transition:fill 0.15s ease}.apc-rj11-cord{fill:none;stroke:#8e96a0;stroke-width:2.6;stroke-dasharray:4 4.5;stroke-linecap:round}.apc-rj11-handset{transform-origin:90px 34px;transition:transform 0.24s cubic-bezier(0.34,1.56,0.64,1)}.apc-rj11-handset-path{fill:#57606a;stroke:#9ca3af;stroke-width:2.6;stroke-linejoin:round;transition:fill 0.2s ease,stroke 0.2s ease}.apc-rj11-wave{fill:none;stroke:#c58e11;stroke-width:3;stroke-linecap:round;opacity:0;transition:opacity 0.18s ease}.apc-rj11-widget.st-dialtone .apc-rj11-handset,.apc-rj11-widget.st-dialing .apc-rj11-handset,.apc-rj11-widget.st-calling .apc-rj11-handset,.apc-rj11-widget.st-connected .apc-rj11-handset{transform:translate(-3px,-11px) rotate(-11deg)}.apc-rj11-widget.st-dialtone .apc-rj11-handset-path,.apc-rj11-widget.st-dialing .apc-rj11-handset-path,.apc-rj11-widget.st-calling .apc-rj11-handset-path,.apc-rj11-widget.st-connected .apc-rj11-handset-path{fill:#c58e11;stroke:#cbd5e1}.apc-rj11-widget.st-dialtone .apc-rj11-plunger,.apc-rj11-widget.st-dialing .apc-rj11-plunger,.apc-rj11-widget.st-calling .apc-rj11-plunger,.apc-rj11-widget.st-connected .apc-rj11-plunger{transform:translateY(-2.5px)}.apc-rj11-widget.st-dialing .apc-rj11-key.k1{animation:apc-rj11-key-blink 1.2s infinite 0.0s}.apc-rj11-widget.st-dialing .apc-rj11-key.k5{animation:apc-rj11-key-blink 1.2s infinite 0.25s}.apc-rj11-widget.st-dialing .apc-rj11-key.k9{animation:apc-rj11-key-blink 1.2s infinite 0.5s}.apc-rj11-widget.st-dialing .apc-rj11-key.k3{animation:apc-rj11-key-blink 1.2s infinite 0.75s}.apc-rj11-widget.st-dialing .apc-rj11-key.k7{animation:apc-rj11-key-blink 1.2s infinite 1.0s}.apc-rj11-widget.st-ringing .apc-rj11-phone{animation:apc-rj11-rock 0.55s infinite ease-in-out}.apc-rj11-widget.st-ringing .apc-rj11-wave.w-inner{animation:apc-rj11-wave-in 0.9s infinite ease-in-out}.apc-rj11-widget.st-ringing .apc-rj11-wave.w-outer{animation:apc-rj11-wave-out 0.9s infinite ease-in-out}.apc-rj11-pill{margin-top:4px;display:inline-flex;align-items:center;gap:5px;padding:2px 9px;border-radius:999px;background:rgba(127,127,127,0.12);border:1px solid rgba(127,127,127,0.24);font-size:0.74em;font-weight:600;line-height:1.32;white-space:nowrap}.apc-rj11-dot{width:6.5px;height:6.5px;border-radius:50%;background:#22c55e;flex-shrink:0}.apc-rj11-widget.st-off .apc-rj11-dot{background:#6b7280}.apc-rj11-widget.st-dialtone .apc-rj11-dot,.apc-rj11-widget.st-dialing .apc-rj11-dot,.apc-rj11-widget.st-calling .apc-rj11-dot,.apc-rj11-widget.st-ringing .apc-rj11-dot,.apc-rj11-widget.st-connected .apc-rj11-dot{background:#eab308;animation:apc-amber-pulse 1.15s infinite ease-in-out}.apc-rj11-peer{margin-top:2px;font-size:0.73em;font-weight:600;font-variant-numeric:tabular-nums;font-family:monospace;opacity:0.86;line-height:1.2;max-width:124px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}' +
+	'.apc-card-phone { display:flex; align-items:center; justify-content:space-between; gap:12px; }' +
+	'.apc-card-phone > div:first-child { min-width:0; }';
+
+var CORD_ONHOOK = 'M 42 50 C 20 66, 20 94, 37 108';
+var CORD_OFFHOOK = 'M 38 36 C 17 58, 19 92, 37 108';
+
+var PHONE_LOOK = [
+	[ /ring|incoming/, 'st-ringing', _('Ringing') ],
+	[ /calling|outgoing|alerting|ringback|progress/, 'st-calling', _('Calling') ],
+	[ /dial(ing)?$|digits|dtmf/, 'st-dialing', _('Dialing') ],
+	[ /connected|in_?call|talking|answered|sipcall/, 'st-connected', _('In call') ],
+	[ /hold|held/, 'st-dialtone', _('On hold') ],
+	[ /^idle$/, 'st-idle', _('Idle (on hook)') ],
+	[ /^(none|unknown|)$/, 'st-off', _('No phone') ],
+	[ /./, 'st-dialtone', _('Off hook') ]
+];
+
+function phoneBadge(phone) {
+	var p = String(phone || '').toLowerCase(), i, look, keys = [], k = 1, cord, svg;
+
+	for (i = 0; i < PHONE_LOOK.length; i++)
+		if (PHONE_LOOK[i][0].test(p)) { look = PHONE_LOOK[i]; break; }
+
+	[ 68, 79, 90, 101 ].forEach(function(y) {
+		[ 76, 90, 104 ].forEach(function(x) {
+			keys.push('<circle class="apc-rj11-key k' + (k++) + '" cx="' + x + '" cy="' + y + '" r="3.3"/>');
+		});
+	});
+	cord = /st-(dialtone|dialing|calling|connected)/.test(look[1]) ? CORD_OFFHOOK : CORD_ONHOOK;
+
+	svg = E('div', {});
+	svg.innerHTML = '<svg class="apc-rj11-svg" viewBox="0 0 180 124" aria-hidden="true">' +
+		'<path class="apc-rj11-wave w-inner" d="M 25 46 A 20 20 0 0 1 28 19"/>' +
+		'<path class="apc-rj11-wave w-outer" d="M 17 50 A 28 28 0 0 1 21 12"/>' +
+		'<path class="apc-rj11-wave w-inner" d="M 155 46 A 20 20 0 0 0 152 19"/>' +
+		'<path class="apc-rj11-wave w-outer" d="M 163 50 A 28 28 0 0 0 159 12"/>' +
+		'<g class="apc-rj11-phone">' +
+		'<path class="apc-rj11-cord" d="' + cord + '"/>' +
+		'<rect class="apc-rj11-plunger" x="48" y="45" width="11" height="7" rx="2"/>' +
+		'<rect class="apc-rj11-plunger" x="121" y="45" width="11" height="7" rx="2"/>' +
+		'<path class="apc-rj11-base" d="M 57 50 L 123 50 C 133 50, 139 55, 141 64 L 150 107 C 151 113, 147 117, 140 117 L 40 117 C 33 117, 29 113, 30 107 L 39 64 C 41 55, 47 50, 57 50 Z"/>' +
+		keys.join('') +
+		'<g class="apc-rj11-handset">' +
+		'<path class="apc-rj11-handset-path" d="M 34 34 C 34 22, 43 18, 58 18 L 122 18 C 137 18, 146 22, 146 34 L 146 43 C 146 47, 142 49, 135 49 L 119 49 C 113 49, 111 46, 111 40 L 111 33 L 69 33 L 69 40 C 69 46, 67 49, 61 49 L 45 49 C 38 49, 34 47, 34 43 Z"/>' +
+		'</g>' +
+		'</g>' +
+		'</svg>';
+
+	return E('div', { 'class': 'apc-rj11-widget ' + look[1] }, [
+		svg.firstChild,
+		E('div', { 'class': 'apc-rj11-pill' }, [ E('span', { 'class': 'apc-rj11-dot' }), E('span', {}, look[2]) ])
+	]);
+}
+
 var STATES = {
 	starting: [ _('Starting'), '' ],
 	off: [ _('Off'), '' ],
@@ -120,7 +175,14 @@ function renderCards(s) {
 	return E('div', { 'class': 'apc-grid' }, [
 		card(_('Current cell (PCI / EARFCN)'), cell, isLte ? (s.list && s.list != 'main' && s.list != 'none' ? (s.list_name || _('Timed list')) + ', ' : '') + (prio > 0 ? _('Priority') + ' ' + prio : _('Not on the list')) + (s.band ? ', ' + _('band') + ' ' + s.band : '') : ''),
 		card(_('Signal'), isLte && s.rsrp ? s.rsrp + ' dBm' : '-', isLte ? 'RSRQ ' + s.rsrq + ' dB, SINR ' + s.sinr + ' dB, RSSI ' + s.rssi + ' dBm' : ''),
-		card(_('Switching'), protect ? _('Paused') : _('Allowed'), protect ? protect : (pending > 0 ? _('Waiting to go to priority') + ' ' + pending : _('Phone') + ': ' + phone)),
+		E('div', { 'class': 'apc-card apc-card-phone' }, [
+			E('div', {}, [
+				E('h4', {}, _('Switching')),
+				E('div', { 'class': 'apc-big' }, protect ? _('Paused') : _('Allowed')),
+				E('div', { 'class': 'apc-sub' }, protect ? protect : (pending > 0 ? _('Waiting to go to priority') + ' ' + pending : _('Phone') + ': ' + phone))
+			]),
+			phoneBadge(s.phone)
+		]),
 		card(_('AT port'), s.port == 'mm' ? 'ModemManager' : (s.port || '-'), (s.port_mode == 'manual' ? _('Manual') : _('Auto')) + (s.port == 'mm' ? ', mmcli' : ', at-daemon ' + (s.atd ? _('running') : _('not running'))))
 	]);
 }
@@ -392,7 +454,7 @@ return view.extend({
 		box.dataset.port = data[0].port || '';
 
 		return m.render().then(function(node) {
-			return E('div', {}, [ E('style', {}, CSS), box, node,
+			return E('div', {}, [ E('style', {}, CSS + PHONE_CSS), box, node,
 				E('div', { 'class': 'apc-foot' }, E('a', { 'href': REPO, 'target': '_blank', 'rel': 'noopener' }, 'PCI Cell Lock on GitHub')) ]);
 		});
 	}

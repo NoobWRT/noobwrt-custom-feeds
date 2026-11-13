@@ -9,6 +9,9 @@
 var callStatus = rpc.declare({ object: 'auto-pci-cell', method: 'status', expect: {} });
 var callPorts = rpc.declare({ object: 'auto-pci-cell', method: 'ports', expect: { ports: [] } });
 var callTest = rpc.declare({ object: 'auto-pci-cell', method: 'test_port', params: [ 'port' ], expect: {} });
+var callClear = rpc.declare({ object: 'auto-pci-cell', method: 'clear_history', expect: {} });
+
+var REPO = 'https://github.com/Perz3us/PCI-Cell-Lock';
 
 var CSS = '\
 .apc { --apc-ok:#16a34a; --apc-warn:#d97706; --apc-bad:#dc2626; --apc-info:#2563eb; --apc-line:rgba(127,127,127,.28); --apc-soft:rgba(127,127,127,.08); margin-bottom:1.5em; }\
@@ -28,7 +31,9 @@ var CSS = '\
 .apc tr:first-child th { border-top:0; }\
 .apc th { font-size:.78em; text-transform:uppercase; letter-spacing:.04em; opacity:.7; }\
 .apc tr.now td { font-weight:600; background:rgba(37,99,235,.1); }\
-.apc-title { font-size:1em; font-weight:600; margin:1em 0 .5em; }\
+.apc-title { display:flex; align-items:center; justify-content:space-between; font-size:1em; font-weight:600; margin:1em 0 .5em; }\
+.apc-foot { text-align:center; font-size:.85em; opacity:.7; margin:1.5em 0 .5em; }\
+.apc-move { padding:0 .6em !important; min-width:0 !important; }\
 .apc-empty { padding:.9em 1em; opacity:.7; }\
 .apc-warn { border:1px solid var(--apc-warn); border-radius:10px; padding:.7em 1em; margin:0 0 1em; }\
 .apc-note { font-size:.9em; opacity:.8; margin:0 0 1em; }\
@@ -86,8 +91,8 @@ function card(title, big, sub) {
 	]);
 }
 
-function table(heads, rows) {
-	return E('div', { 'class': 'apc-scroll' }, E('table', {}, [
+function table(heads, rows, id) {
+	return E('div', { 'class': 'apc-scroll', 'id': id || null }, E('table', {}, [
 		E('tr', {}, heads.map(function(h) { return E('th', {}, h); }))
 	].concat(rows)));
 }
@@ -116,7 +121,7 @@ function renderCards(s) {
 		card(_('Current cell (PCI / EARFCN)'), cell, isLte ? (s.list && s.list != 'main' && s.list != 'none' ? (s.list_name || _('Timed list')) + ', ' : '') + (prio > 0 ? _('Priority') + ' ' + prio : _('Not on the list')) + (s.band ? ', ' + _('band') + ' ' + s.band : '') : ''),
 		card(_('Signal'), isLte && s.rsrp ? s.rsrp + ' dBm' : '-', isLte ? 'RSRQ ' + s.rsrq + ' dB, SINR ' + s.sinr + ' dB, RSSI ' + s.rssi + ' dBm' : ''),
 		card(_('Switching'), protect ? _('Paused') : _('Allowed'), protect ? protect : (pending > 0 ? _('Waiting to go to priority') + ' ' + pending : _('Phone') + ': ' + phone)),
-		card(_('AT port'), s.port || '-', (s.port_mode == 'manual' ? _('Manual') : _('Auto')) + ', at-daemon ' + (s.atd ? _('running') : _('not running')))
+		card(_('AT port'), s.port == 'mm' ? 'ModemManager' : (s.port || '-'), (s.port_mode == 'manual' ? _('Manual') : _('Auto')) + (s.port == 'mm' ? ', mmcli' : ', at-daemon ' + (s.atd ? _('running') : _('not running'))))
 	]);
 }
 
@@ -147,8 +152,21 @@ function renderHistory(s) {
 	});
 
 	if (!rows.length)
-		return E('div', { 'class': 'apc-scroll' }, E('div', { 'class': 'apc-empty' }, _('No switches since the last restart.')));
-	return table([ _('Time'), _('From'), _('To'), _('Reason'), _('Took'), _('Result') ], rows);
+		return E('div', { 'class': 'apc-scroll', 'id': 'apc-hist' }, E('div', { 'class': 'apc-empty' }, _('No switches since the last restart.')));
+	return table([ _('Time'), _('From'), _('To'), _('Reason'), _('Took'), _('Result') ], rows, 'apc-hist');
+}
+
+function clearHistory(ev) {
+	ev.target.disabled = true;
+	return callClear().then(function() {
+		var t = document.getElementById('apc-hist');
+		if (t)
+			t.replaceWith(renderHistory({}));
+	}).catch(function(e) {
+		ui.addNotification(null, E('p', {}, _('Could not clear the list') + ': ' + e.message), 'warning');
+	}).finally(function() {
+		ev.target.disabled = false;
+	});
 }
 
 function renderAll(s) {
@@ -158,7 +176,10 @@ function renderAll(s) {
 		renderCards(s),
 		E('div', { 'class': 'apc-title' }, _('Cells')),
 		renderCells(s),
-		E('div', { 'class': 'apc-title' }, _('Recent switches')),
+		E('div', { 'class': 'apc-title' }, [
+			E('span', {}, _('Recent switches')),
+			(s.history || []).length ? E('button', { 'class': 'btn cbi-button', 'click': clearHistory }, _('Clear')) : ''
+		]),
 		renderHistory(s)
 	];
 }
@@ -262,11 +283,26 @@ return view.extend({
 		o.rmempty = false;
 
 		s = m.section(form.GridSection, 'cell', _('Main priority list'),
-			_('Top row is the first choice. Drag rows to change the order. Up to 5 cells. The lock is removed only when every cell on the list has failed.'));
+			_('Top row is the first choice. Use the arrows or drag rows to change the order. Up to 5 cells. The lock is removed only when every cell on the list has failed.'));
 		s.anonymous = true;
 		s.addremove = true;
 		s.sortable = true;
 		s.nodescriptions = true;
+		s.renderRowActions = function(section_id) {
+			var td = form.GridSection.prototype.renderRowActions.call(this, section_id);
+			var div = td.querySelector('div') || td;
+			var list = this.cfgsections(), i = list.indexOf(section_id), self = this;
+			var move = function(d) {
+				return function() {
+					uci.move('auto-pci-cell', section_id, list[i + d], d > 0);
+					return self.map.save(null, true);
+				};
+			};
+
+			div.insertBefore(E('button', { 'class': 'btn cbi-button apc-move', 'title': _('Move up'), 'disabled': i == 0 ? '' : null, 'click': ui.createHandlerFn(this, move(-1)) }, '\u25b2'), div.firstChild);
+			div.insertBefore(E('button', { 'class': 'btn cbi-button apc-move', 'title': _('Move down'), 'disabled': i == list.length - 1 ? '' : null, 'click': ui.createHandlerFn(this, move(1)) }, '\u25bc'), div.children[1]);
+			return td;
+		};
 		s.handleAdd = function(ev) {
 			if (this.cfgsections().length >= 5) {
 				ui.addNotification(null, E('p', {}, _('The list can hold 5 cells.')), 'warning');
@@ -356,7 +392,8 @@ return view.extend({
 		box.dataset.port = data[0].port || '';
 
 		return m.render().then(function(node) {
-			return E('div', {}, [ E('style', {}, CSS), box, node ]);
+			return E('div', {}, [ E('style', {}, CSS), box, node,
+				E('div', { 'class': 'apc-foot' }, E('a', { 'href': REPO, 'target': '_blank', 'rel': 'noopener' }, 'PCI Cell Lock on GitHub')) ]);
 		});
 	}
 });

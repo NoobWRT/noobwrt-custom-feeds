@@ -3,11 +3,15 @@
 		"description": "Grant access to Auto Pci Cell",
 		"read": {
 			"ubus": {
-				"auto-pci-cell": [ "status", "ports", "test_port" ]
+				"auto-pci-cell": [ "status", "ports", "test_port" ],
+				"fxs": [ "status" ]
 			},
 			"uci": [ "auto-pci-cell" ]
 		},
 		"write": {
+			"ubus": {
+				"auto-pci-cell": [ "clear_history" ]
+			},
 			"uci": [ "auto-pci-cell" ]
 		}
 	}

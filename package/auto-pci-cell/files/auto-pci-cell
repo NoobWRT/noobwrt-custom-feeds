@@ -204,6 +204,11 @@ at() {
 
 	AT_OUT=
 	[ -n "$PORT" ] || return 1
+	if [ "$PORT" = mm ]; then
+		AT_OUT=$(mmcli -m any --timeout=$((${2:-5} + 3)) --command="$1" 2>/dev/null) || return 1
+		AT_OUT=$(printf '%s\nOK\n' "${AT_OUT#response: }" | tr -d "\r\"\\\\' ")
+		return 0
+	fi
 	esc=$(printf '%s' "$1" | sed 's/"/\\"/g')
 	AT_OUT=$(ubus -t $((${2:-5} + 3)) call at-daemon sendat \
 		"{\"at_port\":\"$PORT\",\"at_cmd\":\"$esc\",\"timeout\":${2:-5}}" 2>/dev/null) || return 1
@@ -239,6 +244,7 @@ port_ok() {
 auto_ports() {
 	local t i v
 
+	pidof ModemManager >/dev/null && command -v mmcli >/dev/null && echo mm
 	uci -q show qmodem | sed -n "s/^qmodem\.[^.]*\.at_port='\(.*\)'$/\1/p"
 	for t in /sys/class/tty/ttyUSB*; do
 		[ -e "$t/device" ] || continue
@@ -256,7 +262,7 @@ find_port() {
 	if [ "$PORT_MODE" = manual ]; then
 		case "$MANUAL_PORT" in
 		/dev/*[!A-Za-z0-9_/.-]*|'') ;;
-		/dev/*) port_ok "$MANUAL_PORT" ;;
+		/dev/*|mm) port_ok "$MANUAL_PORT" ;;
 		esac
 	else
 		for p in $(auto_ports); do

@@ -644,6 +644,88 @@ remote_tele() {
 	printf '%s' "$_rt_b"
 }
 
+# OpenWrt 25.12.6 mbim.sh (umbim, commit 152b86e6ab) gives the network's DNS servers to the
+# "<iface>_4"/"_6" child interfaces only when dhcp=1, so with the default dhcp=auto an MBIM link
+# comes up with no resolver: probes by IP pass, names do not resolve (fixed on OpenWrt main by
+# b556a45351, not in 25.12.6). Prints the servers the modem reported when the interface is in
+# that state; empty when it is not (another proto, peerdns=0, DNS present, link down).
+mbim_lost_dns() {
+	_mld_if="$1"
+	[ -n "$_mld_if" ] || return 1
+	[ "$(uci -q get "network.$_mld_if.proto")" = mbim ] || return 1
+	[ "$(uci -q get "network.$_mld_if.peerdns")" = 0 ] && return 1
+	_mld_st=$(ubus call "network.interface.$_mld_if" status 2>/dev/null) || return 1
+	case "$_mld_st" in *'"up": true'*) ;; *) return 1 ;; esac
+	_mld_key=""
+	for _mld_n in "$_mld_if" "${_mld_if}_4" "${_mld_if}_6"; do
+		[ "$_mld_n" = "$_mld_if" ] || _mld_st=$(ubus call "network.interface.$_mld_n" status 2>/dev/null) || continue
+		[ -n "$(printf '%s' "$_mld_st" | jsonfilter -e '@["dns-server"][*]' 2>/dev/null)" ] && return 1
+		[ "$_mld_n" = "${_mld_if}_4" ] && _mld_key=$(printf '%s' "$_mld_st" | jsonfilter -e '@["ipv4-address"][0].address' 2>/dev/null)
+	done
+	[ -n "$_mld_key" ] || _mld_key=-
+	# one lookup per connection: the cache is keyed by the address the modem gave
+	_mld_c="/tmp/5gmodem/mbimdns.$_mld_if"
+	if [ -s "$_mld_c" ]; then
+		read -r _mld_ck _mld_cv < "$_mld_c"
+		if [ "$_mld_ck" = "$_mld_key" ]; then
+			[ "$_mld_cv" = - ] && return 1
+			printf '%s' "$_mld_cv"
+			return 0
+		fi
+	fi
+	# the servers umbim printed while setting the link up: the last session of this interface
+	_mld_ns=$(logread 2>/dev/null | grep -F "netifd: $_mld_if (" \
+		| awk '/mbim\[[0-9]+\] Setting up/ { n = "" } /ipv[46]dnsserver:/ { n = n " " $NF } END { print n }')
+	if [ -z "$(printf '%s' "$_mld_ns" | tr -d ' ')" ]; then
+		# log rotated or disabled: ask the modem (the cdc-wdm node belongs to umbim, AT does not)
+		_mld_at=$(uci -q get "5gmodem.$(sec_for_iface "$_mld_if").at_port")
+		[ -n "$_mld_at" ] && _mld_ns=$(at_query "$_mld_at" 'AT+CGCONTRDP' 6 2>/dev/null \
+			| awk -F, -v ip="$_mld_key" '/^\+CGCONTRDP:/ {
+				gsub(/"/, ""); s = $6 " " $7
+				if (ip != "-" && index($4, ip ".") != 1) { if (any == "") any = s; next }
+				print s; found = 1; exit }
+				END { if (!found) print any }')
+	fi
+	_mld_v=$(for _mld_x in $_mld_ns; do
+		case "$_mld_x" in
+			0.0.0.0|*[!0-9.]*) ;;
+			*.*.*.*) printf '%s\n' "$_mld_x" | grep -qE '^[0-9]{1,3}(\.[0-9]{1,3}){3}$' && printf '%s\n' "$_mld_x" ;;
+		esac
+		case "$_mld_x" in
+			*:*) printf '%s\n' "$_mld_x" | grep -qE '^[0-9A-Fa-f:]+$' && [ "$_mld_x" != "::" ] && printf '%s\n' "$_mld_x" ;;
+		esac
+	done | awk '!seen[$0]++' | head -4 | tr '\n' ' ')
+	_mld_v=${_mld_v% }
+	mkdir -p /tmp/5gmodem
+	printf '%s %s\n' "$_mld_key" "${_mld_v:--}" > "$_mld_c"
+	[ -n "$_mld_v" ] || return 1
+	printf '%s' "$_mld_v"
+}
+
+# Puts the servers from mbim_lost_dns into resolv.conf.auto under "# Interface <iface>_4".
+# netifd rewrites that file on every interface event, so the watchdog calls this every round.
+mbim_dns_fix() {
+	[ -n "$1" ] || return 1
+	mkdir -p /tmp/5gmodem
+	# hotplug of <iface> and <iface>_4 and the watchdog round can come at once: one writer
+	( flock 8 || exit 1; _mbim_dns_fix_l "$1" ) 8>/tmp/5gmodem/mbimdns.lock
+}
+
+_mbim_dns_fix_l() {
+	_mdf_f=/tmp/resolv.conf.d/resolv.conf.auto
+	[ -f "$_mdf_f" ] || return 1
+	grep -qE "^# Interface $1(_[46])?\$" "$_mdf_f" && return 0
+	_mdf_ns=$(mbim_lost_dns "$1") || return 1
+	{ printf '# Interface %s_4\n' "$1"; printf 'nameserver %s\n' $_mdf_ns; } >> "$_mdf_f" 2>/dev/null || return 1
+	killall -HUP dnsmasq 2>/dev/null
+	_mdf_m="/tmp/5gmodem/mbimdns.$1.logged"
+	if [ "$(cat "$_mdf_m" 2>/dev/null)" != "$_mdf_ns" ]; then
+		logger -t 5gmodem "$1: mbim.sh of this firmware left the link without DNS - using the servers the modem reported: $_mdf_ns"
+		printf '%s' "$_mdf_ns" > "$_mdf_m"
+	fi
+	return 0
+}
+
 mm_ghost_bearer() {
 	[ -n "$1" ] && [ -n "$2" ] || return 1
 	command -v mmcli >/dev/null 2>&1 || return 1
@@ -1505,6 +1587,20 @@ net_alt_paths() {
 net_fetch() {
 	# $4: one optional request header, e.g. "Accept: application/octet-stream"
 	_nf_t="$1"; _nf_u="$2"; _nf_o="$3"; _nf_h="$4"
+	# a device the owner picked for downloads (GitHub blocked on the default uplink) goes first;
+	# binding to a device needs curl, wget cannot do it
+	_nf_d=$(uci -q get 5gmodem.@5gmodem[0].fetch_dev)
+	case "$_nf_d" in *[!A-Za-z0-9._@-]*) _nf_d="" ;; esac
+	if [ -n "$_nf_d" ] && [ -d "/sys/class/net/$_nf_d" ] && command -v curl >/dev/null 2>&1; then
+		if [ -n "$_nf_o" ]; then
+			curl -fsSL --connect-timeout 8 -m "$_nf_t" --interface "$_nf_d" ${_nf_h:+-H} ${_nf_h:+"$_nf_h"} -o "$_nf_o" "$_nf_u" 2>/dev/null && [ -s "$_nf_o" ] && return 0
+			rm -f "$_nf_o" 2>/dev/null
+		else
+			_nf_b=$(curl -fsSL --connect-timeout 8 -m "$_nf_t" --interface "$_nf_d" ${_nf_h:+-H} ${_nf_h:+"$_nf_h"} "$_nf_u" 2>/dev/null)
+			[ -n "$_nf_b" ] && { printf '%s' "$_nf_b"; return 0; }
+		fi
+		logger -t 5gmodem "net: fetch through $_nf_d failed - trying the default route"
+	fi
 	if [ -n "$_nf_o" ]; then
 		wget -qO "$_nf_o" ${_nf_h:+"--header=$_nf_h"} --timeout="$_nf_t" "$_nf_u" 2>/dev/null && [ -s "$_nf_o" ] && return 0
 		rm -f "$_nf_o" 2>/dev/null

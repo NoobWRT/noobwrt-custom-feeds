@@ -324,6 +324,44 @@ function installUpdate() {
 	});
 }
 
+// Where updates and the APN database are downloaded from: the default route, or a device the
+// owner picks when GitHub is blocked on it (a VPN, a second uplink). Saved at once, no form.
+function fetchDevRow() {
+	var sid = (uci.sections('5gmodem', '5gmodem')[0] || {})['.name'];
+	var cur = sid ? String(uci.get('5gmodem', sid, 'fetch_dev') || '') : '';
+	var sel = E('select', { 'class': 'cbi-input-select', 'id': 'upd-dev', 'disabled': true }, [
+		E('option', { 'value': '' }, [ _('Automatic (default route)') ])
+	]);
+	var hint = E('div', { 'class': 'cbi-value-description' }, [
+		_('Pick a VPN or another uplink if GitHub is not reachable through the main one. If the download through it fails, the default route is tried.')
+	]);
+	if (cur) { sel.appendChild(E('option', { 'value': cur, 'selected': true }, [ cur ])); }
+	L.resolveDefault(fs.exec_direct('/usr/share/5gmodem/update.sh', [ 'devs' ]), '{}').then(function(out) {
+		var d = {};
+		try { d = JSON.parse(out || '{}') || {}; } catch (e) {}
+		(d.devs || []).forEach(function(n) {
+			if (n === cur) { return; }
+			sel.appendChild(E('option', { 'value': n }, [ n + (n === d.default ? ' (' + _('default route') + ')' : '') ]));
+		});
+		sel.disabled = !sid;
+		if (String(d.curl) === '0') {
+			hint.appendChild(E('div', { 'style': 'margin-top:4px;color:#c60' }, [
+				_('Needs the curl package: without it the download always goes through the default route.')
+			]));
+		}
+	});
+	sel.addEventListener('change', function() {
+		if (!sid) { return; }
+		if (sel.value) { uci.set('5gmodem', sid, 'fetch_dev', sel.value); }
+		else { uci.unset('5gmodem', sid, 'fetch_dev'); }
+		uci.save().then(commitPending).catch(function() {});
+	});
+	return E('div', { 'class': 'cbi-value' }, [
+		E('label', { 'class': 'cbi-value-title', 'for': 'upd-dev' }, _('Download through')),
+		E('div', { 'class': 'cbi-value-field' }, [ sel, hint ])
+	]);
+}
+
 var APNBIN = '/usr/share/5gmodem/apn-update.sh';
 
 function updVersion() {
@@ -389,7 +427,7 @@ var EXTIPBIN = '/usr/share/5gmodem/extip.sh';
 return view.extend({
 	load: function() {
 		var self = this, args = arguments;
-		return fresh.check(30944, [ extip, healthform, modemtabs, mutil ]).then(function() { return self._load5g.apply(self, args); });
+		return fresh.check(30946, [ extip, healthform, modemtabs, mutil ]).then(function() { return self._load5g.apply(self, args); });
 	},
 
 	_load5g: function() {
@@ -444,6 +482,7 @@ return view.extend({
 					]) ]),
 				]),
 			]),
+			fetchDevRow(),
 			E('div', { 'class': 'cbi-value' }, [
 				E('label', { 'class': 'cbi-value-title' }, _('APN database')),
 				E('div', { 'class': 'cbi-value-field' }, [

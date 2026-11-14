@@ -35,6 +35,10 @@ _int() {
 
 _J=""
 _num() { [ -n "$2" ] && _J="$_J${_J:+,}\"$1\":$2"; }
+# carrier width in MHz from "B7 (2600 MHz) @20.0 MHz" or "20 MHz"; a number for exporters
+_bw() { printf '%s' "$1" | sed -nE 's/^(.*@)? *([0-9]{1,3}(\.[0-9])?)[0-9]* *MHz.*$/\2/p' | head -1; }
+# a secondary carrier counts unless the modem says it is not active: MBIM/QMI (DW5821e) give no state
+_sc_on() { case "$1" in activated|''|-) return 0 ;; *) return 1 ;; esac; }
 _str() {
 	[ -n "$2" ] || return 0
 	_s="$2"
@@ -70,6 +74,8 @@ tele_write() {
 	_num sinr "$(_int "$(_jf sinr)")"
 	_num temp "$(_int "$(_jf mtemp | sed 's/ *&deg;C//')")"
 	_num therm "$(_int "$(_jf mtherm)")"
+	# per-sensor readings ("cpu=48.2 pa=41.0"), so a host that reads this device over the network can list them too
+	_str temps "$(_jf temps | sed 's/^-$//')"
 	_num bat  "$(_int "$(_jf battery)")"
 	_num chg  "$(_int "$(_jf battery_charging)")"
 	_num dist "$(_int "$(_jf bs_distance)")"
@@ -79,11 +85,14 @@ tele_write() {
 	_str band "$_pb"
 	_ca="$_pb"
 	for _i in 1 2 3 4; do
-		[ "$(_jf "s${_i}state")" = "activated" ] || continue
+		_sc_on "$(_jf "s${_i}state")" || continue
 		_sb=$(_jf "s${_i}band" | grep -oE '^[Bn][0-9]+' | head -1)
 		[ -n "$_sb" ] && _ca="$_ca+$_sb"
 	done
 	case "$_ca" in *+*) _str ca "$_ca" ;; esac
+	# carriers the upload goes over too, "B3+B1"; only when the modem reports a second one
+	_ul=$(_jf ulcc | grep -E '^[Bn][0-9]+(\+[Bn][0-9]+)+$')
+	_str ul_ca "$_ul"
 
 	_md=$(_jf mode | sed 's/ *|.*//; s/ B[0-9].*//')
 	case "$_md" in
@@ -179,6 +188,10 @@ tele_write() {
 		_num lac      "$(_int "$(_jf lac_dec)")"
 		_str cid_hex  "$(_jf cid_hex | sed 's/^-$//')"
 		_str bandwidth "$(_jf bandwidth | sed 's/^-$//')"
+		_pbs=$(_jf pband | sed 's/^-$//')
+		_str pband "$_pbs"
+		_pbw=$(_bw "$_pbs"); [ -n "$_pbw" ] || _pbw=$(_bw "$(_jf bandwidth)")
+		_num bw "$_pbw"
 		_num pathloss "$(_int "$(_jf pathloss)")"
 		_str txpower  "$(_jf txpower | sed 's/^-$//')"
 		_num cqi      "$(_int "$(_jf cqi)")"
@@ -200,14 +213,15 @@ tele_write() {
 			_sb=$(_jf "s${_i}band" | sed 's/^-$//')
 			[ -n "$_sb" ] || continue
 			_str "s${_i}band"   "$_sb"
+			_num "s${_i}bw"     "$(_bw "$_sb")"
 			_num "s${_i}pci"    "$(_int "$(_jf "s${_i}pci")")"
 			_num "s${_i}earfcn" "$(_int "$(_jf "s${_i}earfcn")")"
 			_num "s${_i}rsrp"   "$(_int "$(_jf "s${_i}rsrp")")"
 			_num "s${_i}rsrq"   "$(_int "$(_jf "s${_i}rsrq")")"
 			_num "s${_i}sinr"   "$(_int "$(_jf "s${_i}sinr")")"
 			_ss=$(_jf "s${_i}state")
-			_str "s${_i}state" "$_ss"
-			[ "$_ss" = "activated" ] && _nca=$((_nca + 1))
+			_str "s${_i}state" "$(printf '%s' "$_ss" | sed 's/^-$//')"
+			_sc_on "$_ss" && _nca=$((_nca + 1))
 		done
 		_num nca "$_nca"
 		_nb=$(grep -o '"neighbors":\[[^]]*\]' "$_SNAP" 2>/dev/null | head -1)
@@ -272,6 +286,7 @@ tele_discovery() {
 	_disc mode "Network mode"  ""     ""
 	_disc band "Band"          ""     ""
 	_disc ca   "Carrier aggregation" "" ""
+	_disc ul_ca "Uplink carrier aggregation" "" ""
 	_disc ping "Ping"          "ms"   duration
 	_disc rx   "Download rate" "B/s"  data_rate
 	_disc tx   "Upload rate"   "B/s"  data_rate

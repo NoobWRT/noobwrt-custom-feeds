@@ -386,6 +386,20 @@ dns_verdict() {
 		echo "  A query to a foreign one leaves via another uplink's default route, and that"
 		echo "  uplink drops it: to clients it looks like 'sites load every other time'."
 	}
+	for _dv_i in $(uci -q show network 2>/dev/null | sed -n "s/^network\.\([^.=]*\)\.proto='\?mbim'\?\$/\1/p"); do
+		_dv_lost=$(mbim_lost_dns "$_dv_i") || continue
+		if grep -qE "^# Interface ${_dv_i}_4\$" "$_dv_auto" 2>/dev/null; then
+			echo "  $_dv_i (mbim): the firmware's mbim.sh dropped the carrier's DNS ($_dv_lost);"
+			echo "  the app put them back into resolv.conf.auto (watchdog round / ifup hotplug)."
+		else
+			echo "  PROBLEM: $_dv_i (mbim) is up, but neither it nor ${_dv_i}_4 has DNS servers,"
+			echo "  although the modem reported $_dv_lost. This is a bug of mbim.sh in OpenWrt"
+			echo "  25.12.6 (umbim commit 152b86e6ab: DNS is passed on only with dhcp=1; fixed"
+			echo "  on main by b556a45351). The app puts these servers back by itself; if this"
+			echo "  line shows up, that did not happen (watchdog busy, no answer over AT)."
+			echo "  By hand: uci add_list network.$_dv_i.dns='77.88.8.8'; uci commit network; ifup $_dv_i"
+		fi
+	done
 	if [ -n "$_dv_dead" ]; then
 		echo "  PROBLEM: DNS servers set by hand do not answer:$_dv_dead"
 		echo "  They come from the 'dns' option of the interface - the app writes it with"
@@ -396,7 +410,8 @@ dns_verdict() {
 		echo "  77.88.8.8 77.88.8.1 there."
 	fi
 	echo "--- DNS rebind protection ---"
-	_dv_rb=$(logread 2>/dev/null | grep -i "rebind" | tail -20)
+	# dnsmasq announces "DNS rebinding protection is active" at every start: that is not a block
+	_dv_rb=$(logread 2>/dev/null | grep -i "rebind" | grep -v "protection is active" | tail -20)
 	if [ -n "$_dv_rb" ]; then
 		_dv_names=$(printf '%s\n' "$_dv_rb" | sed -n 's/.*[Dd]etected[:,]* *//p' | sort | uniq -c)
 		if [ -n "$_dv_names" ]; then
@@ -1668,6 +1683,10 @@ _sum_verdict() {
 				*)
 					echo "The modem is online (address $_sv_ip, probes by IP go through),"
 					echo "but the router's DNS DOES NOT ANSWER - sites will not open."
+					if _sv_lost=$(mbim_lost_dns "$_sv_if"); then
+						echo "Cause: mbim.sh of this firmware (OpenWrt 25.12.6) did not pass on the"
+						echo "carrier's DNS ($_sv_lost) - the link has no resolver at all."
+					fi
 					_sv_dns=$(uci -q get "network.$_sv_if.dns" 2>/dev/null)
 					if [ -n "$_sv_dns" ]; then
 						echo "DNS servers set by hand on $_sv_if: $_sv_dns ('Fallback DNS')."

@@ -6139,3 +6139,33 @@ msgstr "LAC/TAC"
 
 msgid "Switching the mobile-data SIM…"
 msgstr "Mengganti SIM data seluler…"
+
+msgid "Automatic (default route)"
+msgstr "Otomatis (rute default)"
+
+msgid "Download through"
+msgstr "Unduh melalui"
+
+msgid "Needs the curl package: without it the download always goes through the default route."
+msgstr "Memerlukan paket curl: tanpanya unduhan selalu melalui rute default."
+
+msgid "Pick a VPN or another uplink if GitHub is not reachable through the main one. If the download through it fails, the default route is tried."
+msgstr "Pilih VPN atau uplink lain jika GitHub tidak dapat dijangkau melalui jalur utama. Jika unduhan melaluinya gagal, rute default dicoba."
+
+msgid "default route"
+msgstr "rute default"
+
+msgid "Enabling uplink aggregation — the modem reconnects to the network…"
+msgstr "Mengaktifkan agregasi uplink — modem tersambung ulang ke jaringan…"
+
+msgid "Stop turning it on"
+msgstr "Jangan aktifkan lagi"
+
+msgid "Turned on again after every modem restart"
+msgstr "Diaktifkan lagi setelah setiap modem dimulai ulang"
+
+msgid "Upload often sits at 1-2 Mbit/s until this is on. The choice is kept and applied again after a modem restart; the gain depends on the operator."
+msgstr "Unggahan sering tertahan di 1-2 Mbit/s sampai ini aktif. Pilihan disimpan dan diterapkan lagi setelah modem dimulai ulang; peningkatannya bergantung pada operator."
+
+msgid "Upload is aggregated too: %s"
+msgstr "Unggahan juga diagregasi: %s"

@@ -452,6 +452,7 @@ enforce() {
 		[ -f "$_e_f" ] || continue; case "$_e_f" in */.t|*.heal|*.demoted|*.nosim|*.nodata|*.mmoff|*.on2g|*.srch|*.radio|*.mmbusy|*.noproto) continue ;; esac
 		_e_if="${_e_f##*/}"
 		read -r _e_st _ _ _ _ < "$_e_f" || continue
+		mbim_dns_fix "$_e_if"
 		_e_dev=$(iface_dev "$_e_if"); [ -n "$_e_dev" ] || _e_dev=$(iface_dev "${_e_if}_4")
 		[ -n "$_e_dev" ] || continue
 		_e_base=$(base_metric "$_e_if")
@@ -1092,6 +1093,12 @@ event)
 	round
 	enforce
 	;;
+dnsfix)
+	# works with the watchdog off too: without it nobody else gives an MBIM link its DNS back
+	_df_if="${2%_[46]}"
+	[ -n "$_df_if" ] && mbim_dns_fix "$_df_if"
+	exit 0
+	;;
 getconf)
 	_gc_heal=""
 	for _gc_s in $(uci show "$CFG" 2>/dev/null | sed -n "s/^5gmodem\.\([^.]*\)=modem\$/\1/p"); do
@@ -1133,7 +1140,7 @@ setconf)
 	echo '{"result":"ok"}'
 	;;
 *)
-	echo "usage: $0 tick|once|status|getconf|setconf k=v...|setheal <iface> <none|ifup|reboot|power|>" >&2
+	echo "usage: $0 tick|once|status|dnsfix <iface>|getconf|setconf k=v...|setheal <iface> <none|ifup|reboot|power|>" >&2
 	exit 1
 	;;
 esac

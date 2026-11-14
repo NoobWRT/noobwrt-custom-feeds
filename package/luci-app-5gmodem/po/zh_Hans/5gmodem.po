@@ -6139,3 +6139,33 @@ msgstr "LAC/TAC"
 
 msgid "Switching the mobile-data SIM…"
 msgstr "正在切换移动数据 SIM 卡…"
+
+msgid "Automatic (default route)"
+msgstr "自动（默认路由）"
+
+msgid "Download through"
+msgstr "下载途径"
+
+msgid "Needs the curl package: without it the download always goes through the default route."
+msgstr "需要 curl 软件包：没有它时始终通过默认路由下载。"
+
+msgid "Pick a VPN or another uplink if GitHub is not reachable through the main one. If the download through it fails, the default route is tried."
+msgstr "如果主线路无法访问 GitHub，请选择 VPN 或其他上行接口。通过它下载失败时，会改用默认路由。"
+
+msgid "default route"
+msgstr "默认路由"
+
+msgid "Enabling uplink aggregation — the modem reconnects to the network…"
+msgstr "正在启用上行聚合 — 模块正在重新接入网络…"
+
+msgid "Stop turning it on"
+msgstr "不再自动启用"
+
+msgid "Turned on again after every modem restart"
+msgstr "每次模块重启后都会再次启用"
+
+msgid "Upload often sits at 1-2 Mbit/s until this is on. The choice is kept and applied again after a modem restart; the gain depends on the operator."
+msgstr "未启用时上传速度常停留在 1-2 Mbit/s。该选择会被保存，并在模块重启后重新应用；提升效果取决于运营商。"
+
+msgid "Upload is aggregated too: %s"
+msgstr "上传也已聚合：%s"

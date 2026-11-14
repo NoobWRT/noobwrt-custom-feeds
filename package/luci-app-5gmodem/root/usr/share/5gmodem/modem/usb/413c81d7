@@ -130,6 +130,9 @@ _dbg_scell() {
 	_SC_Q=$(_dbg_num "$(echo "$2" | awk -F'[:,]' '/^ *RSRP:/{print $4}' | head -n 1)")
 	_SC_I=$(_dbg_num "$(echo "$2" | awk -F'[:,]' '/^ *RSSI:/{print $2}' | head -n 1)")
 	_SC_N=$(_dbg_num "$(echo "$2" | awk -F'[:,]' '/^ *RSSI:/{print $4}' | head -n 1)")
+	# SNR of a secondary cell reads exactly -20.0 when the firmware did not measure it (seen next to
+	# RSRQ -9.9 dB in field dumps, where a real SNR is far above the floor)
+	case "$_SC_N" in -20|-20.0) _SC_N="" ;; esac
 	case "$1" in
 		1) S1RSRP="$_SC_P"; S1RSRQ="$_SC_Q"; S1RSSI="$_SC_I"; S1SINR="$_SC_N" ;;
 		2) S2RSRP="$_SC_P"; S2RSRQ="$_SC_Q"; S2RSSI="$_SC_I"; S2SINR="$_SC_N" ;;

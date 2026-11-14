@@ -626,8 +626,11 @@ function renderCaTable(json) {
 	var caSum = document.getElementById('ca-sum');
 	if (caSum) {
 		var ca = caSummary(json);
-		var caTxt = ca.n > 1 ? ca.n + 'CA' + (ca.bw ? ' · ' + ca.bw + ' MHz' : '') : '';
-		if (caSum.textContent !== caTxt) { caSum.textContent = caTxt; caSum.title = ca.n > 1 ? caTip(ca) : ''; }
+		// "B3+B1": carriers the modem also uploads on (FM350 reports it per secondary carrier)
+		var ul = /^[Bn]\d+(\+[Bn]\d+)+$/.test(String(json.ulcc || '')) ? String(json.ulcc) : '';
+		var caTxt = ca.n > 1 ? ca.n + 'CA' + (ca.bw ? ' · ' + ca.bw + ' MHz' : '') + (ul ? ' · UL ' + ul : '') : '';
+		var caTitle = ca.n > 1 ? caTip(ca) + (ul ? '\n' + _('Upload is aggregated too: %s').format(ul) : '') : '';
+		if (caSum.textContent !== caTxt || caSum.title !== caTitle) { caSum.textContent = caTxt; caSum.title = caTitle; }
 		caSum.style.display = caTxt ? '' : 'none';
 	}
 	if (hasPcc) {
@@ -2928,7 +2931,7 @@ simDialog: baseclass.extend({
 	
 	load: function() {
 		var self = this, args = arguments;
-		return fresh.check(30944, [ bandsui, extip, modemtabs, mutil, netpri, healthform, netarrange, mobileview ]).then(function() { return self._load5g.apply(self, args); });
+		return fresh.check(30946, [ bandsui, extip, modemtabs, mutil, netpri, healthform, netarrange, mobileview ]).then(function() { return self._load5g.apply(self, args); });
 	},
 
 	_load5g: function() {

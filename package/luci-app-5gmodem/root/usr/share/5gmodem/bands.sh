@@ -52,8 +52,32 @@ if [ "$1" = "mmsetbands" ]; then
 		done
 	fi
 	logger -t 5gmodem "bands: applying via MM ($2)"
-	mmcli -m "$3" --set-current-bands="$2" 2>&1
-	_mb_rc=$?
+	# MM can answer success and keep the old list when the modem is re-probing (a reconnect by
+	# the watchdog): read the list back and try once more before reporting success
+	_mb_cb() { mmcli -m "$1" -K 2>/dev/null | sed -n 's/^modem\.generic\.current-bands\.value\[[0-9]*\] *: *//p' | sort -u | tr '\n' ' '; }
+	_mb_want=$(printf '%s' "$2" | tr '|' '\n' | sort -u | tr '\n' ' ')
+	# only "the list did not move" counts as not applied: the modem may drop a band it lacks
+	_mb_old=$(_mb_cb "$3")
+	_mb_try=0
+	while :; do
+		_mb_out=$(mmcli -m "$3" --set-current-bands="$2" 2>&1)
+		_mb_rc=$?
+		[ "$_mb_rc" = 0 ] || break
+		[ "$2" = any ] && break
+		[ -n "$_mb_old" ] && [ "$_mb_old" != "$_mb_want" ] || break
+		sleep 1
+		_mb_cur=$(_mb_cb "$3")
+		[ -n "$_mb_cur" ] && [ "$_mb_cur" = "$_mb_old" ] || break
+		_mb_try=$((_mb_try + 1))
+		if [ "$_mb_try" -gt 1 ]; then
+			logger -t 5gmodem "bands: MM kept the old list after two writes (now: $_mb_cur)"
+			_mb_out="the modem kept its previous bands ($_mb_cur) - try again once it has settled"
+			_mb_rc=3
+			break
+		fi
+		sleep 3
+	done
+	printf '%s\n' "$_mb_out"
 	exec 7>&- 2>/dev/null
 	exit "$_mb_rc"
 fi
@@ -103,6 +127,28 @@ _persist_mode() {
 	uci -q commit 5gmodem
 	_pm_if=$(uci -q get "5gmodem.$_pm_sec.network")
 	[ -n "$_pm_if" ] && : > "/tmp/5gmodem/bandrestore_$_pm_if" 2>/dev/null
+}
+
+# Uplink CA (AT^ULCA) is lost on a modem restart on some firmware, so the owner's choice is
+# kept in uci and put back by restorebands. Turning it on needs a new attach (the network
+# learns the UE capability there), not a modem reboot: a reboot is what dropped it again.
+_persist_ulca() {
+	_pu_sec="m_$(active_modem | sed 's/[^A-Za-z0-9]/_/g')"
+	[ "$_pu_sec" != "m_" ] || return 0
+	if [ "$1" = 1 ]; then uci -q set "5gmodem.$_pu_sec.save_ulca=1"; else uci -q delete "5gmodem.$_pu_sec.save_ulca" 2>/dev/null; fi
+	uci -q commit 5gmodem
+}
+_cfun_cycle() {
+	[ -n "$_DEVICE" ] || return 0
+	sms_tool -d "$_DEVICE" at "AT+CFUN=4" >/dev/null 2>&1
+	sleep 3
+	_cf_n=0
+	while [ "$_cf_n" -lt 3 ]; do
+		_cf_n=$((_cf_n + 1))
+		sms_tool -d "$_DEVICE" at "AT+CFUN=1" >/dev/null 2>&1
+		sleep 2
+		case "$(sms_tool -d "$_DEVICE" at "AT+CFUN?" 2>/dev/null)" in *"+CFUN: 1"*) break ;; esac
+	done
 }
 
 hextobands() {
@@ -615,6 +661,7 @@ _bands_set_bg() {
 			after)     "$@" && { _bands_flush; at_unlock; _bands_after_write; } ;;
 			mode)      "$@" && { _persist_mode "$2"; _bands_flush; at_unlock; _bands_after_write; } ;;
 			reconnect) "$@"; _bands_flush; at_unlock; _reconnect_iface ;;
+			ulca)      "$@" && { _persist_ulca 1; _cfun_cycle; _bands_flush; at_unlock; _reconnect_iface; } ;;
 			*)         "$@" ;;
 		esac
 		_bands_flush
@@ -1886,7 +1933,7 @@ case $1 in
 		;;
 	"restorebands")
 		_rb_sec="m_$(active_modem | sed 's/[^A-Za-z0-9]/_/g')"
-		_rb_changed=0
+		_rb_changed=0; _rb_ulca=0
 		_rb_norm() { echo "$1" | tr ' ,' '\n\n' | grep -E '^[0-9]+$' | sort -n | uniq | tr '\n' ' ' | sed 's/ *$//'; }
 		_rb_one() {
 			_rb_saved=$(uci -q get "5gmodem.$_rb_sec.save_band$1")
@@ -1914,6 +1961,12 @@ case $1 in
 				setmode "$_rb_msaved" >/dev/null 2>&1 && _rb_changed=1
 			fi
 		fi
+		if [ "$(uci -q get "5gmodem.$_rb_sec.save_ulca")" = 1 ] && [ "$(getulca 2>/dev/null)" = off ]; then
+			if setulca on >/dev/null 2>&1; then
+				logger -t 5gmodem "restorebands: uplink aggregation enabled again for $(active_modem)"
+				_rb_ulca=1
+			fi
+		fi
 		if [ "$2" = "prepare" ]; then
 			if [ "$_rb_changed" = 1 ]; then
 				logger -t 5gmodem "restorebands(prepare): mask written before dialing for $(active_modem)"
@@ -1923,17 +1976,10 @@ case $1 in
 		fi
 		if [ "$_rb_changed" = 1 ]; then
 			logger -t 5gmodem "restorebands: saved bands restored for $(active_modem)"
-			if ! _bands_live && [ -n "$_DEVICE" ]; then
-				sms_tool -d "$_DEVICE" at "AT+CFUN=4" >/dev/null 2>&1
-				sleep 3
-				_cf_n=0
-				while [ "$_cf_n" -lt 3 ]; do
-					_cf_n=$((_cf_n + 1))
-					sms_tool -d "$_DEVICE" at "AT+CFUN=1" >/dev/null 2>&1
-					sleep 2
-					case "$(sms_tool -d "$_DEVICE" at "AT+CFUN?" 2>/dev/null)" in *"+CFUN: 1"*) break ;; esac
-				done
-			fi
+			if ! _bands_live || [ "$_rb_ulca" = 1 ]; then _cfun_cycle; fi
+			_reconnect_iface
+		elif [ "$_rb_ulca" = 1 ]; then
+			_cfun_cycle
 			_reconnect_iface
 		fi
 		;;
@@ -2002,7 +2048,9 @@ case $1 in
 		;;
 	"setulca")
 		case "$2" in
-			on) _bands_set_bg after setulca on ;;
+			on) _bands_set_bg ulca setulca on ;;
+			# no command turns it off: this only stops putting it back after a restart
+			forget) _persist_ulca 0; _bands_flush ;;
 		esac
 		;;
 	"getcelllock5g")
@@ -2112,6 +2160,7 @@ case $1 in
 		ULCA=$(_live_or_unsupported getulca)
 		if [ "x$ULCA" != "xUnsupported" ]; then
 			json_add_string ulca "$ULCA"
+			[ "$(uci -q get "5gmodem.m_$(active_modem | sed 's/[^A-Za-z0-9]/_/g').save_ulca")" = 1 ] && json_add_int ulca_saved 1
 		fi
 		json_add_array supported
 		T=$(getsupportedbands)

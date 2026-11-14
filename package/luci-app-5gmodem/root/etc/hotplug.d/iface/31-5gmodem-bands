@@ -16,7 +16,7 @@ done
 MPATH=$(uci -q get "$SEC.path")
 [ -n "$MPATH" ] || exit 0
 
-S=$(uci -q get "$SEC.save_band")$(uci -q get "$SEC.save_band5gnsa")$(uci -q get "$SEC.save_band5gsa")$(uci -q get "$SEC.save_mode")
+S=$(uci -q get "$SEC.save_band")$(uci -q get "$SEC.save_band5gnsa")$(uci -q get "$SEC.save_band5gsa")$(uci -q get "$SEC.save_mode")$(uci -q get "$SEC.save_ulca")
 [ -n "$S" ] || exit 0
 
 M="/tmp/5gmodem/bandrestore_$INTERFACE"

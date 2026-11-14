@@ -193,10 +193,11 @@ NEIGHBORS=$(echo "$O" | awk -F, '
 		if (x < 0 || x > 200) return ""
 		return x + base
 	}
-	function half(v, base,   x) {
+	# RSRQ index: LTE 0..34 (-20..-3 dB), NR 0..127; field reports had neighbour rows with 51-80 here
+	function half(v, base, top,   x) {
 		if (v == "" || v + 0 != v || v == 255) return ""
 		x = v + 0
-		if (x < 0 || x > 200) return ""
+		if (x < 0 || x > top) return ""
 		return sprintf("%.1f", base + x / 2)
 	}
 	/^(PCC|SCC *[0-9]*):/ {
@@ -213,12 +214,12 @@ NEIGHBORS=$(echo "$O" | awk -F, '
 		arfcn = $7; pci = $8
 		band = ""; rsrp = ""; rsrq = ""
 		if (rat == 4) {
-			if (srv) { band = $9; rsrp = lvl($13, -141); rsrq = half($14, -20) }
-			else     {            rsrp = lvl($11, -141); rsrq = half($12, -20) }
+			if (srv) { band = $9; rsrp = lvl($13, -141); rsrq = half($14, -20, 34) }
+			else     {            rsrp = lvl($11, -141); rsrq = half($12, -20, 34) }
 			if (band != "" && band + 0 > 100) band = band - 100; else band = e2b(arfcn)
 		} else if (rat == 9) {
-			if (srv) { band = $9; rsrp = lvl($13, -157); rsrq = half($14, -43.5) }
-			else     {            rsrp = lvl($11, -157); rsrq = half($12, -43.5) }
+			if (srv) { band = $9; rsrp = lvl($13, -157); rsrq = half($14, -43.5, 127) }
+			else     {            rsrp = lvl($11, -157); rsrq = half($12, -43.5, 127) }
 			sub(/^50/, "", band)
 		} else {
 			if (srv) rsrp = lvl($11, -121); else rsrp = lvl($15, -121)
@@ -362,14 +363,16 @@ fi
 IFS="
 "
 IDX=1
+# secondary carriers that also carry the upload (<ul_configured> of +GTCAINFO, AT manual 11.1.16)
+_ULSC=""
 LINES=$(echo "$O" | grep -E '^SCC\s?[0-9]:2,')
 for LINE in $LINES; do
   _oIFS=$IFS; IFS=':,'; set -- $LINE; IFS=$_oIFS
   _lidx="${1#SCC}"; _lidx="${_lidx# }"
   if [ "$_lidx" = "$IDX" ]; then
-    _S4=$4; _S5=$5; _S6=$6; _S7=$7; _S9=$9; _S11=${11}; _S13=${13}; [ "$#" -ge 15 ] && _S13=${15}
+    _S3=$3; _S4=$4; _S5=$5; _S6=$6; _S7=$7; _S9=$9; _S11=${11}; _S13=${13}; [ "$#" -ge 15 ] && _S13=${15}
   else
-    _S4=""; _S5=""; _S6=""; _S7=""; _S9=""; _S11=""; _S13=""
+    _S3=""; _S4=""; _S5=""; _S6=""; _S7=""; _S9=""; _S11=""; _S13=""
   fi
   T=$_S4
   if [ -n "$T" ]; then
@@ -383,10 +386,12 @@ for LINE in $LINES; do
       T=$((T - 100))
       T2="$(band4g $T)${DBW}"
       T_4G_MODE="${T_4G_MODE}$(band4g $T) + "
+      [ "$_S3" = 1 ] && _ULSC="$_ULSC+B$T"
     elif [ "$T" -gt "500" ]; then
       T=$(echo "$T" | sed 's/^50//')
       T2="$(band5g $T)${DBW}"
       T_5G_MODE="${T_5G_MODE}$(band5g $T) + "
+      [ "$_S3" = 1 ] && _ULSC="$_ULSC+n$T"
     fi
     if [ -n "$T2" ]; then
       case $IDX in
@@ -448,6 +453,16 @@ for LINE in $LINES; do
 
   IDX=$((IDX + 1))
 done
+# "B3+B1": the primary carrier and the secondary ones the modem uploads on; left empty without
+# a second uplink carrier, so a modem that never reports it and one without UL CA look the same
+ULCC=""
+if [ -n "$_ULSC" ]; then
+  _ulp=$(echo "$O" | sed -n 's/^PCC: *\([0-9][0-9]*\),.*/\1/p' | head -1)
+  case "$_ulp" in
+    1[0-9][0-9]) ULCC="B$((_ulp - 100))$_ULSC" ;;
+    50[0-9]*)    ULCC="n${_ulp#50}$_ULSC" ;;
+  esac
+fi
 
 case "$T_4G_PRSRP" in
   -[0-9]*)

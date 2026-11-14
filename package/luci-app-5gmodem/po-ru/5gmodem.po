@@ -6424,3 +6424,33 @@ msgstr "LAC/TAC"
 
 msgid "Switching the mobile-data SIM…"
 msgstr "Переключение SIM-карты для мобильного интернета…"
+
+msgid "Automatic (default route)"
+msgstr "Автоматически (маршрут по умолчанию)"
+
+msgid "Download through"
+msgstr "Скачивать через"
+
+msgid "Needs the curl package: without it the download always goes through the default route."
+msgstr "Нужен пакет curl: без него скачивание всегда идёт по маршруту по умолчанию."
+
+msgid "Pick a VPN or another uplink if GitHub is not reachable through the main one. If the download through it fails, the default route is tried."
+msgstr "Выберите VPN или другой канал, если через основной GitHub недоступен. Если через него скачать не удалось, используется маршрут по умолчанию."
+
+msgid "default route"
+msgstr "маршрут по умолчанию"
+
+msgid "Enabling uplink aggregation — the modem reconnects to the network…"
+msgstr "Включаю агрегацию на отдачу — модем заново подключается к сети…"
+
+msgid "Stop turning it on"
+msgstr "Больше не включать"
+
+msgid "Turned on again after every modem restart"
+msgstr "Включается снова после каждого перезапуска модема"
+
+msgid "Upload often sits at 1-2 Mbit/s until this is on. The choice is kept and applied again after a modem restart; the gain depends on the operator."
+msgstr "Без неё отдача часто держится на 1-2 Мбит/с. Выбор запоминается и повторяется после перезапуска модема; прирост зависит от оператора."
+
+msgid "Upload is aggregated too: %s"
+msgstr "Отдача тоже идёт по нескольким несущим: %s"

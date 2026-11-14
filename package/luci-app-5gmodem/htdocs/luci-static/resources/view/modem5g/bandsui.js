@@ -439,30 +439,47 @@ function render256qam(state) {
 	}
 }
 
-function renderUlca(state) {
+function renderUlca(state, saved) {
 	var row = _ensureRow('ulcan', 'ulca-cell', _('Uplink aggregation'), 'caenn');
 	var cell = document.getElementById('ulca-cell');
 	if (!row || !cell) { return; }
 	if (state !== 'on' && state !== 'off') { row.style.display = 'none'; return; }
 	row.style.display = '';
-	if (ctx.sameRender(cell, 'ulca|' + state)) { return; }
+	if (ctx.sameRender(cell, 'ulca|' + state + '|' + (saved ? 1 : 0))) { return; }
 	cell.innerHTML = '';
 
 	if (state === 'on') {
 		cell.appendChild(E('span', {}, _('Enabled')));
+		if (saved) {
+			var note = E('span', { 'style': 'opacity:.65; font-size:90%; margin-left:.6em' },
+				_('Turned on again after every modem restart'));
+			var stop = E('button', {
+				'class': 'btn cbi-button',
+				'style': 'margin-left:.6em',
+				'click': ui.createHandlerFn(this, function() {
+					// only the saved choice goes: the modem has no command to turn it off
+					return L.resolveDefault(fs.exec('/usr/share/5gmodem/bands.sh', [ 'setulca', 'forget' ]), null).then(function() {
+						if (note.parentNode) { note.parentNode.removeChild(note); }
+						if (stop.parentNode) { stop.parentNode.removeChild(stop); }
+					});
+				})
+			}, _('Stop turning it on'));
+			cell.appendChild(note);
+			cell.appendChild(stop);
+		}
 		return;
 	}
 	cell.appendChild(E('button', {
 		'class': 'btn cbi-button cbi-button-apply',
 		'click': ui.createHandlerFn(this, function() {
 			_runBands([ 'setulca', 'on' ],
-				_('Enabling uplink aggregation — the modem is restarting its radio…'));
+				_('Enabling uplink aggregation — the modem reconnects to the network…'));
 		})
 	}, _('Enable')));
 	cell.appendChild(E('span', { 'style': 'margin-left:.6em; color:#e58a00' },
 		_('Disabled in modem')));
 	cell.appendChild(E('span', { 'style': 'opacity:.65; font-size:90%; margin-left:.6em' },
-		_('Upload often sits at 1-2 Mbit/s until this is on')));
+		_('Upload often sits at 1-2 Mbit/s until this is on. The choice is kept and applied again after a modem restart; the gain depends on the operator.')));
 }
 
 function render5gMode(state) {
@@ -694,7 +711,7 @@ function applyVendorJson(j) {
 		renderCellLock(j.celllock);
 		renderCellLock5g(j.celllock5g);
 		render256qam(j.qam256);
-		renderUlca(j.ulca);
+		renderUlca(j.ulca, j.ulca_saved);
 		var hasBands = (j.supported && j.supported.length) ||
 		               (j.supported5gnsa && j.supported5gnsa.length) ||
 		               (j.supported5gsa && j.supported5gsa.length);
@@ -1200,7 +1217,7 @@ function ungate() {
 function setOther(list) { bandsOther = list || []; }
 
 return baseclass.extend({
-	API: 30944,
+	API: 30946,
 	mtkPackagePrompt: mtkPackagePrompt,
 	init: function(c) { ctx = c; },
 	loadBands: function() { return loadBands(); },

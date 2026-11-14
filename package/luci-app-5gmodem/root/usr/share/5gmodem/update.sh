@@ -258,6 +258,22 @@ install)
 	exit 0
 	;;
 
+devs)
+	# devices a download can be bound to: up, not loopback, not a bridge port; curl:0 means the choice has no effect
+	_dv=""
+	for _dn in /sys/class/net/*; do
+		_dn=${_dn##*/}
+		case "$_dn" in lo|*[!A-Za-z0-9._@-]*) continue ;; esac
+		[ $(( $(cat "/sys/class/net/$_dn/flags" 2>/dev/null || echo 0) & 1 )) -ne 0 ] || continue
+		# a bridge port (LAN Wi-Fi, switch port) carries no route of its own
+		[ -e "/sys/class/net/$_dn/master" ] && continue
+		_dv="$_dv${_dv:+,}\"$_dn\""
+	done
+	_dd=$(ip -4 route show default 2>/dev/null | sed -n 's/.* dev \([^ ]*\).*/\1/p' | head -1)
+	printf '{"curl":%s,"default":"%s","devs":[%s]}\n' \
+		"$(command -v curl >/dev/null 2>&1 && echo 1 || echo 0)" "$(json_esc "$_dd")" "$_dv"
+	;;
+
 status)
 	if [ -s "$STATUS" ]; then
 		cat "$STATUS"
@@ -269,7 +285,7 @@ status)
 	;;
 
 *)
-	echo '{"success":false,"error":"usage: update.sh version|check|install|status"}'
+	echo '{"success":false,"error":"usage: update.sh version|check|install|status|devs"}'
 	exit 1
 	;;
 esac

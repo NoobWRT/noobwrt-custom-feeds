@@ -6139,3 +6139,33 @@ msgstr "LAC/TAC"
 
 msgid "Switching the mobile-data SIM…"
 msgstr "モバイルデータ用の SIM を切り替えています…"
+
+msgid "Automatic (default route)"
+msgstr "自動（デフォルトルート）"
+
+msgid "Download through"
+msgstr "ダウンロード経路"
+
+msgid "Needs the curl package: without it the download always goes through the default route."
+msgstr "curl パッケージが必要です。ない場合は常にデフォルトルートでダウンロードします。"
+
+msgid "Pick a VPN or another uplink if GitHub is not reachable through the main one. If the download through it fails, the default route is tried."
+msgstr "メイン回線で GitHub に接続できない場合は、VPN または別のアップリンクを選択してください。そこでのダウンロードに失敗すると、デフォルトルートを試します。"
+
+msgid "default route"
+msgstr "デフォルトルート"
+
+msgid "Enabling uplink aggregation — the modem reconnects to the network…"
+msgstr "アップリンクアグリゲーションを有効化中 — モデムがネットワークに再接続します…"
+
+msgid "Stop turning it on"
+msgstr "今後は有効にしない"
+
+msgid "Turned on again after every modem restart"
+msgstr "モデムの再起動のたびに再度有効化されます"
+
+msgid "Upload often sits at 1-2 Mbit/s until this is on. The choice is kept and applied again after a modem restart; the gain depends on the operator."
+msgstr "これが無効だとアップロードは 1-2 Mbit/s 程度にとどまることがよくあります。選択は保存され、モデム再起動後に再適用されます。効果はオペレーター次第です。"
+
+msgid "Upload is aggregated too: %s"
+msgstr "アップロードもアグリゲーションされています：%s"

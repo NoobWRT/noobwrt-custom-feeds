@@ -9,6 +9,7 @@ RJ11_STATE=${APC_RJ11_STATE:-/var/run/aw1000-rj11d.state}
 ORIG=$DATA/original
 STATUS=$RUN/status
 HISTORY=$RUN/history
+G5_AT=/usr/share/5gmodem/atcmd.sh
 MAX_CELLS=5
 MAX_HOLD=900
 STABLE_SECS=600
@@ -204,6 +205,12 @@ at() {
 
 	AT_OUT=
 	[ -n "$PORT" ] || return 1
+	if [ "$PORT" = 5gmodem ]; then
+		AT_OUT=$("$G5_AT" "$(g5_port)" "$1" "${2:-5}" 2>/dev/null) || return 1
+		AT_OUT=$(printf '%s\n' "$AT_OUT" | grep -v '^AT' | tr -d "\r\"\\\\' " | grep .)
+		AT_OUT=$(printf '%s\nOK\n' "$AT_OUT")
+		return 0
+	fi
 	if [ "$PORT" = mm ]; then
 		AT_OUT=$(mmcli -m any --timeout=$((${2:-5} + 3)) --command="$1" 2>/dev/null) || return 1
 		AT_OUT=$(printf '%s\nOK\n' "${AT_OUT#response: }" | tr -d "\r\"\\\\' ")
@@ -215,6 +222,10 @@ at() {
 	AT_OUT=$(printf '%s\n' "$AT_OUT" | sed -n 's/^[[:space:]]*"response": "\(.*\)",\{0,1\}$/\1/p' |
 		sed 's/\\r//g; s/\\n/\n/g' | tr -d '"\\ ')
 	[ -n "$AT_OUT" ]
+}
+
+g5_port() {
+	uci -q get 5gmodem.@5gmodem[0].at_port || uci -q get 5gmodem.@5gmodem[0].device
 }
 
 at_want() {
@@ -244,6 +255,7 @@ port_ok() {
 auto_ports() {
 	local t i v
 
+	[ -x "$G5_AT" ] && [ -n "$(g5_port)" ] && echo 5gmodem
 	pidof ModemManager >/dev/null && command -v mmcli >/dev/null && echo mm
 	uci -q show qmodem | sed -n "s/^qmodem\.[^.]*\.at_port='\(.*\)'$/\1/p"
 	for t in /sys/class/tty/ttyUSB*; do
@@ -262,7 +274,7 @@ find_port() {
 	if [ "$PORT_MODE" = manual ]; then
 		case "$MANUAL_PORT" in
 		/dev/*[!A-Za-z0-9_/.-]*|'') ;;
-		/dev/*|mm) port_ok "$MANUAL_PORT" ;;
+		/dev/*|mm|5gmodem) port_ok "$MANUAL_PORT" ;;
 		esac
 	else
 		for p in $(auto_ports); do

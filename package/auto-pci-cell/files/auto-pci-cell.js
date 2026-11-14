@@ -94,6 +94,8 @@ function phoneBadge(phone) {
 	]);
 }
 
+var PORT_NAMES = { mm: 'ModemManager', '5gmodem': _('5G Modem app') };
+
 var STATES = {
 	starting: [ _('Starting'), '' ],
 	off: [ _('Off'), '' ],
@@ -183,7 +185,7 @@ function renderCards(s) {
 			]),
 			phoneBadge(s.phone)
 		]),
-		card(_('AT port'), s.port == 'mm' ? 'ModemManager' : (s.port || '-'), (s.port_mode == 'manual' ? _('Manual') : _('Auto')) + (s.port == 'mm' ? ', mmcli' : ', at-daemon ' + (s.atd ? _('running') : _('not running'))))
+		card(_('AT port'), PORT_NAMES[s.port] || s.port || '-', (s.port_mode == 'manual' ? _('Manual') : _('Auto')) + (PORT_NAMES[s.port] ? '' : ', at-daemon ' + (s.atd ? _('running') : _('not running'))))
 	]);
 }
 
@@ -281,7 +283,7 @@ return view.extend({
 		o.value('manual', _('Manual'));
 
 		o = s.taboption('general', form.ListValue, 'manual_at_port', _('Manual port'));
-		ports.forEach(function(p) { o.value(p); });
+		ports.forEach(function(p) { o.value(p, PORT_NAMES[p] || p); });
 		if (!ports.length)
 			o.value('/dev/ttyUSB2');
 		o.depends('at_port_mode', 'manual');

@@ -5,6 +5,7 @@
 RUN=${APC_RUN:-/var/run/auto-pci-cell}
 STATUS=$RUN/status
 HISTORY=$RUN/history
+G5_AT=/usr/share/5gmodem/atcmd.sh
 ORIG=${APC_DATA:-/etc/auto-pci-cell}/original
 
 status() {
@@ -14,6 +15,7 @@ status() {
 	json_add_boolean running "$(pidof auto-pci-cell >/dev/null && echo 1 || echo 0)"
 	json_add_boolean atd "$(ubus list at-daemon >/dev/null 2>&1 && echo 1 || echo 0)"
 	json_add_boolean mm "$(pidof ModemManager >/dev/null && echo 1 || echo 0)"
+	json_add_boolean g5 "$([ -x "$G5_AT" ] && echo 1 || echo 0)"
 	json_add_boolean managed "$([ -f "$ORIG" ] && echo 1 || echo 0)"
 	json_add_string original "$(cat "$ORIG" 2>/dev/null)"
 	json_add_array cells
@@ -62,6 +64,7 @@ ports() {
 
 	json_init
 	json_add_array ports
+	[ -x "$G5_AT" ] && json_add_string "" 5gmodem
 	pidof ModemManager >/dev/null && command -v mmcli >/dev/null && json_add_string "" mm
 	for p in /dev/ttyUSB* /dev/ttyACM*; do
 		[ -e "$p" ] && json_add_string "" "$p"
@@ -71,6 +74,11 @@ ports() {
 }
 
 send() {
+	if [ "$1" = 5gmodem ]; then
+		"$G5_AT" "$(uci -q get 5gmodem.@5gmodem[0].at_port || uci -q get 5gmodem.@5gmodem[0].device)" \
+			"$(printf '%s' "$2" | sed 's/\\"/"/g')" 8 2>/dev/null | grep -v '^AT' | tr -d '\r"'
+		return
+	fi
 	if [ "$1" = mm ]; then
 		mmcli -m any --timeout=8 --command="$(printf '%s' "$2" | sed 's/\\"/"/g')" 2>/dev/null |
 			sed "s/^response: '//; s/'$//" | tr -d '\r"'
@@ -95,7 +103,7 @@ test_port() {
 		json_dump
 		return
 		;;
-	/dev/tty*|mm) ;;
+	/dev/tty*|mm|5gmodem) ;;
 	*)
 		json_add_boolean ok 0
 		json_add_string error "Not a valid port"
@@ -103,7 +111,14 @@ test_port() {
 		return
 		;;
 	esac
-	if [ "$port" = mm ]; then
+	if [ "$port" = 5gmodem ]; then
+		if [ ! -x "$G5_AT" ]; then
+			json_add_boolean ok 0
+			json_add_string error "The 5G Modem app is not installed"
+			json_dump
+			return
+		fi
+	elif [ "$port" = mm ]; then
 		if ! pidof ModemManager >/dev/null; then
 			json_add_boolean ok 0
 			json_add_string error "ModemManager is not running"
@@ -116,7 +131,7 @@ test_port() {
 		json_dump
 		return
 	fi
-	if [ "$port" != mm ] && ! ubus list at-daemon >/dev/null 2>&1; then
+	if [ "$port" != mm ] && [ "$port" != 5gmodem ] && ! ubus list at-daemon >/dev/null 2>&1; then
 		json_add_boolean ok 0
 		json_add_string error "at-daemon is not running"
 		json_dump

@@ -1,6 +1,6 @@
 # PCI Cell Lock
 
-Keeps a Quectel modem on your best 4G cell. You make a list of cells in the order you want them, and it moves down the list when a cell loses signal and back up when a better one returns. Made for the Arcadyan AW1000 with an RG500Q EA modem. It works on NoobWRT and MyWRT through ubus at daemon, and on OpenWrt with ModemManager through mmcli.
+Keeps a Quectel modem on your best 4G cell. You make a list of cells in the order you want them, and it moves down the list when a cell loses signal and back up when a better one returns. Made for the Arcadyan AW1000 with an RG500Q EA modem. It works on NoobWRT and MyWRT through ubus at daemon, on OpenWrt with ModemManager through mmcli, and with the 5G Modem app through its own AT helper.
 
 ## What it does
 
@@ -18,11 +18,11 @@ It installs turned off and changes nothing until you turn it on under Services, 
 
 On NoobWRT or OpenWrt with ModemManager:
 
-    apk add --allow-untrusted /tmp/auto-pci-cell-0.3.2-r1.apk
+    apk add --allow-untrusted /tmp/auto-pci-cell-0.3.3-r1.apk
 
 On MyWRT:
 
-    opkg install /tmp/auto-pci-cell_0.3.2-1_all.ipk
+    opkg install /tmp/auto-pci-cell_0.3.3-1_all.ipk
 
 MyWRT has its own PCI Lock, which has to stay off or this app pauses:
 
@@ -44,7 +44,7 @@ With the OpenWrt 25.12 SDK in the owrt-sdk-cache Docker volume:
 
     docker run --rm -v owrt-sdk-cache:/cache -v "$PWD:/src" owrt-sdk-env sh /src/build.sh
 
-The packages end up in dist. Pushing a tag like v0.3.2 builds them on GitHub and adds them to a release.
+The packages end up in dist. Pushing a tag like v0.3.3 builds them on GitHub and adds them to a release.
 
 ## License
 

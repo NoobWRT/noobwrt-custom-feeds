@@ -1,6 +1,6 @@
 // SPDX-License-Identifier: GPL-2.0-only
 import * as api from '../api.js';
-import { h, clear, card, pageHeader, button, badge, busy, fmtTime } from '../ui.js';
+import { h, clear, icon, card, pageHeader, button, badge, busy, fmtTime } from '../ui.js';
 import { gridEditor, sectionForm, daysText, V } from '../forms.js';
 
 const WHO = [
@@ -23,22 +23,33 @@ export default async function quiet(ctx) {
 		await ctx.refresh();
 		drawNow();
 	};
-	const drawNow = () => clear(now,
-		h('p', qs.on ? (qs.until > 0 ? 'Quiet is on until ' + fmtTime(qs.until) + '.' : 'Quiet is on until you turn it off.') :
-			qs.scheduled ? 'A quiet window is active now.' : 'The phone rings as normal now.'),
-		qs.quiet_calls ? h('p', { class: 'muted' }, qs.quiet_calls + ' call(s) were silenced since you last looked.') : null,
-		h('div', { class: 'row-actions' },
-			qs.on ? button('Turn quiet off', { kind: 'primary', onclick: e => set(e.currentTarget, 0) }) : [
-				button('1 hour', { onclick: e => set(e.currentTarget, 60) }),
-				button('2 hours', { onclick: e => set(e.currentTarget, 120) }),
-				button('8 hours', { onclick: e => set(e.currentTarget, 480) }),
-				button('Until I turn it off', { onclick: e => set(e.currentTarget, -1) })
-			],
-			qs.quiet_calls ? button('Mark silenced calls as seen', { onclick: async e => {
-				await busy(e.currentTarget, () => api.call('fxs', 'quiet_seen', {}));
-				qs = await api.maybe('fxs', 'quiet_status', {}, {});
-				drawNow();
-			} }) : null));
+	const drawNow = () => {
+		const quietOn = qs.on || qs.scheduled;
+		clear(now,
+			h('div', { class: 'hero hero-' + (quietOn ? 'ring' : 'ok') },
+				h('div', { class: 'hero-icon' }, icon('moon')),
+				h('div', { class: 'hero-text' },
+					h('strong', qs.on ? 'Quiet active (manual)' : qs.scheduled ? 'Scheduled quiet active' : 'Normal mode'),
+					h('span', { class: 'muted small' },
+						qs.on && qs.until > 0 ? 'Quiet is active until ' + fmtTime(qs.until) + '.' :
+						qs.on ? 'Quiet is active until turned off.' :
+						qs.scheduled ? 'A scheduled quiet window is currently active.' :
+						'Phone rings as normal.')),
+				qs.quiet_calls ? badge(qs.quiet_calls + ' call(s) silenced', 'warn') : null),
+
+			h('div', { class: 'quick', style: { marginTop: '14px' } },
+				qs.on ? button('Turn quiet off', { kind: 'primary', onclick: e => set(e.currentTarget, 0) }) : [
+					button('1 hour', { icon: 'moon', onclick: e => set(e.currentTarget, 60) }),
+					button('2 hours', { onclick: e => set(e.currentTarget, 120) }),
+					button('8 hours', { onclick: e => set(e.currentTarget, 480) }),
+					button('Until turned off', { onclick: e => set(e.currentTarget, -1) })
+				],
+				qs.quiet_calls ? button('Mark silenced calls as seen', { onclick: async e => {
+					await busy(e.currentTarget, () => api.call('fxs', 'quiet_seen', {}));
+					qs = await api.maybe('fxs', 'quiet_status', {}, {});
+					drawNow();
+				} }) : null));
+	};
 	drawNow();
 
 	const who = { name: 'mode', label: 'Who can ring', type: 'select', options: WHO };

@@ -273,7 +273,7 @@ export function gridEditor({ config, type, title, fields, columns, max, emptyTex
 				empty(emptyText || 'Nothing here yet.', 'add'));
 	};
 
-	root.appendChild(h('div', { class: 'loading' }, 'Loading…'));
+	root.appendChild(h('div', { class: 'loading' }, h('span', { class: 'spinner' }), 'Loading…'));
 	reload().catch(e => clear(root, h('div', { class: 'alert alert-error' }, e.message)));
 	root.reload = reload;
 	return root;

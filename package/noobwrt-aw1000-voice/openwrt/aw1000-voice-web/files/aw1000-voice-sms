@@ -21,6 +21,12 @@
 
 READ=/etc/aw1000-voice/sms.read
 SEEN=/etc/aw1000-voice/sms.seen
+# Send times and first-seen markers for messages without a time of their own,
+# one file per ModemManager generation and SMS number in a private runtime
+# directory. They are lost on a reboot and ignored after a ModemManager restart
+# (see sent_generation); a send time is also ignored after SENT_TTL (a week).
+RUN=/var/run/aw1000-voice-sms
+SENT_TTL=604800
 LOG_TAG=aw1000-voice-sms
 mkdir -p /etc/aw1000-voice
 
@@ -50,13 +56,122 @@ name_of() {
 	done
 }
 
-# epoch from an ISO 8601 timestamp like 2026-11-12T10:15:30+05:30
+# epoch from an ISO 8601 timestamp like 2026-11-12T10:15:30+05:30.
+# Prints nothing when the timestamp is missing or cannot be read: an SMS
+# without a time must not be given one (see cmd_list).
 epoch() {
 	local t="${1%%+*}"
 
 	t="${t%Z}"
 	case "$t" in *T*-[0-9][0-9]:[0-9][0-9]) t="${t%-[0-9][0-9]:[0-9][0-9]}" ;; esac
-	date -D '%Y-%m-%dT%H:%M:%S' -d "$t" +%s 2>/dev/null || date +%s
+	date -D '%Y-%m-%dT%H:%M:%S' -d "$t" +%s 2>/dev/null
+}
+
+# A sent SMS has no timestamp in its PDU, so ModemManager reports none for it.
+# While ModemManager runs, each SMS has an object number that is never reused;
+# after it restarts the numbers start again. A generation is the ModemManager
+# pid and its /proc start time, and numbers are only trusted inside the
+# generation that issued them. Anything unreadable means no cache at all.
+sent_generation() {
+	local p start
+
+	p=$(pidof ModemManager 2>/dev/null | cut -d' ' -f1)
+	case "$p" in ''|*[!0-9]*) return 0 ;; esac
+	start=$(sed 's/^.*) //' "/proc/$p/stat" 2>/dev/null | cut -d' ' -f20)
+	case "$start" in ''|*[!0-9]*) return 0 ;; esac
+	printf '%s:%s' "$p" "$start"
+}
+
+# The store lives in a runtime directory that only the user running this (root
+# on the router) may write. If it is not ours, nothing is stored: a local user
+# must not be able to seed times.
+sent_root() {
+	local d
+
+	[ -d "$RUN" ] || mkdir -m 700 "$RUN" 2>/dev/null
+	[ -L "$RUN" ] && return 1
+	d=$(ls -ldn "$RUN" 2>/dev/null | awk '{ print $1, $3 }')
+	[ "$d" = "drwx------ $(id -u)" ] || return 1
+	printf '%s' "$RUN"
+}
+
+# One record per generation and message number, written whole and renamed into
+# place: concurrent writers never share a file, so no lock is needed.
+sent_put() { # root generation name value
+	local dir tmp
+
+	[ -n "$1" ] && [ -n "$2" ] || return 1
+	dir=$1/$2
+	[ -d "$dir" ] || mkdir -m 700 "$dir" 2>/dev/null
+	[ -L "$dir" ] && return 1
+	[ -d "$dir" ] || return 1
+	tmp=$(mktemp "$dir/.$3.XXXXXX" 2>/dev/null) || return 1
+	printf '%s\n' "$4" > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null &&
+		mv -f "$tmp" "$dir/$3" 2>/dev/null
+	rm -f "$tmp" 2>/dev/null
+}
+
+sent_get() { # root generation name
+	[ -n "$1" ] && [ -n "$2" ] || return 0
+	[ -L "$1/$2" ] && return 0
+	cat "$1/$2/$3" 2>/dev/null
+}
+
+# A sent time is used for a week; the record itself stays in /var/run until the
+# router reboots or a later generation is pruned.
+sent_time() { # root generation number
+	local t now
+
+	t=$(sent_get "$1" "$2" "sent.$3")
+	case "$t" in ''|*[!0-9]*) return 0 ;; esac
+	now=$(date +%s 2>/dev/null)
+	case "$now" in ''|*[!0-9]*) return 0 ;; esac
+	[ $((now - t)) -le "$SENT_TTL" ] || return 0
+	printf '%s' "$t"
+}
+
+# An inbound message with no time of its own still has to turn read: remember
+# when it was first seen, so the read marker can move past it. The record is
+# runtime only and is not used as the message's display time; after a reboot or
+# ModemManager restart such a message can look unread again.
+seen_time() { # root generation number
+	local t now
+
+	t=$(sent_get "$1" "$2" "seen.$3")
+	if [ -z "$t" ]; then
+		now=$(date +%s 2>/dev/null)
+		case "$now" in ''|*[!0-9]*) return 0 ;; esac
+		sent_put "$1" "$2" "seen.$3" "$now"
+		t=$now
+	fi
+	printf '%s' "$t"
+}
+
+# Drop only generations that are strictly older than the caller's, judged by
+# the start tick in their name: an older send that passes its generation check
+# just before a restart must not delete the generation that replaced it. A
+# newer one, an equal tick, a symlink and any name that is not a numeric
+# pid:start are all left alone.
+sent_prune() { # root current generation
+	local d name tick cur
+
+	case "$2" in *:*) ;; *) return 0 ;; esac
+	case "$2" in *[!0-9:]*|:*|*:|*:*:*) return 0 ;; esac
+	cur=${2#*:}
+	case "$cur" in ''|*[!0-9]*) return 0 ;; esac
+
+	for d in "$1"/*; do
+		[ -L "$d" ] && continue
+		[ -d "$d" ] || continue
+		name=${d##*/}
+		case "$name" in *:*) ;; *) continue ;; esac
+		case "$name" in *[!0-9:]*|:*|*:|*:*:*) continue ;; esac
+		tick=${name#*:}
+		case "$tick" in ''|*[!0-9]*) continue ;; esac
+		[ "$tick" -lt "$cur" ] || continue
+		rm -f "$d"/sent.* "$d"/seen.* 2>/dev/null
+		rmdir "$d" 2>/dev/null
+	done
 }
 
 # One SMS as shell variables: idx number text ts state type storage
@@ -83,25 +198,73 @@ sms_indexes() {
 
 cmd_list() {
 	local i read_at n_unread=0 rows=/tmp/aw1000-voice-sms.$$ at name has_modem=0
+	local gen root try unread seen
 
 	read_at=$(cat "$READ" 2>/dev/null || echo 0)
+	case "$read_at" in ''|*[!0-9]*) read_at=0 ;; esac
 	modem >/dev/null && has_modem=1
-	# Pass 1: read every SMS (json_load reuses the jshn buffer, so the
-	# reply is built only afterwards, from these files).
-	: > "$rows.out"
-	for i in $(sms_indexes); do
-		load_sms "$i" || continue
-		at=$(epoch "$ts")
-		name=$(name_of "$number")
-		# '|' separated: tabs would collapse an empty name in read
-		printf '%s|%s|%s|%s|%s|%s\n' "$i" "$at" "$state" "$type" "$number" "$(printf '%s' "$name" | tr '|\n' '/ ')" >> "$rows.out"
-		printf '%s' "$text" > "$rows.$i"
+
+	# Pass 1: read every SMS (json_load reuses the jshn buffer, so the reply
+	# is built only afterwards, from these files). One generation is used for
+	# the whole reply: if ModemManager restarts while we read, the numbers and
+	# the cache would belong to different daemons, so read again; if it will
+	# not settle, answer with no cache at all.
+	collect() {
+		: > "$rows.out"
+		for i in $(sms_indexes); do
+			load_sms "$i" || continue
+			at=$(epoch "$ts")
+			# Only a sent SMS can use the send time; a delivered one with no
+			# timestamp stays unknown.
+			if [ -z "$at" ] && [ "$type" = submit ] && [ -n "$gen" ]; then
+				at=$(sent_time "$root" "$gen" "$i")
+			fi
+			[ -n "$at" ] || at=0
+			# The unread decision is made here, under the same generation as
+			# the time lookup, so a restart cannot mix the two.
+			unread=
+			if [ "$type" != submit ]; then
+				if [ "$at" -gt 0 ]; then
+					[ "$at" -gt "$read_at" ] && unread=1
+				elif [ -n "$gen" ]; then
+					# Undated: unread until the read marker passed the moment
+					# it was first seen. It is never shown as its time.
+					seen=$(seen_time "$root" "$gen" "$i")
+					case "$seen" in
+					''|*[!0-9]*) unread=1 ;;
+					*) [ "$seen" -gt "$read_at" ] && unread=1 ;;
+					esac
+				else
+					unread=1
+				fi
+			fi
+			name=$(name_of "$number")
+			# '|' separated: tabs would collapse an empty name in read
+			printf '%s|%s|%s|%s|%s|%s|%s\n' "$i" "$at" "$state" "$type" "$number" "$unread" "$(printf '%s' "$name" | tr '|\n' '/ ')" >> "$rows.out"
+			printf '%s' "$text" > "$rows.$i"
+		done
+	}
+
+	try=0
+	while :; do
+		try=$((try + 1))
+		gen=$(sent_generation)
+		root=
+		[ -n "$gen" ] && root=$(sent_root)
+		if [ -z "$root" ] || [ "$try" -ge 3 ]; then
+			gen=
+			root=
+		fi
+		collect
+		[ -z "$gen" ] && break
+		[ "$(sent_generation)" = "$gen" ] && break
 	done
+
 	# Pass 2: the reply.
 	json_init
 	json_add_boolean modem "$has_modem"
 	json_add_array messages
-	[ -f "$rows.out" ] && while IFS="|" read -r i at state type number name; do
+	[ -f "$rows.out" ] && while IFS="|" read -r i at state type number unread name; do
 		json_add_object
 		json_add_int index "$i"
 		json_add_int time "$at"
@@ -110,7 +273,7 @@ cmd_list() {
 		json_add_string text "$(cat "$rows.$i")"
 		json_add_string state "$state"
 		json_add_string direction "$([ "$type" = submit ] && echo out || echo in)"
-		if [ "$type" != submit ] && [ "$at" -gt "$read_at" ]; then
+		if [ -n "$unread" ]; then
 			json_add_boolean unread 1
 			n_unread=$((n_unread + 1))
 		fi
@@ -125,6 +288,7 @@ cmd_list() {
 
 cmd_send() {
 	local number="$1" file="$2" phone="$3" m out path err
+	local gen root idx now
 
 	case "$number" in
 	+[0-9][0-9][0-9]*|[0-9][0-9][0-9]*) ;;
@@ -132,6 +296,10 @@ cmd_send() {
 	esac
 	case "${number#+}" in *[!0-9]*) echo "bad number"; rm -f "$file"; return 1 ;; esac
 	[ -s "$file" ] || { echo "empty message"; rm -f "$file"; return 1; }
+	# Snapshot the generation before the SMS exists: if ModemManager restarts
+	# while we send, the number belongs to the old daemon and must not be
+	# recorded against the new one.
+	gen=$(sent_generation)
 	if ! m=$(modem); then
 		err="the modem is not managed by ModemManager"
 	elif ! out=$(mmcli -m "$m" --messaging-create-sms="number='$number'" --messaging-create-sms-with-text="$file" 2>&1); then
@@ -159,6 +327,20 @@ cmd_send() {
 		return 1
 	fi
 	log "SMS sent to $number${phone:+ from $phone}"
+	# The modem already sent it: recording the time is best effort and must not
+	# change this reply, and it is skipped if the daemon changed while sending.
+	{
+		root=$(sent_root)
+		idx=${path##*/}
+		now=$(date +%s 2>/dev/null)
+		case "$idx" in ''|*[!0-9]*) idx= ;; esac
+		case "$now" in ''|*[!0-9]*) now= ;; esac
+		if [ -n "$gen" ] && [ -n "$root" ] && [ -n "$idx" ] && [ -n "$now" ] &&
+			[ "$(sent_generation)" = "$gen" ]; then
+			sent_put "$root" "$gen" "sent.$idx" "$now"
+			sent_prune "$root" "$gen"
+		fi
+	} >/dev/null 2>&1
 	echo ok
 	return 0
 }

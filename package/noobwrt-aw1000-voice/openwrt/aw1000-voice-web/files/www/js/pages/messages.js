@@ -40,7 +40,9 @@ export default async function messages(ctx) {
 			if (canReply(m.number) && !canReply(t.number)) t.number = m.number;
 		}
 		for (const t of map.values()) {
-			t.list.sort((a, b) => a.time - b.time);
+			// Messages with no time known (0) go first; the modem index gives
+			// messages from the same second a stable order.
+			t.list.sort((a, b) => (a.time - b.time) || (a.index - b.index));
 			t.last = t.list[t.list.length - 1];
 			t.unread = t.list.filter(m => m.unread).length;
 		}
@@ -155,7 +157,7 @@ export default async function messages(ctx) {
 		},
 			h('div', { class: 'avatar' }, (t.name || t.number || '?').replace(/^\+/, '').slice(0, 1).toUpperCase()),
 			h('div', { class: 'thread-main' },
-				h('div', { class: 'thread-top' }, h('strong', t.name || t.number), h('span', { class: 'muted small' }, fmtAgo(t.last.time))),
+				h('div', { class: 'thread-top' }, h('strong', t.name || t.number), h('span', { class: 'muted small' }, t.last.time ? fmtAgo(t.last.time) : '')),
 				h('div', { class: 'thread-last' }, (t.last.direction === 'out' ? 'You: ' : '') + t.last.text)),
 			t.unread ? h('span', { class: 'nav-badge' }, t.unread) : null))) : empty(data.modem === false ? 'The modem is not available, so no SMS can be read.' : 'No messages.', 'sms');
 

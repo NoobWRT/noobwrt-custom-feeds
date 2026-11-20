@@ -128,7 +128,7 @@ export default async function dashboard(ctx) {
 							h('div', { class: 'grow' },
 								h('div', { class: 'title' }, t.name || t.last.number, t.unread ? ' ' : '', t.unread ? badge(t.unread + ' new', 'bad') : null),
 								h('div', { class: 'sub' }, (t.last.direction === 'out' ? 'You: ' : '') + t.last.text)),
-							h('span', { class: 'when' }, fmtAgo(t.last.time))))) :
+							h('span', { class: 'when' }, t.last.time ? fmtAgo(t.last.time) : '')))) :
 							empty(sms.modem === false ? 'Modem unavailable.' : 'No messages.', 'sms')),
 
 					card('Do not disturb', { actions: [ button('Windows', { small: true, onclick: () => ctx.go('quiet') }) ] },

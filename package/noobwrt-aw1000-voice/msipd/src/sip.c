@@ -12,6 +12,7 @@
 #include "media.h"
 #include "phones.h"
 #include "sip.h"
+#include "sms.h"
 
 #define REG_MAX 300
 
@@ -138,17 +139,33 @@ static void on_register(const struct sip_msg *msg)
 #define SMS_QMAX	32
 #define SMS_KEEP	(7 * 86400)
 #define SMS_TEXT	1600
+/* A REGISTER retransmission must not resend a message that just failed. */
+#define SMS_RETRY_MIN	5
+
+/* Monotonic seconds: the retry guard must not move when the wall clock does. */
+static long sms_ticks(void)
+{
+	struct timespec ts;
+
+	clock_gettime(CLOCK_MONOTONIC, &ts);
+	return (long)ts.tv_sec;
+}
 
 struct sms_out {
+	unsigned id;
 	char user[16];
 	char from[32];
 	char name[48];
 	char *text;
 	long at;
+	int attempts;
+	int inflight;
+	long last_try;
 };
 
 static struct sms_out queue[SMS_QMAX];
 static int nqueue;
+static unsigned next_sms_id;
 
 static void clean_name(char *dst, size_t len, const char *src)
 {
@@ -172,10 +189,17 @@ static int number_ok(const char *s)
 	return n >= 3 && n <= 20;
 }
 
-static void queue_add(const char *user, const char *from, const char *name, const char *text, long at)
+static int queue_find(unsigned id);
+
+static unsigned queue_add(const char *user, const char *from, const char *name, const char *text,
+			  long at, int attempts)
 {
 	struct sms_out *q;
+	char *copy;
 
+	/* Allocate first: a failed copy must not cost us an old message. */
+	if (!(copy = strdup(text)))
+		return 0;
 	if (nqueue == SMS_QMAX) {
 		free(queue[0].text);
 		memmove(queue, queue + 1, sizeof(queue[0]) * (SMS_QMAX - 1));
@@ -183,21 +207,51 @@ static void queue_add(const char *user, const char *from, const char *name, cons
 		syslog(LOG_WARNING, "SMS queue full, dropped the oldest message");
 	}
 	q = &queue[nqueue];
-	if (!(q->text = strdup(text)))
-		return;
+	q->text = copy;
+	do {
+		if (!++next_sms_id)
+			next_sms_id = 1;
+	} while (queue_find(next_sms_id) >= 0);
+	q->id = next_sms_id;
 	snprintf(q->user, sizeof(q->user), "%s", user);
 	snprintf(q->from, sizeof(q->from), "%s", from);
 	snprintf(q->name, sizeof(q->name), "%s", name);
 	q->at = at;
+	q->attempts = attempts;
+	q->inflight = 0;
+	q->last_try = 0;
 	nqueue++;
+	return q->id;
+}
+
+static int queue_find(unsigned id)
+{
+	int i;
+
+	for (i = 0; i < nqueue; i++)
+		if (queue[i].id == id)
+			return i;
+	return -1;
+}
+
+static void queue_remove(int i)
+{
+	int j;
+
+	free(queue[i].text);
+	for (j = i; j < nqueue - 1; j++)
+		queue[j] = queue[j + 1];
+	nqueue--;
 }
 
 struct sms_req {
+	unsigned id;		/* queued id, or 0 for a first attempt */
 	char user[16];
 	char from[32];
 	char name[48];
 	char *text;
 	long at;
+	int attempts;		/* attempts including this one */
 };
 
 static void sms_req_destroy(void *arg)
@@ -207,23 +261,111 @@ static void sms_req_destroy(void *arg)
 	free(r->text);
 }
 
+static const char *sms_reason(int scode)
+{
+	if (scode >= 300)
+		return "temporarily unavailable";
+	return "no answer";
+}
+
+static void sms_log_retry(const char *from, const char *user, int scode, int attempts)
+{
+	syslog(LOG_INFO, "SMS from %s not taken by %s (%s), attempt %d of %d, kept for its next login",
+	       from, reg_name(user), sms_reason(scode), attempts, SMS_TRIES);
+}
+
+static void sms_log_drop(const char *from, const char *user, int err, int scode, int attempts)
+{
+	if (sms_transient(err, scode))
+		syslog(LOG_WARNING, "SMS from %s not taken by %s (%s), dropped after %d attempts",
+		       from, reg_name(user), sms_reason(scode), attempts);
+	else
+		syslog(LOG_WARNING, "SMS from %s refused by %s (SIP %u), dropped", from,
+		       reg_name(user), (unsigned)scode);
+}
+
+/* Add a message that must wait, keeping its original age and attempt count. */
+static unsigned sms_admit(const char *user, const char *from, const char *name,
+			  const char *text, long at, int attempts)
+{
+	unsigned id = queue_add(user, from, name, text, at, attempts);
+	int i = queue_find(id);
+
+	if (i >= 0 && attempts > 0)
+		queue[i].last_try = sms_ticks();
+	return id;
+}
+
+/* One final answer for one queued message: deliver, keep it for the next
+ * login, or drop it.  Called once per attempt, so it logs once. */
+static void sms_finish(unsigned id, int err, int scode)
+{
+	struct sms_out *q;
+	int i = queue_find(id);
+
+	if (i < 0)
+		return;			/* its slot was recycled while in flight */
+	q = &queue[i];
+	if (!err && scode > 0 && scode < 200)
+		return;			/* provisional answer, still in flight */
+	q->inflight = 0;
+	if (!err && scode >= 200 && scode < 300) {
+		syslog(LOG_INFO, "SMS from %s delivered to %s", q->from, reg_name(q->user));
+		queue_remove(i);
+		return;
+	}
+	if (sms_should_retry(err, scode, q->attempts)) {
+		sms_log_retry(q->from, q->user, scode, q->attempts);
+		return;
+	}
+	sms_log_drop(q->from, q->user, err, scode, q->attempts);
+	queue_remove(i);
+}
+
 static void on_sms_resp(int err, const struct sip_msg *msg, void *arg)
 {
 	struct sms_req *r = arg;
+	int scode = msg ? (int)msg->scode : 0;
 
-	if (!err && msg && msg->scode < 200)
+	if (!err && msg && scode < 200)
 		return;
-	if (err || !msg || msg->scode >= 300) {
-		syslog(LOG_INFO, "SMS from %s not taken by %s (%s), kept for its next login", r->from,
-		       reg_name(r->user), err ? "no answer" : "refused");
-		queue_add(r->user, r->from, r->name, r->text, r->at);
-	} else {
+	if (r->id) {
+		sms_finish(r->id, err, scode);
+	} else if (!err && scode >= 200 && scode < 300) {
 		syslog(LOG_INFO, "SMS from %s delivered to %s", r->from, reg_name(r->user));
+	} else if (sms_should_retry(err, scode, r->attempts)) {
+		if (sms_admit(r->user, r->from, r->name, r->text, r->at, r->attempts))
+			sms_log_retry(r->from, r->user, scode, r->attempts);
+		else
+			sms_log_drop(r->from, r->user, err, scode, r->attempts);
+	} else {
+		sms_log_drop(r->from, r->user, err, scode, r->attempts);
 	}
 	mem_deref(r);
 }
 
-static int send_sms(const struct phone *p, const char *from, const char *name, const char *text, long at)
+static int send_sms(const struct phone *p, struct sms_req *r)
+{
+	return sip_requestf(NULL, sip, true, "MESSAGE", p->contact, NULL, NULL, NULL, on_sms_resp, r,
+			   "To: <%s>\r\n"
+			   "From: \"%s\" <sip:%s@%s>;tag=%x\r\n"
+			   "Call-ID: %x%x@%s\r\n"
+			   "CSeq: 1 MESSAGE\r\n"
+			   "Max-Forwards: 70\r\n"
+			   "User-Agent: msipd\r\n"
+			   "Content-Type: text/plain;charset=UTF-8\r\n"
+			   "Content-Length: %zu\r\n"
+			   "\r\n"
+			   "%s",
+			   p->contact, r->name[0] ? r->name : r->from, r->from, local_ip, rand_u32(),
+			   rand_u32(), rand_u32(), local_ip, strlen(r->text), r->text);
+}
+
+/* First attempt to a phone that is online right now.  It is not put in the
+ * bounded queue unless it fails, so a delivered message can never evict a
+ * message waiting for an offline phone. */
+static int send_initial(const struct phone *p, const char *from, const char *name,
+			const char *text, long at)
 {
 	struct sms_req *r;
 	int err;
@@ -238,21 +380,43 @@ static int send_sms(const struct phone *p, const char *from, const char *name, c
 	snprintf(r->from, sizeof(r->from), "%s", from);
 	snprintf(r->name, sizeof(r->name), "%s", name);
 	r->at = at;
-	err = sip_requestf(NULL, sip, true, "MESSAGE", p->contact, NULL, NULL, NULL, on_sms_resp, r,
-			   "To: <%s>\r\n"
-			   "From: \"%s\" <sip:%s@%s>;tag=%x\r\n"
-			   "Call-ID: %x%x@%s\r\n"
-			   "CSeq: 1 MESSAGE\r\n"
-			   "Max-Forwards: 70\r\n"
-			   "User-Agent: msipd\r\n"
-			   "Content-Type: text/plain;charset=UTF-8\r\n"
-			   "Content-Length: %zu\r\n"
-			   "\r\n"
-			   "%s",
-			   p->contact, name[0] ? name : from, from, local_ip, rand_u32(), rand_u32(), rand_u32(),
-			   local_ip, strlen(text), text);
+	r->attempts = 1;
+	err = send_sms(p, r);
 	if (err)
 		mem_deref(r);
+	return err;
+}
+
+/* Send queued message 'id' to p.  The queue entry stays the single source of
+ * truth: it is removed only when sms_finish() delivers or drops it. */
+static int send_queued(const struct phone *p, unsigned id)
+{
+	struct sms_req *r;
+	struct sms_out *q;
+	int i = queue_find(id), err;
+
+	if (i < 0)
+		return ENOENT;
+	q = &queue[i];
+	if (!(r = mem_zalloc(sizeof(*r), sms_req_destroy)))
+		return ENOMEM;
+	if (!(r->text = strdup(q->text))) {
+		mem_deref(r);
+		return ENOMEM;
+	}
+	r->id = id;
+	snprintf(r->user, sizeof(r->user), "%s", q->user);
+	snprintf(r->from, sizeof(r->from), "%s", q->from);
+	snprintf(r->name, sizeof(r->name), "%s", q->name);
+	r->at = q->at;
+	r->attempts = ++q->attempts;
+	q->inflight = 1;
+	q->last_try = sms_ticks();
+	err = send_sms(p, r);
+	if (err) {
+		sms_finish(id, err, 0);
+		mem_deref(r);
+	}
 	return err;
 }
 
@@ -269,14 +433,26 @@ int sip_sms(const char *from, const char *name, const char *text, const char *to
 	clean_name(cname, sizeof(cname), name);
 	snprintf(cfrom, sizeof(cfrom), "%s", number_ok(from) ? from : "SMS");
 	for (i = 0; i < n; i++) {
+		int err;
+
 		if (to && *to && strcmp(to, all[i]->name))
 			continue;
-		if (all[i]->contact[0] && all[i]->expires_at > now && !send_sms(all[i], cfrom, cname, text, now)) {
-			sent++;
+		if (all[i]->contact[0] && all[i]->expires_at > now) {
+			err = send_initial(all[i], cfrom, cname, text, now);
+			if (!err) {
+				sent++;
+				continue;
+			}
+			/* Could not even submit it: that still counts as
+			 * attempt 1, so admit it for a bounded retry. */
+			if (!sms_admit(all[i]->user, cfrom, cname, text, now, 1))
+				continue;
+			sms_log_retry(cfrom, all[i]->user, 0, 1);
+			(*queued)++;
 			continue;
 		}
-		queue_add(all[i]->user, cfrom, cname, text, now);
-		(*queued)++;
+		if (sms_admit(all[i]->user, cfrom, cname, text, now, 0))
+			(*queued)++;
 	}
 	return sent;
 }
@@ -285,31 +461,30 @@ void sms_flush(const char *user)
 {
 	const struct phone *all[PHONES_MAX];
 	const struct phone *p = NULL;
-	long now = time(NULL);
-	int n = phones_all(all, PHONES_MAX), i, j;
+	int n = phones_all(all, PHONES_MAX), i;
 
 	for (i = 0; i < n; i++)
 		if (!strcmp(all[i]->user, user))
 			p = all[i];
 	if (!p || !p->contact[0])
 		return;
-	for (i = 0; i < nqueue;) {
-		struct sms_out q = queue[i];
+	for (i = 0; i < nqueue; i++) {
+		struct sms_out *q = &queue[i];
+		unsigned id = q->id;
+		long now = time(NULL);
 
-		if (now - q.at > SMS_KEEP) {
-			free(q.text);
-		} else if (strcmp(q.user, user)) {
-			i++;
+		if (now - q->at > SMS_KEEP) {
+			queue_remove(i);
+			i--;
 			continue;
-		} else {
-			/* send_sms() requeues it on failure, so take it out first */
-			if (send_sms(p, q.from, q.name, q.text, q.at))
-				syslog(LOG_WARNING, "could not resend an SMS to %s", p->name);
-			free(q.text);
 		}
-		for (j = i; j < nqueue - 1; j++)
-			queue[j] = queue[j + 1];
-		nqueue--;
+		if (strcmp(q->user, user) || q->inflight ||
+		    (q->attempts > 0 && sms_ticks() - q->last_try < SMS_RETRY_MIN))
+			continue;
+		/* send_queued() logs the outcome once through sms_finish() */
+		(void)send_queued(p, id);
+		if (queue_find(id) < 0)
+			i--;
 	}
 }
 

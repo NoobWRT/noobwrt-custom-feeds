@@ -1,7 +1,7 @@
 CFLAGS ?= -O2
 override CFLAGS += -std=gnu11 -Wall -Wextra -Werror
 override CFLAGS += -I/usr/local/include/re -I$(STAGING_DIR)/usr/include/re
-CORE = build/msipd.o build/codec.o build/g722.o build/clcc.o build/phones.o build/call.o build/audio.o build/media.o build/sip.o build/bus.o
+CORE = build/msipd.o build/codec.o build/g722.o build/clcc.o build/phones.o build/call.o build/audio.o build/media.o build/sip.o build/sms.o build/bus.o
 OBJS = $(CORE) build/modem.o
 LIBS = -lre -lubus -lubox -luci -lopus -lm
 
@@ -23,7 +23,7 @@ build/%.o: src/%.c $(wildcard src/*.h)
 	mkdir -p build
 	$(CC) $(CFLAGS) -c -o $@ $<
 
-test: build/codec.o build/g722.o
+test: test-sms build/codec.o build/g722.o
 	$(CC) $(CFLAGS) -o build/test_codec tests/test_codec.c build/codec.o build/g722.o -lopus -lm
 	./build/test_codec
 	$(CC) $(CFLAGS) -o build/test_clcc tests/test_clcc.c src/clcc.c
@@ -37,7 +37,14 @@ test: build/codec.o build/g722.o
 	$(CC) $(CFLAGS) -o build/test_audio tests/test_audio.c src/audio.c
 	./build/test_audio
 
+build/test_sms: tests/test_sms.c src/sms.c src/sms.h
+	mkdir -p build
+	$(CC) $(CFLAGS) -o $@ tests/test_sms.c src/sms.c
+
+test-sms: build/test_sms
+	./build/test_sms
+
 clean:
 	rm -rf build
 
-.PHONY: test clean
+.PHONY: test test-sms clean

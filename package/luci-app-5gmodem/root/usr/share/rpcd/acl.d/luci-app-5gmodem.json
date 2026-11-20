@@ -17,6 +17,7 @@
 				"/usr/share/5gmodem/notmodem.sh": [ "exec" ],
 				"/usr/share/5gmodem/hilink.sh": [ "exec" ],
 				"/usr/share/5gmodem/smsbridge.sh": [ "exec" ],
+				"/usr/share/5gmodem/fg360-sim.sh status ccci": [ "exec" ],
 				"/usr/share/5gmodem/atcmd.sh": [ "exec" ],
 				"/usr/share/5gmodem/smscron.sh": [ "exec" ],
 				"/usr/share/5gmodem/ussd.sh": [ "exec" ],
@@ -27,7 +28,9 @@
 				"/usr/share/5gmodem/stats.sh": [ "exec" ],
 				"/usr/share/5gmodem/tgnotify.sh": [ "exec" ],
 				"/usr/share/5gmodem/bands.sh": [ "exec" ],
-				"/usr/share/5gmodem/buttons.sh": [ "exec" ],
+				"/usr/share/5gmodem/buttons.sh detect": [ "exec" ],
+				"/usr/share/5gmodem/buttons.sh leds": [ "exec" ],
+				"/usr/share/5gmodem/buttons.sh services": [ "exec" ],
 				"/usr/share/5gmodem/speedtest.sh": [ "exec" ],
 				"/usr/share/5gmodem/extip.sh": [ "exec" ],
 				"/usr/share/5gmodem/simslot.sh": [ "exec" ],
@@ -61,6 +64,7 @@
 				"/usr/libexec/package-manager-call list-installed": [ "exec" ],
 				"/usr/libexec/opkg-list installed": [ "exec" ],
 				"/usr/libexec/opkg-call list-installed": [ "exec" ],
+				"/www/luci-static/resources/5gmodem/ext": [ "list" ],
 				"/etc/modemdefine": [ "read" ],
 				"/etc/5gmodem": [ "read" ],
 				"/etc/defmodems": [ "read" ],
@@ -84,7 +88,7 @@
 			},
 			"uci": [ "5gmodem", "modemdefine", "defmodems", "network", "firewall", "system" ],
 			"ubus": {
-				"file": [ "read", "exec" ]
+				"file": [ "read", "list", "exec" ]
 			}
 		},
 		"write": {
@@ -101,6 +105,10 @@
 				"/usr/share/5gmodem/notmodem.sh": [ "exec" ],
 				"/usr/share/5gmodem/hilink.sh": [ "exec" ],
 				"/usr/share/5gmodem/smsbridge.sh": [ "exec" ],
+				"/usr/share/5gmodem/fg360-sim.sh enter ccci *": [ "exec" ],
+				"/usr/share/5gmodem/fg360-sim.sh enable ccci *": [ "exec" ],
+				"/usr/share/5gmodem/fg360-sim.sh disable ccci *": [ "exec" ],
+				"/usr/share/5gmodem/fg360-sim.sh change ccci * *": [ "exec" ],
 				"/usr/share/5gmodem/atcmd.sh": [ "exec" ],
 				"/usr/share/5gmodem/smscron.sh": [ "exec" ],
 				"/usr/share/5gmodem/ussd.sh": [ "exec" ],

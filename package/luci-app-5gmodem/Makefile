@@ -22,7 +22,7 @@ LUCI_DEPENDS:=+sms-tool +comgt +kmod-usb-serial +kmod-usb-serial-option \
 	+coreutils-stty \
 	+mbim-utils
 LUCI_PKGARCH:=all
-PKG_VERSION:=4.0.11
+PKG_VERSION:=4.0.13
 PKG_RELEASE:=1
 
 define Package/luci-app-5gmodem/conffiles
@@ -105,13 +105,14 @@ endef
 
 LUCI_LANG.id:=Bahasa Indonesia (Indonesian)
 
-include $(TOPDIR)/feeds/luci/luci.mk
 
 define Build/Prepare/luci-app-5gmodem
 	$(INSTALL_DIR) $(PKG_BUILD_DIR)/root/usr/share/5gmodem/i18n
-	-$(STAGING_DIR_HOST)/bin/po2lmo $(CURDIR)/po-ru/5gmodem.po \
+	po2lmo $(CURDIR)/po-ru/5gmodem.po \
 		$(PKG_BUILD_DIR)/root/usr/share/5gmodem/i18n/5gmodem.ru.lmo
 endef
+
+include $(TOPDIR)/feeds/luci/luci.mk
 
 define Package/luci-app-5gmodem-lite
   SECTION:=luci

@@ -26,6 +26,12 @@ BAD_SINCE=
 MISMATCH_SINCE=
 LAST_PROBE=-100000
 LAST_NEIGH=0
+LAST_CA=-100000
+LAST_DATA=0
+DATA_SEEN=0
+STALE_SINCE=
+LAST_REDIAL=-100000
+NEIGH_LIST=
 ON_TARGET_SINCE=0
 AT_FAILS=0
 PENDING=0
@@ -211,10 +217,20 @@ at() {
 		AT_OUT=$(printf '%s\nOK\n' "$AT_OUT")
 		return 0
 	fi
+	if [ "$PORT" = qmodem ]; then
+		AT_OUT=$(qm_at "$1" "${2:-5}") || return 1
+		at_tidy
+		return
+	fi
 	if [ "$PORT" = mm ]; then
 		AT_OUT=$(mmcli -m any --timeout=$((${2:-5} + 3)) --command="$1" 2>/dev/null) || return 1
 		AT_OUT=$(printf '%s\nOK\n' "${AT_OUT#response: }" | tr -d "\r\"\\\\' ")
 		return 0
+	fi
+	if ! ubus list at-daemon >/dev/null 2>&1; then
+		AT_OUT=$(tty_at "$PORT" "$1" "${2:-5}") || return 1
+		at_tidy
+		return
 	fi
 	esc=$(printf '%s' "$1" | sed 's/"/\\"/g')
 	AT_OUT=$(ubus -t $((${2:-5} + 3)) call at-daemon sendat \
@@ -222,6 +238,56 @@ at() {
 	AT_OUT=$(printf '%s\n' "$AT_OUT" | sed -n 's/^[[:space:]]*"response": "\(.*\)",\{0,1\}$/\1/p' |
 		sed 's/\\r//g; s/\\n/\n/g' | tr -d '"\\ ')
 	[ -n "$AT_OUT" ]
+}
+
+# Drops the echo and quotes from a reply and makes sure it ends in OK or
+# ERROR, the way the at-daemon replies are read.
+at_tidy() {
+	AT_OUT=$(printf '%s\n' "$AT_OUT" | grep -v '^AT' | tr -d "\r\"\\\\' " | grep .)
+	case "$NL$AT_OUT$NL" in
+	*"${NL}OK$NL"*|*ERROR*) ;;
+	*) AT_OUT=$(printf '%s\nOK\n' "$AT_OUT") ;;
+	esac
+	[ -n "$AT_OUT" ]
+}
+
+# Straight to the serial port with sms_tool, the way modemdata and the SMS
+# app do, on firmware where at-daemon isn't there to share the port.
+tty_at() {
+	command -v sms_tool >/dev/null || return 1
+	if command -v timeout >/dev/null; then
+		timeout $(($3 + 3)) sms_tool -d "$1" at "$2" 2>/dev/null
+	else
+		sms_tool -d "$1" at "$2" 2>/dev/null
+	fi
+}
+
+# QModem's own AT tool, under the same per-port lock QModem uses, so the
+# two never talk to the modem at once. Used on firmware with QModem and no
+# at-daemon.
+qm_port() {
+	uci -q show qmodem | sed -n "s/^qmodem\.[^.]*\.at_port='\(.*\)'$/\1/p" | head -n 1
+}
+
+qm_tool() {
+	command -v tom_modem >/dev/null || command -v sms_tool_q >/dev/null
+}
+
+qm_at() {
+	local p k t=$2
+
+	p=$(qm_port)
+	case "$p" in /dev/*[!A-Za-z0-9_/.-]*|'') return 1 ;; esac
+	k=$(printf '%s' "$p" | tr -c 'A-Za-z0-9_' '_')
+	mkdir -p /var/lock
+	(
+		flock -x 9 || exit 1
+		if [ "$(uci -q get qmodem.main.at_tool)" = 1 ] || ! command -v tom_modem >/dev/null; then
+			sms_tool_q -d "$p" at "$1"
+		else
+			tom_modem -d "$p" -o a -c "$1" -t "$t"
+		fi
+	) 9>"/var/lock/qmodem-at-$k.lock" 2>/dev/null
 }
 
 g5_port() {
@@ -257,6 +323,7 @@ auto_ports() {
 
 	[ -x "$G5_AT" ] && [ -n "$(g5_port)" ] && echo 5gmodem
 	pidof ModemManager >/dev/null && command -v mmcli >/dev/null && echo mm
+	qm_tool && [ -n "$(qm_port)" ] && echo qmodem
 	uci -q show qmodem | sed -n "s/^qmodem\.[^.]*\.at_port='\(.*\)'$/\1/p"
 	for t in /sys/class/tty/ttyUSB*; do
 		[ -e "$t/device" ] || continue
@@ -274,7 +341,7 @@ find_port() {
 	if [ "$PORT_MODE" = manual ]; then
 		case "$MANUAL_PORT" in
 		/dev/*[!A-Za-z0-9_/.-]*|'') ;;
-		/dev/*|mm|5gmodem) port_ok "$MANUAL_PORT" ;;
+		/dev/*|mm|5gmodem|qmodem) port_ok "$MANUAL_PORT" ;;
 		esac
 	else
 		for p in $(auto_ports); do
@@ -373,8 +440,122 @@ take_over() {
 	sync
 }
 
+# A lock on one cell stops carrier aggregation, so the lock also lists the
+# cells this one was seen aggregating with while the modem was free.
+ca_file() {
+	eval "R=\"$DATA/ca_\${EAR_$1}_\${PCI_$1}\""
+}
+
+learn_ca() {
+	local l f pairs=
+
+	[ "$S_ST" = lte ] || return 0
+	at_want 'AT+QCAINFO' '+QCAINFO:' 1 || return 0
+	IFS=$NL
+	for l in $AT_OUT; do
+		case "$l" in
+		*+QCAINFO:SCC,*)
+			IFS=,
+			set -- ${l#*+QCAINFO:}
+			IFS=$NL
+			case "$4" in LTEBAND*) ;; *) continue ;; esac
+			case "$2$6" in ''|*[!0-9]*) continue ;; esac
+			[ "$2,$6" = "$S_EAR,$S_PCI" ] && continue
+			case ",$pairs," in *",$2,$6,"*) continue ;; esac
+			pairs="$pairs,$2,$6"
+			;;
+		esac
+	done
+	IFS='
+'
+	pairs=${pairs#,}
+	[ -n "$pairs" ] || return 0
+	f=$DATA/ca_${S_EAR}_$S_PCI
+	[ "$(cat "$f" 2>/dev/null)" = "$pairs" ] && return 0
+	mkdir -p "$DATA" && echo "$pairs" > "$f"
+}
+
 cell_lock() {
-	eval "R=\"1,\$EAR_$1,\$PCI_$1\""
+	local ca n=1
+
+	ca_file "$1"
+	ca=$(cat "$R" 2>/dev/null)
+	case "$ca" in *[!0-9,]*) ca= ;; esac
+	if [ -n "$ca" ]; then
+		set -f
+		IFS=,
+		set -- $1 $ca
+		IFS='
+'
+		set +f
+		# Quectel takes up to 10 cells in one lock.
+		n=$(( ($# - 1) / 2 + 1 ))
+		[ "$n" -gt 10 ] && n=10
+		ca=$(echo "$ca" | cut -d, -f1-$(( (n - 1) * 2 )))
+		set -- "$1"
+	fi
+	eval "R=\"$n,\$EAR_$1,\$PCI_$1\""
+	[ -n "$ca" ] && R="$R,$ca"
+}
+
+# A lock change makes the modem register again, often with a new address,
+# while the router keeps the old one and nothing dials again. When the
+# modem's address has been missing from the router for a while, bring the
+# interface on the modem's network device up again. Only after the two
+# matched once, so a modem that does its own NAT is left alone.
+check_data() {
+	local l a ip any=0 found=0 ifc dev
+
+	at_want 'AT+CGPADDR' '+CGPADDR:' 1 || return 0
+	a=" $(ip -4 -o addr show 2>/dev/null | awk '{ sub(/\/.*/, "", $4); printf "%s ", $4 }')"
+	IFS=$NL
+	for l in $AT_OUT; do
+		case "$l" in *+CGPADDR:*) ;; *) continue ;; esac
+		ip=$(printf '%s' "${l#*+CGPADDR:}" | cut -d, -f2)
+		case "$ip" in
+		*.*.*.*.*|0.0.0.0) continue ;;
+		[0-9]*.*.*.*) ;;
+		*) continue ;;
+		esac
+		any=1
+		case "$a" in *" $ip "*) found=1 ;; esac
+	done
+	IFS='
+'
+	if [ "$any" = 0 ] || [ "$found" = 1 ]; then
+		[ "$found" = 1 ] && DATA_SEEN=1
+		STALE_SINCE=
+		return 0
+	fi
+	[ "$DATA_SEEN" = 1 ] || return 0
+	now
+	[ -n "$STALE_SINCE" ] || STALE_SINCE=$NOW
+	[ $((NOW - STALE_SINCE)) -ge 20 ] || return 0
+	[ $((NOW - LAST_REDIAL)) -ge 120 ] || return 0
+	LAST_REDIAL=$NOW
+	STALE_SINCE=
+	for ifc in $(ubus list 'network.interface.*' 2>/dev/null); do
+		ifc=${ifc#network.interface.}
+		dev=$(ifstatus "$ifc" 2>/dev/null | jsonfilter -e '@.l3_device' 2>/dev/null)
+		case "$dev" in wwan*|rmnet*|mhi*|usb*) ;; *) continue ;; esac
+		log "modem has a new address, reconnecting $ifc"
+		ifup "$ifc"
+	done
+}
+
+# Serving on cell $1 itself or one of its aggregation partners, which the
+# modem may pick as primary once both are in the lock.
+on_cell() {
+	local p e
+
+	[ "$S_ST" = lte ] || return 1
+	eval "p=\$PCI_$1 e=\$EAR_$1"
+	[ "$S_PCI" = "$p" ] && [ "$S_EAR" = "$e" ] && return 0
+	ca_file "$1"
+	case ",$(cat "$R" 2>/dev/null)," in
+	*",$S_EAR,$S_PCI,"*) return 0 ;;
+	esac
+	return 1
 }
 
 label() {
@@ -390,6 +571,12 @@ serving_idx() {
 
 	R=0
 	[ "$S_ST" = lte ] || return 0
+	# The target's lock lets the modem sit on its CA partners, which may be
+	# list cells themselves; that is still the target, not a wrong cell.
+	if [ "$TARGET" -gt 0 ] && on_cell "$TARGET"; then
+		R=$TARGET
+		return 0
+	fi
 	while [ "$i" -le "$N" ]; do
 		eval "p=\$PCI_$i e=\$EAR_$i"
 		if [ "$p" = "$S_PCI" ] && [ "$e" = "$S_EAR" ]; then
@@ -444,7 +631,7 @@ wait_on() {
 	now
 	t0=$NOW
 	while :; do
-		if read_serving && [ "$S_ST" = lte ] && [ "$S_PCI" = "$p" ] && [ "$S_EAR" = "$e" ] && strong; then
+		if read_serving && on_cell "$1" && strong; then
 			return 0
 		fi
 		now
@@ -682,6 +869,7 @@ read_neighbours() {
 	done
 	IFS='
 '
+	NEIGH_LIST=${list# }
 	i=1
 	while [ "$i" -le "$N" ]; do
 		eval "p=\$PCI_$i e=\$EAR_$i"
@@ -808,6 +996,7 @@ write_status() {
 		echo "protect=$PROTECT"
 		echo "pending=$PENDING"
 		echo "neighbours=$NEIGH_OK"
+		echo "nearby=$NEIGH_LIST"
 		echo "updated=$(date +%s)"
 		while [ "$i" -le "$N" ]; do
 			cell_state "$i"
@@ -962,6 +1151,7 @@ main() {
 			if find_port; then
 				AT_FAILS=0
 				if [ "$ENABLED" = 1 ] && [ "$STARTED" = 0 ] && ! other_lock_on; then
+					read_lock && lock_is 0 && read_serving && learn_ca
 					startup_target && STARTED=1
 				fi
 				log "using AT port $PORT"
@@ -986,6 +1176,16 @@ main() {
 			continue
 		fi
 
+		now
+		if [ $((NOW - LAST_DATA)) -ge 10 ]; then
+			LAST_DATA=$NOW
+			check_data
+		fi
+		# Learn only while unlocked: a single-cell lock shows no CA to learn.
+		if [ $((NOW - LAST_CA)) -ge 60 ] && { [ "$ENABLED" != 1 ] || [ "$RECOVERY" = 1 ] || [ ! -f "$ORIG" ]; }; then
+			LAST_CA=$NOW
+			learn_ca
+		fi
 		if [ "$ENABLED" = 1 ]; then
 			DETAIL=
 			tick_on
@@ -994,6 +1194,11 @@ main() {
 		else
 			STATE=off
 			phone_state
+			# So the LuCI page can offer the cells around to add.
+			if [ $((NOW - LAST_NEIGH)) -ge "$NEIGH_EVERY" ]; then
+				LAST_NEIGH=$NOW
+				read_neighbours
+			fi
 			if [ -f "$ORIG" ] && is_free; then
 				turn_off
 			fi

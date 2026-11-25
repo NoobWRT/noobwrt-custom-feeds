@@ -94,7 +94,7 @@ function phoneBadge(phone) {
 	]);
 }
 
-var PORT_NAMES = { mm: 'ModemManager', '5gmodem': _('5G Modem app') };
+var PORT_NAMES = { mm: 'ModemManager', '5gmodem': _('5G Modem app'), qmodem: 'QModem' };
 
 var STATES = {
 	starting: [ _('Starting'), '' ],
@@ -185,7 +185,7 @@ function renderCards(s) {
 			]),
 			phoneBadge(s.phone)
 		]),
-		card(_('AT port'), PORT_NAMES[s.port] || s.port || '-', (s.port_mode == 'manual' ? _('Manual') : _('Auto')) + (PORT_NAMES[s.port] ? '' : ', at-daemon ' + (s.atd ? _('running') : _('not running'))))
+		card(_('AT port'), PORT_NAMES[s.port] || s.port || '-', (s.port_mode == 'manual' ? _('Manual') : _('Auto')) + (PORT_NAMES[s.port] ? '' : (s.atd ? ', at-daemon' : (s.smstool ? ', sms_tool' : ', ' + _('at-daemon not running')))))
 	]);
 }
 
@@ -201,6 +201,52 @@ function renderCells(s) {
 	if (!rows.length)
 		return E('div', { 'class': 'apc-scroll' }, E('div', { 'class': 'apc-empty' }, _('No cells yet. Add them below.')));
 	return table([ _('Priority'), 'PCI', 'EARFCN', _('Status') ], rows);
+}
+
+// Serving and neighbour cells, so a cell can be added without looking up
+// its PCI and EARFCN.
+function addCell(pci, ear) {
+	var sid = uci.add('auto-pci-cell', 'cell');
+
+	uci.set('auto-pci-cell', sid, 'enabled', '1');
+	uci.set('auto-pci-cell', sid, 'pci', pci);
+	uci.set('auto-pci-cell', sid, 'earfcn', ear);
+	return uci.save().then(function() { return ui.changes.apply(true); });
+}
+
+function renderNearby(s) {
+	var have = {}, seen = {}, cells = [], full = (s.cells || []).length >= 5;
+
+	(s.cells || []).forEach(function(c) { have[c.pci + '/' + c.earfcn] = true; });
+	if (s.serving == 'lte' && s.pci && s.earfcn)
+		cells.push({ pci: s.pci, ear: s.earfcn, rsrp: s.rsrp, now: true });
+	String(s.nearby || '').split(' ').forEach(function(n) {
+		var f = n.split(':');
+		if (f.length >= 2 && /^\d+$/.test(f[0]) && /^\d+$/.test(f[1]))
+			cells.push({ pci: f[1], ear: f[0], rsrp: f[2] });
+	});
+	cells = cells.filter(function(c) {
+		var k = c.pci + '/' + c.ear;
+		return seen[k] ? false : (seen[k] = true);
+	}).sort(function(a, b) { return (+b.rsrp || -999) - (+a.rsrp || -999); });
+
+	if (!cells.length)
+		return E('div', { 'class': 'apc-scroll' }, E('div', { 'class': 'apc-empty' }, _('No cells heard yet. The list fills in within a minute.')));
+	return table([ 'PCI', 'EARFCN', 'RSRP', '' ], cells.map(function(c) {
+		var on = have[c.pci + '/' + c.ear];
+
+		return E('tr', { 'class': c.now ? 'now' : '' }, [
+			E('td', {}, c.pci + (c.now ? ' (' + _('current') + ')' : '')),
+			E('td', {}, c.ear),
+			E('td', {}, /^-\d/.test(c.rsrp || '') ? c.rsrp + ' dBm' : '-'),
+			E('td', {}, on ? _('On the list') : E('button', {
+				'class': 'btn cbi-button cbi-button-add',
+				'disabled': full ? '' : null,
+				'title': full ? _('The list can hold 5 cells.') : null,
+				'click': ui.createHandlerFn(this, addCell, c.pci, c.ear)
+			}, _('Add')))
+		]);
+	}));
 }
 
 function renderHistory(s) {
@@ -240,6 +286,8 @@ function renderAll(s) {
 		renderCards(s),
 		E('div', { 'class': 'apc-title' }, _('Cells')),
 		renderCells(s),
+		E('div', { 'class': 'apc-title' }, _('Cells the modem can hear')),
+		renderNearby(s),
 		E('div', { 'class': 'apc-title' }, [
 			E('span', {}, _('Recent switches')),
 			(s.history || []).length ? E('button', { 'class': 'btn cbi-button', 'click': clearHistory }, _('Clear')) : ''

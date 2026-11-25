@@ -15,6 +15,7 @@ status() {
 	json_add_boolean running "$(pidof auto-pci-cell >/dev/null && echo 1 || echo 0)"
 	json_add_boolean atd "$(ubus list at-daemon >/dev/null 2>&1 && echo 1 || echo 0)"
 	json_add_boolean mm "$(pidof ModemManager >/dev/null && echo 1 || echo 0)"
+	json_add_boolean smstool "$(command -v sms_tool >/dev/null && echo 1 || echo 0)"
 	json_add_boolean g5 "$([ -x "$G5_AT" ] && echo 1 || echo 0)"
 	json_add_boolean managed "$([ -f "$ORIG" ] && echo 1 || echo 0)"
 	json_add_string original "$(cat "$ORIG" 2>/dev/null)"
@@ -59,6 +60,34 @@ status() {
 	json_dump
 }
 
+# QModem's own AT tool, under the same per-port lock QModem uses, so the
+# two never talk to the modem at once. Used on firmware with QModem and no
+# at-daemon.
+qm_port() {
+	uci -q show qmodem | sed -n "s/^qmodem\.[^.]*\.at_port='\(.*\)'$/\1/p" | head -n 1
+}
+
+qm_tool() {
+	command -v tom_modem >/dev/null || command -v sms_tool_q >/dev/null
+}
+
+qm_at() {
+	local p k t=$2
+
+	p=$(qm_port)
+	case "$p" in /dev/*[!A-Za-z0-9_/.-]*|'') return 1 ;; esac
+	k=$(printf '%s' "$p" | tr -c 'A-Za-z0-9_' '_')
+	mkdir -p /var/lock
+	(
+		flock -x 9 || exit 1
+		if [ "$(uci -q get qmodem.main.at_tool)" = 1 ] || ! command -v tom_modem >/dev/null; then
+			sms_tool_q -d "$p" at "$1"
+		else
+			tom_modem -d "$p" -o a -c "$1" -t "$t"
+		fi
+	) 9>"/var/lock/qmodem-at-$k.lock" 2>/dev/null
+}
+
 ports() {
 	local p
 
@@ -66,6 +95,7 @@ ports() {
 	json_add_array ports
 	[ -x "$G5_AT" ] && json_add_string "" 5gmodem
 	pidof ModemManager >/dev/null && command -v mmcli >/dev/null && json_add_string "" mm
+	qm_tool && [ -n "$(qm_port)" ] && json_add_string "" qmodem
 	for p in /dev/ttyUSB* /dev/ttyACM*; do
 		[ -e "$p" ] && json_add_string "" "$p"
 	done
@@ -79,9 +109,18 @@ send() {
 			"$(printf '%s' "$2" | sed 's/\\"/"/g')" 8 2>/dev/null | grep -v '^AT' | tr -d '\r"'
 		return
 	fi
+	if [ "$1" = qmodem ]; then
+		qm_at "$(printf '%s' "$2" | sed 's/\\"/"/g')" 8 | grep -v '^AT' | tr -d '\r"'
+		return
+	fi
 	if [ "$1" = mm ]; then
 		mmcli -m any --timeout=8 --command="$(printf '%s' "$2" | sed 's/\\"/"/g')" 2>/dev/null |
 			sed "s/^response: '//; s/'$//" | tr -d '\r"'
+		return
+	fi
+	if ! ubus list at-daemon >/dev/null 2>&1; then
+		command -v sms_tool >/dev/null || return
+		sms_tool -d "$1" at "$(printf '%s' "$2" | sed 's/\\"/"/g')" 2>/dev/null | grep -v '^AT' | tr -d '\r"'
 		return
 	fi
 	ubus -t 8 call at-daemon sendat "{\"at_port\":\"$1\",\"at_cmd\":\"$2\",\"timeout\":5}" 2>/dev/null |
@@ -103,7 +142,7 @@ test_port() {
 		json_dump
 		return
 		;;
-	/dev/tty*|mm|5gmodem) ;;
+	/dev/tty*|mm|5gmodem|qmodem) ;;
 	*)
 		json_add_boolean ok 0
 		json_add_string error "Not a valid port"
@@ -115,6 +154,13 @@ test_port() {
 		if [ ! -x "$G5_AT" ]; then
 			json_add_boolean ok 0
 			json_add_string error "The 5G Modem app is not installed"
+			json_dump
+			return
+		fi
+	elif [ "$port" = qmodem ]; then
+		if ! qm_tool || [ -z "$(qm_port)" ]; then
+			json_add_boolean ok 0
+			json_add_string error "QModem has no AT port set up"
 			json_dump
 			return
 		fi
@@ -131,9 +177,10 @@ test_port() {
 		json_dump
 		return
 	fi
-	if [ "$port" != mm ] && [ "$port" != 5gmodem ] && ! ubus list at-daemon >/dev/null 2>&1; then
+	if [ "$port" != mm ] && [ "$port" != 5gmodem ] && [ "$port" != qmodem ] &&
+	   ! ubus list at-daemon >/dev/null 2>&1 && ! command -v sms_tool >/dev/null; then
 		json_add_boolean ok 0
-		json_add_string error "at-daemon is not running"
+		json_add_string error "Neither at-daemon nor sms_tool is installed"
 		json_dump
 		return
 	fi

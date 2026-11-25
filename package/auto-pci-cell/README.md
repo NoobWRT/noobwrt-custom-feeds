@@ -1,10 +1,14 @@
 # PCI Cell Lock
 
-Keeps a Quectel modem on your best 4G cell. You make a list of cells in the order you want them, and it moves down the list when a cell loses signal and back up when a better one returns. Made for the Arcadyan AW1000 with an RG500Q EA modem. It works on NoobWRT and MyWRT through ubus at daemon, on OpenWrt with ModemManager through mmcli, and with the 5G Modem app through its own AT helper.
+Keeps a Quectel modem on your best 4G cell. You make a list of cells in the order you want them, and it moves down the list when a cell loses signal and back up when a better one returns. Made for the Arcadyan AW1000 with an RG500Q EA modem. It works on NoobWRT and MyWRT through ubus at daemon, on OpenWrt with ModemManager through mmcli, with the 5G Modem app through its own AT helper, with QModem through its own AT tool, and straight on the serial port with sms_tool when none of those are there.
 
 ## What it does
 
-The list holds up to 5 cells, each a PCI and an EARFCN. The lock is removed only when every cell on the list has failed, and it locks again when one comes back.
+The list holds up to 5 cells, each a PCI and an EARFCN. The status page lists the cells the modem can hear, so you can add one with a tap instead of looking up its numbers.
+
+A lock on a single cell stops carrier aggregation. While the modem is unlocked the app notes which cells each cell aggregates with, and locks those along with it so CA keeps working. If CA is missing after an upgrade, turn the app off for a minute so it can see them, then on again.
+
+The lock is removed only when every cell on the list has failed, and it locks again when one comes back.
 
 You can add timed lists, so different cells are used at different times of day. Each list has its own switch, and so does the main list.
 
@@ -18,11 +22,11 @@ It installs turned off and changes nothing until you turn it on under Services, 
 
 On NoobWRT or OpenWrt with ModemManager:
 
-    apk add --allow-untrusted /tmp/auto-pci-cell-0.3.3-r1.apk
+    apk add --allow-untrusted /tmp/auto-pci-cell-0.4.1-r1.apk
 
 On MyWRT:
 
-    opkg install /tmp/auto-pci-cell_0.3.3-1_all.ipk
+    opkg install /tmp/auto-pci-cell_0.4.1-1_all.ipk
 
 MyWRT has its own PCI Lock, which has to stay off or this app pauses:
 
@@ -44,7 +48,7 @@ With the OpenWrt 25.12 SDK in the owrt-sdk-cache Docker volume:
 
     docker run --rm -v owrt-sdk-cache:/cache -v "$PWD:/src" owrt-sdk-env sh /src/build.sh
 
-The packages end up in dist. Pushing a tag like v0.3.3 builds them on GitHub and adds them to a release.
+The packages end up in dist. Pushing a tag like v0.4.1 builds them on GitHub and adds them to a release.
 
 ## License
 

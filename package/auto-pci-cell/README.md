@@ -6,7 +6,9 @@ Keeps a Quectel modem on your best 4G cell. You make a list of cells in the orde
 
 The list holds up to 5 cells, each a PCI and an EARFCN. The status page lists the cells the modem can hear, so you can add one with a tap instead of looking up its numbers.
 
-A lock on a single cell stops carrier aggregation. While the modem is unlocked the app notes which cells each cell aggregates with, and locks those along with it so CA keeps working. If CA is missing after an upgrade, turn the app off for a minute so it can see them, then on again.
+The lock is on the one cell you picked, so it stays the main cell. Carrier aggregation keeps working: the network still adds its other carriers. A lock change can leave the modem without data until it reconnects, so after every switch the app checks that data flows, and reconnects the modem if it does not within 20 seconds.
+
+While the app is off it leaves the modem alone, and only reads it while its status page is open. While a lock is settled it checks the modem every 15 seconds instead of every few, and when the modem is busy it waits longer between tries.
 
 The lock is removed only when every cell on the list has failed, and it locks again when one comes back.
 

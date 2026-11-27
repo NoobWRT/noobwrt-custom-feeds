@@ -11,6 +11,8 @@ ORIG=${APC_DATA:-/etc/auto-pci-cell}/original
 status() {
 	local k v tmp=/tmp/auto-pci-cell.$$
 
+	mkdir -p "$RUN" && cut -d. -f1 /proc/uptime > "$RUN/wanted"
+
 	json_init
 	json_add_boolean running "$(pidof auto-pci-cell >/dev/null && echo 1 || echo 0)"
 	json_add_boolean atd "$(ubus list at-daemon >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -60,9 +62,6 @@ status() {
 	json_dump
 }
 
-# QModem's own AT tool, under the same per-port lock QModem uses, so the
-# two never talk to the modem at once. Used on firmware with QModem and no
-# at-daemon.
 qm_port() {
 	uci -q show qmodem | sed -n "s/^qmodem\.[^.]*\.at_port='\(.*\)'$/\1/p" | head -n 1
 }
